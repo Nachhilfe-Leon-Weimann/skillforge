@@ -1,3 +1,3 @@
-run:
+dev:
     @echo "Starting the SkillForge API server..."
-    @uvicorn skillforge.main:app --reload
+    @fastapi dev
