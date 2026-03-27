@@ -1,0 +1,28 @@
+[project]
+name = "skillforge"
+version = "0.1.0"
+description = "Backend of the skill-platform."
+authors = [{ name = "Leon Weimann", email = "coding@leonweimann.de" }]
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = ["fastapi[standard]>=0.135.2", "pydantic-settings>=2.13.1"]
+
+[tool.ruff]
+line-length = 120
+preview = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I", "UP"]
+
+ignore = [
+    # "E501", # line length
+]
+
+fixable = ["ALL"]
+
+unfixable = [
+    "F401", # unused imports
+]
+
+[tool.fastapi]
+entrypoint = "skillforge.main:app"
