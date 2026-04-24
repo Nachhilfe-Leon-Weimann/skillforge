@@ -5,11 +5,23 @@ description = "Backend of the skill-platform."
 authors = [{ name = "Leon Weimann", email = "coding@leonweimann.de" }]
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = ["fastapi[standard]>=0.135.2", "pydantic-settings>=2.13.1"]
+dependencies = [
+    "asyncpg>=0.31.0",
+    "fastapi[standard]>=0.135.2",
+    "pydantic-settings>=2.13.1",
+    "skillcore",
+    "sqlalchemy[asyncio]>=2.0.49",
+]
+
+[tool.uv.sources]
+skillcore = { path = "../skillcore", editable = true }
+
+[dependency-groups]
+dev = ["pytest>=9.0.3", "pytest-asyncio>=1.3.0", "testcontainers>=4.14.2"]
 
 [tool.ruff]
 line-length = 120
-preview = true
+preview     = true
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "I", "UP"]
@@ -26,3 +38,10 @@ unfixable = [
 
 [tool.fastapi]
 entrypoint = "app.main:app"
+
+[tool.pytest.ini_options]
+testpaths    = ["tests"]
+addopts      = "-q -rs"
+asyncio_mode = "auto"
+
+markers = ["db: tests that require a database connection"]
