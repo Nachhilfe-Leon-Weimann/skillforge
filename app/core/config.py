@@ -1,11 +1,14 @@
-from pydantic_settings import BaseSettings
+from functools import lru_cache
 
+from skillcore.config import CoreSettings
 
-class CoreSettings(BaseSettings):
-    @classmethod
-    def from_env[S](cls: type[S]) -> S:
-        return cls()  # pyright: ignore
+from .db.config import DatabaseSettings
 
 
 class Settings(CoreSettings):
-    pass
+    db: DatabaseSettings
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings.from_env()
