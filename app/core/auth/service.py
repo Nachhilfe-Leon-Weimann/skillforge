@@ -55,6 +55,14 @@ async def create_client_secret(
 
     session.add(secret)
     await session.flush()
+    await _write_auth_audit_log(
+        session,
+        principal_type="application",
+        principal_id=application_client_id,
+        event_type="client_secret.created",
+        success=True,
+        detail=f"Created client secret {secret.id}.",
+    )
 
     return CreatedClientSecret(
         plaintext=plaintext,
