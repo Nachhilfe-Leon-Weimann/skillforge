@@ -2,18 +2,13 @@ from collections.abc import Sequence
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Security, status
-from fastapi.security import OAuth2PasswordBearer, SecurityScopes
+from fastapi.security import SecurityScopes
 
 from .config import AuthSettings
 from .principal import Principal
 from .scopes import Scope
+from .security import oauth2_scheme
 from .tokens import PRINCIPAL_TYPE_APPLICATION, TokenValidationError, validate_access_token
-
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="/api/v1/auth/token",
-    scopes={scope.value: scope.name for scope in Scope},
-    auto_error=False,
-)
 
 
 def get_auth_settings() -> AuthSettings:

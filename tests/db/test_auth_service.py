@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -5,15 +6,25 @@ from pydantic import SecretStr
 from sqlalchemy import select
 
 from app.core.auth import (
+    ApplicationClientAlreadyExistsError,
+    ApplicationClientScopeGrantNotFoundError,
+    ApplicationClientSecretNotFoundError,
     AuthSettings,
     BootstrappedApplicationClient,
     InvalidClientCredentialsError,
     InvalidClientScopeError,
     Scope,
     bootstrap_application_client,
+    create_application_client,
+    create_application_client_secret,
     create_client_secret,
+    grant_application_client_scopes,
     issue_client_token,
+    list_application_clients,
+    revoke_application_client_scope,
+    revoke_application_client_secret,
     seed_default_scopes,
+    update_application_client,
     validate_access_token,
 )
 from app.core.db.models import (
@@ -96,6 +107,115 @@ async def test_bootstrap_skillbot_client_can_bootstrap_custom_scopes(session):
 
     assert result.granted_scopes == frozenset({"bot:read"})
     assert [grant.scope_key for grant in grants] == ["bot:read"]
+
+
+@pytest.mark.db
+async def test_create_application_client_lists_client_and_writes_audit(session):
+    client = await create_application_client(
+        session,
+        client_id="integration",
+        name="Integration",
+        description="External integration",
+    )
+    clients = await list_application_clients(session)
+    audit_logs = (await session.execute(select(AuthAuditLog))).scalars().all()
+
+    assert client.client_id == "integration"
+    assert [client.client_id for client in clients] == ["integration"]
+    assert [(log.event_type, log.success) for log in audit_logs] == [("application_client.created", True)]
+
+
+@pytest.mark.db
+async def test_create_application_client_rejects_duplicate_client_id(session):
+    await create_application_client(session, client_id="integration", name="Integration")
+
+    with pytest.raises(ApplicationClientAlreadyExistsError):
+        await create_application_client(session, client_id="integration", name="Integration 2")
+
+
+@pytest.mark.db
+async def test_update_application_client_can_disable_and_clear_description(session):
+    await create_application_client(session, client_id="integration", name="Integration", description="old")
+
+    client = await update_application_client(
+        session,
+        client_id="integration",
+        name="Integration API",
+        description=None,
+        update_description=True,
+        status=ApplicationClientStatus.DISABLED,
+    )
+    audit_logs = (await session.execute(select(AuthAuditLog))).scalars().all()
+
+    assert client.name == "Integration API"
+    assert client.description is None
+    assert client.status == ApplicationClientStatus.DISABLED
+    assert [log.event_type for log in audit_logs] == [
+        "application_client.created",
+        "application_client.disabled",
+    ]
+
+
+@pytest.mark.db
+async def test_create_application_client_secret_and_revoke_by_client_id(session):
+    client = await create_application_client(session, client_id="integration", name="Integration")
+    created_secret = await create_application_client_secret(session, client_id="integration", label="primary")
+
+    await revoke_application_client_secret(session, client_id="integration", secret_id=created_secret.secret.id)
+    audit_logs = (await session.execute(select(AuthAuditLog))).scalars().all()
+
+    assert created_secret.plaintext not in created_secret.secret.secret_hash
+    assert created_secret.secret.application_client_id == client.id
+    assert created_secret.secret.revoked_at is not None
+    assert [log.event_type for log in audit_logs] == [
+        "application_client.created",
+        "client_secret.created",
+        "client_secret.revoked",
+    ]
+
+
+@pytest.mark.db
+async def test_revoke_application_client_secret_rejects_unknown_secret(session):
+    await create_application_client(session, client_id="integration", name="Integration")
+
+    with pytest.raises(ApplicationClientSecretNotFoundError):
+        await revoke_application_client_secret(
+            session,
+            client_id="integration",
+            secret_id=uuid.uuid4(),
+        )
+
+
+@pytest.mark.db
+async def test_grant_and_revoke_application_client_scopes(session):
+    await seed_default_scopes(session)
+    await create_application_client(session, client_id="integration", name="Integration")
+
+    client = await grant_application_client_scopes(
+        session,
+        client_id="integration",
+        scopes=[Scope.BOT_READ, Scope.BOT_WRITE],
+    )
+    await revoke_application_client_scope(session, client_id="integration", scope_key=Scope.BOT_READ.value)
+    grants = (await session.execute(select(ApplicationClientScopeGrant))).scalars().all()
+    audit_logs = (await session.execute(select(AuthAuditLog))).scalars().all()
+
+    assert sorted(grant.scope_key for grant in client.scope_grants) == ["bot:read", "bot:write"]
+    assert [grant.scope_key for grant in grants] == ["bot:write"]
+    assert [log.event_type for log in audit_logs] == [
+        "application_client.created",
+        "scope_grant.added",
+        "scope_grant.added",
+        "scope_grant.removed",
+    ]
+
+
+@pytest.mark.db
+async def test_revoke_application_client_scope_rejects_unknown_grant(session):
+    await create_application_client(session, client_id="integration", name="Integration")
+
+    with pytest.raises(ApplicationClientScopeGrantNotFoundError):
+        await revoke_application_client_scope(session, client_id="integration", scope_key="bot:read")
 
 
 @pytest.mark.db

@@ -1,7 +1,7 @@
 from .config import AuthSettings
 from .dependencies import get_current_principal, require_application, require_scopes
 from .principal import Principal
-from .schemas import AccessTokenResponse, BootstrappedApplicationClient, CreatedClientSecret
+from .results import BootstrappedApplicationClient, CreatedClientSecret
 from .scopes import DEFAULT_SCOPES, Scope
 from .secrets import (
     generate_client_secret,
@@ -9,18 +9,35 @@ from .secrets import (
     verify_client_secret,
 )
 from .service import (
+    ApplicationClientAlreadyExistsError,
+    ApplicationClientManagementError,
+    ApplicationClientNotFoundError,
+    ApplicationClientScopeGrantNotFoundError,
+    ApplicationClientSecretNotFoundError,
     ClientCredentialsError,
     InvalidClientCredentialsError,
     InvalidClientScopeError,
     bootstrap_application_client,
+    create_application_client,
+    create_application_client_secret,
     create_client_secret,
+    get_application_client,
+    grant_application_client_scopes,
     issue_client_token,
+    list_application_clients,
+    revoke_application_client_scope,
+    revoke_application_client_secret,
     seed_default_scopes,
+    update_application_client,
 )
 from .tokens import CreatedAccessToken, TokenValidationError, create_application_access_token, validate_access_token
 
 __all__ = [
-    "AccessTokenResponse",
+    "ApplicationClientAlreadyExistsError",
+    "ApplicationClientManagementError",
+    "ApplicationClientNotFoundError",
+    "ApplicationClientScopeGrantNotFoundError",
+    "ApplicationClientSecretNotFoundError",
     "AuthSettings",
     "BootstrappedApplicationClient",
     "ClientCredentialsError",
@@ -33,15 +50,23 @@ __all__ = [
     "Scope",
     "TokenValidationError",
     "bootstrap_application_client",
+    "create_application_client",
+    "create_application_client_secret",
     "create_application_access_token",
     "create_client_secret",
     "generate_client_secret",
     "get_current_principal",
+    "get_application_client",
     "hash_client_secret",
+    "grant_application_client_scopes",
     "issue_client_token",
+    "list_application_clients",
     "require_application",
     "require_scopes",
+    "revoke_application_client_scope",
+    "revoke_application_client_secret",
     "seed_default_scopes",
+    "update_application_client",
     "validate_access_token",
     "verify_client_secret",
 ]
