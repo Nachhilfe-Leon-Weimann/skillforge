@@ -1,6 +1,5 @@
 import uuid
 from collections.abc import Iterable
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -12,28 +11,15 @@ from app.core.db.models import (
     ApplicationClientScopeGrant,
     ApplicationClientSecret,
     ApplicationClientStatus,
-    AuthAuditLog,
     PermissionScope,
 )
 
+from .audit import AuditEventType, write_auth_audit_log
 from .config import AuthSettings
+from .schemas import BootstrappedApplicationClient, CreatedClientSecret
 from .scopes import DEFAULT_SCOPES, Scope
 from .secrets import generate_client_secret, hash_client_secret, verify_client_secret
 from .tokens import CreatedAccessToken, create_application_access_token
-
-
-@dataclass(frozen=True)
-class CreatedClientSecret:
-    plaintext: str
-    secret: ApplicationClientSecret
-
-
-@dataclass(frozen=True)
-class BootstrappedApplicationClient:
-    client: ApplicationClient
-    created_client: bool
-    created_secret: CreatedClientSecret | None
-    granted_scopes: frozenset[str]
 
 
 class ClientCredentialsError(ValueError):
@@ -91,11 +77,11 @@ async def bootstrap_application_client(
         session.add(client)
         await session.flush()
         created_client = True
-        await _write_auth_audit_log(
+        await write_auth_audit_log(
             session,
             principal_type="application",
             principal_id=client.id,
-            event_type="application_client.created",
+            event_type=AuditEventType.APPLICATION_CLIENT_CREATED,
             success=True,
             detail=f"Created application client {client.client_id}",
         )
@@ -141,11 +127,11 @@ async def create_client_secret(
 
     session.add(secret)
     await session.flush()
-    await _write_auth_audit_log(
+    await write_auth_audit_log(
         session,
         principal_type="application",
         principal_id=application_client_id,
-        event_type="client_secret.created",
+        event_type=AuditEventType.CLIENT_SECRET_CREATED,
         success=True,
         detail=f"Created client secret {secret.id}.",
     )
@@ -195,21 +181,21 @@ async def issue_client_token(
             now=issued_at,
         )
     except ClientCredentialsError as exc:
-        await _write_auth_audit_log(
+        await write_auth_audit_log(
             session,
             principal_type="application",
             principal_id=client.id if client is not None else client_id,
-            event_type="token.denied",
+            event_type=AuditEventType.TOKEN_DENIED,
             success=False,
             detail=str(exc),
         )
         raise
 
-    await _write_auth_audit_log(
+    await write_auth_audit_log(
         session,
         principal_type="application",
         principal_id=client.id,
-        event_type="token.issued",
+        event_type=AuditEventType.TOKEN_ISSUED,
         success=True,
         detail=f"Issued client credentials token for {client.client_id}.",
     )
@@ -291,11 +277,11 @@ async def _grant_client_scopes(
             continue
 
         session.add(ApplicationClientScopeGrant(application_client=client, permission_scope=permission_scope))
-        await _write_auth_audit_log(
+        await write_auth_audit_log(
             session,
             principal_type="application",
             principal_id=client.id,
-            event_type="scope_grant.added",
+            event_type=AuditEventType.SCOPE_GRANT_ADDED,
             success=True,
             detail=f"Granted scope {scope_key} to application client {client.client_id}.",
         )
@@ -344,27 +330,6 @@ def _normalize_scope_set(scopes: Iterable[str] | str | None) -> frozenset[str]:
         return frozenset(scopes.split())
 
     return frozenset(str(scope).strip() for scope in scopes if str(scope).strip())
-
-
-async def _write_auth_audit_log(
-    session: AsyncSession,
-    *,
-    principal_type: str | None,
-    principal_id: str | uuid.UUID | None,
-    event_type: str,
-    success: bool,
-    detail: str | None = None,
-) -> None:
-    session.add(
-        AuthAuditLog(
-            principal_type=principal_type,
-            principal_id=str(principal_id) if principal_id is not None else None,
-            event_type=event_type,
-            success=success,
-            detail=detail,
-        )
-    )
-    await session.flush()
 
 
 def _normalize_datetime(value: datetime) -> datetime:

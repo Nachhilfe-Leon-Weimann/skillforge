@@ -1,6 +1,7 @@
 from .config import AuthSettings
 from .dependencies import get_current_principal, require_application, require_scopes
 from .principal import Principal
+from .schemas import AccessTokenResponse, BootstrappedApplicationClient, CreatedClientSecret
 from .scopes import DEFAULT_SCOPES, Scope
 from .secrets import (
     generate_client_secret,
@@ -8,9 +9,7 @@ from .secrets import (
     verify_client_secret,
 )
 from .service import (
-    BootstrappedApplicationClient,
     ClientCredentialsError,
-    CreatedClientSecret,
     InvalidClientCredentialsError,
     InvalidClientScopeError,
     bootstrap_application_client,
@@ -21,6 +20,7 @@ from .service import (
 from .tokens import CreatedAccessToken, TokenValidationError, create_application_access_token, validate_access_token
 
 __all__ = [
+    "AccessTokenResponse",
     "AuthSettings",
     "BootstrappedApplicationClient",
     "ClientCredentialsError",
