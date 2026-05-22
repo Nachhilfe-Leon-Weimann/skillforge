@@ -6,7 +6,7 @@ async def test_base_table_args_extending():
     from sqlalchemy import Integer, UniqueConstraint
     from sqlalchemy.orm import Mapped, mapped_column
 
-    from skillcore.db.models.base import Base
+    from app.core.db.models.base import Base
 
     class MyTestBase(Base):
         __abstract__ = True

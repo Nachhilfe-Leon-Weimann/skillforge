@@ -3,7 +3,7 @@ import pytest
 
 @pytest.mark.db
 async def test_ext_relationships(session):
-    from skillcore.db.models import DiscordAccount, Party, PartyType
+    from app.core.db.models import DiscordAccount, Party, PartyType
 
     party = Party(type=PartyType.PERSON)
     discord_account = DiscordAccount(discord_id="123456789", party=party)
@@ -17,7 +17,7 @@ async def test_ext_relationships(session):
 
 @pytest.mark.db
 async def test_tutor_ms_account_relationship(session):
-    from skillcore.db.models import MicrosoftAccount, Party, PartyType, Person, Tutor
+    from app.core.db.models import MicrosoftAccount, Party, PartyType, Person, Tutor
 
     def build_tutor() -> Tutor:
         party = Party(type=PartyType.PERSON)
@@ -37,7 +37,7 @@ async def test_tutor_ms_account_relationship(session):
 
 @pytest.mark.db
 async def test_student_ms_contact_relationship(session):
-    from skillcore.db.models import MicrosoftContact, Party, PartyType, Person, PreferredMeetingTool, Student
+    from app.core.db.models import MicrosoftContact, Party, PartyType, Person, PreferredMeetingTool, Student
 
     def build_student() -> Student:
         party = Party(type=PartyType.PERSON)

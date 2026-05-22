@@ -5,7 +5,7 @@ import pytest
 async def test_create_party(session):
     import uuid
 
-    from skillcore.db.models import Party, PartyType
+    from app.core.db.models import Party, PartyType
 
     party = Party(type=PartyType.PERSON)
 
@@ -17,7 +17,7 @@ async def test_create_party(session):
 
 @pytest.mark.db
 async def test_person_relationship(session):
-    from skillcore.db.models import Party, PartyType, Person
+    from app.core.db.models import Party, PartyType, Person
 
     party = Party(type=PartyType.PERSON)
     person = Person(firstname="Max", lastname="Mustermann", party=party)
@@ -31,7 +31,7 @@ async def test_person_relationship(session):
 
 @pytest.mark.db
 async def test_company_relationship(session):
-    from skillcore.db.models import Company, Party, PartyType
+    from app.core.db.models import Company, Party, PartyType
 
     party = Party(type=PartyType.COMPANY)
     company = Company(name="xdreverGmbH", party=party)
@@ -45,7 +45,7 @@ async def test_company_relationship(session):
 
 @pytest.mark.db
 async def test_cascade_delete(session):
-    from skillcore.db.models import Party, PartyType, Person
+    from app.core.db.models import Party, PartyType, Person
 
     party = Party(type=PartyType.PERSON)
     person = Person(firstname="Max", lastname="Mustermann", party=party)
@@ -63,7 +63,7 @@ async def test_cascade_delete(session):
 
 @pytest.mark.db
 async def test_party_relation_relationships(session):
-    from skillcore.db.models import Party, PartyRelation, PartyRelationType, PartyType
+    from app.core.db.models import Party, PartyRelation, PartyRelationType, PartyType
 
     tutor_party = Party(type=PartyType.PERSON)
     student_party = Party(type=PartyType.PERSON)
@@ -84,7 +84,7 @@ async def test_party_relation_relationships(session):
 
 @pytest.mark.db
 async def test_student_tutor_subject_relationships(session):
-    from skillcore.db.models import (
+    from app.core.db.models import (
         Party,
         PartyType,
         Person,

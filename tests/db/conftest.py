@@ -1,13 +1,14 @@
 from collections.abc import AsyncGenerator
 
 import pytest
+from docker.errors import DockerException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from testcontainers.postgres import PostgresContainer
 
-import skillcore.db.models  # noqa
-from skillcore.db import Database, DatabaseSettings
-from skillcore.db.models.base import Base
+import app.core.db.models  # noqa
+from app.core.db import Database, DatabaseSettings
+from app.core.db.models.base import Base
 
 
 @pytest.fixture(scope="session")
@@ -24,8 +25,11 @@ def postgres(settings):
         yield None
         return
 
-    with PostgresContainer("postgres:17") as pg:
-        yield pg
+    try:
+        with PostgresContainer("postgres:17") as pg:
+            yield pg
+    except DockerException as exc:
+        pytest.skip(f"Docker is not available for DB tests: {exc}")
 
 
 @pytest.fixture(scope="session")
@@ -40,7 +44,7 @@ async def db(db_url) -> AsyncGenerator[Database]:
     db = Database.from_url(db_url)
 
     async with db.engine.begin() as conn:
-        for schema in ("core", "geo", "ext"):
+        for schema in ("core", "geo", "ext", "auth"):
             await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
 
         await conn.run_sync(Base.metadata.drop_all)

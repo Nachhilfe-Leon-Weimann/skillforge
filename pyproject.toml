@@ -43,5 +43,6 @@ entrypoint = "app.main:app"
 testpaths    = ["tests"]
 addopts      = "-q -rs"
 asyncio_mode = "auto"
+pythonpath   = ["."]
 
 markers = ["db: tests that require a database connection"]
