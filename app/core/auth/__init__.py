@@ -1,4 +1,5 @@
 from .config import AuthSettings
+from .dependencies import get_current_principal, require_application, require_scopes
 from .principal import Principal
 from .scopes import Scope
 from .secrets import (
@@ -29,8 +30,11 @@ __all__ = [
     "create_application_access_token",
     "create_client_secret",
     "generate_client_secret",
+    "get_current_principal",
     "hash_client_secret",
     "issue_client_token",
+    "require_application",
+    "require_scopes",
     "validate_access_token",
     "verify_client_secret",
 ]
