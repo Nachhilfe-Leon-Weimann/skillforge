@@ -78,8 +78,10 @@ async def test_auth_audit_log(session):
 
 @pytest.mark.db
 async def test_create_client_secret_persists_hash_only(session):
+    from sqlalchemy import select
+
     from app.core.auth import create_client_secret, verify_client_secret
-    from app.core.db.models import ApplicationClient
+    from app.core.db.models import ApplicationClient, AuthAuditLog
 
     client = ApplicationClient(client_id="some-client", name="SomeClient")
     session.add(client)
@@ -96,3 +98,8 @@ async def test_create_client_secret_persists_hash_only(session):
     assert created.secret.secret_hash != created.plaintext
     assert created.plaintext not in created.secret.secret_hash
     assert verify_client_secret(created.plaintext, created.secret.secret_hash)
+
+    audit_logs = (await session.execute(select(AuthAuditLog))).scalars().all()
+    assert [(log.event_type, log.success) for log in audit_logs] == [("client_secret.created", True)]
+    assert created.plaintext not in (audit_logs[0].detail or "")
+    assert created.secret.secret_hash not in (audit_logs[0].detail or "")

@@ -30,7 +30,7 @@ def create_application_access_token(
     *,
     principal_id: uuid.UUID,
     client_id: str,
-    scopes: Iterable[str],
+    scopes: Iterable[str] | str,
     now: datetime | None = None,
 ) -> CreatedAccessToken:
     issued_at = _normalize_datetime(now or datetime.now(UTC))
@@ -134,8 +134,11 @@ def _require_str_claim(claims: dict[str, object], name: str) -> str:
     return value
 
 
-def _format_scope(scopes: Iterable[str]) -> str:
-    normalized_scopes = sorted({str(scope).strip() for scope in scopes if str(scope).strip()})
+def _format_scope(scopes: Iterable[str] | str) -> str:
+    if isinstance(scopes, str):
+        normalized_scopes = sorted(set(scopes.split()))
+    else:
+        normalized_scopes = sorted({str(scope).strip() for scope in scopes if str(scope).strip()})
     if not normalized_scopes:
         raise ValueError("scopes must not be empty")
 

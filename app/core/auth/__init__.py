@@ -6,13 +6,23 @@ from .secrets import (
     hash_client_secret,
     verify_client_secret,
 )
-from .service import CreatedClientSecret, create_client_secret
+from .service import (
+    ClientCredentialsError,
+    CreatedClientSecret,
+    InvalidClientCredentialsError,
+    InvalidClientScopeError,
+    create_client_secret,
+    issue_client_token,
+)
 from .tokens import CreatedAccessToken, TokenValidationError, create_application_access_token, validate_access_token
 
 __all__ = [
     "AuthSettings",
+    "ClientCredentialsError",
     "CreatedClientSecret",
     "CreatedAccessToken",
+    "InvalidClientCredentialsError",
+    "InvalidClientScopeError",
     "Principal",
     "Scope",
     "TokenValidationError",
@@ -20,6 +30,7 @@ __all__ = [
     "create_client_secret",
     "generate_client_secret",
     "hash_client_secret",
+    "issue_client_token",
     "validate_access_token",
     "verify_client_secret",
 ]
