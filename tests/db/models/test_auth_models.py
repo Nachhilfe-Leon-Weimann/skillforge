@@ -74,3 +74,25 @@ async def test_auth_audit_log(session):
     await session.flush()
 
     assert isinstance(log.id, uuid.UUID)
+
+
+@pytest.mark.db
+async def test_create_client_secret_persists_hash_only(session):
+    from app.core.auth import create_client_secret, verify_client_secret
+    from app.core.db.models import ApplicationClient
+
+    client = ApplicationClient(client_id="some-client", name="SomeClient")
+    session.add(client)
+    await session.flush()
+
+    created = await create_client_secret(
+        session,
+        application_client_id=client.id,
+        label="default",
+    )
+
+    assert created.secret.application_client_id == client.id
+    assert created.secret.label == "default"
+    assert created.secret.secret_hash != created.plaintext
+    assert created.plaintext not in created.secret.secret_hash
+    assert verify_client_secret(created.plaintext, created.secret.secret_hash)
