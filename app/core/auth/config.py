@@ -14,5 +14,4 @@ class AuthSettings(CoreSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="AUTH__",
-        env_file=".env",
     )

@@ -4,8 +4,6 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 
-from app.core.config import get_settings
-
 from .config import AuthSettings
 from .principal import Principal
 from .scopes import Scope
@@ -19,6 +17,8 @@ oauth2_scheme = OAuth2PasswordBearer(
 
 
 def get_auth_settings() -> AuthSettings:
+    from app.core.config import get_settings
+
     return get_settings().auth
 
 
