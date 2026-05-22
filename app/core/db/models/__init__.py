@@ -1,3 +1,8 @@
+from .auth import (
+    ApplicationClient,
+    ApplicationClientSecret,
+    ApplicationClientStatus,
+)
 from .core import (
     Company,
     ContactInfo,
@@ -27,6 +32,9 @@ from .geo import (
 )
 
 __all__ = [
+    "ApplicationClient",
+    "ApplicationClientSecret",
+    "ApplicationClientStatus",
     "ClockodoCustomer",
     "ClockodoProject",
     "Company",
