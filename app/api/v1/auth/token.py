@@ -13,10 +13,11 @@ from app.core.auth import (
     issue_client_token,
 )
 from app.core.auth.dependencies import get_auth_settings
-from app.core.auth.schemas import AccessTokenResponse
 from app.core.db.dependencies import get_db_session
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+from .schemas import AccessTokenResponse
+
+router = APIRouter()
 
 IssueClientToken = Callable[..., Awaitable[CreatedAccessToken]]
 
