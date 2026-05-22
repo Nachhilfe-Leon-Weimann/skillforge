@@ -98,6 +98,7 @@ These decisions are fixed for the first implementation slice.
 - For local development, bootstrap the initial `skillbot` client with:
   - `client_id = "skillbot"`
   - scopes `bot:read`, `bot:write`
+- Run `just bootstrap-skillbot` against the configured database.
 - Print the generated plaintext secret once during bootstrap.
 - Do not hard-code the SkillBot secret in source files.
 

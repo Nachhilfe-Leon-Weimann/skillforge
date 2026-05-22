@@ -24,6 +24,11 @@ test-file file:
 test-one test:
     uv run pytest -k {{ test }}
 
+# --- Auth ---
+
+bootstrap-skillbot:
+    uv run python -m app.core.auth.bootstrap
+
 # --- Local Postgres ---
 
 postgres := "../infra/postgres/justfile"

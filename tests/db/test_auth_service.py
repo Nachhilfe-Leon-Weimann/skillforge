@@ -6,10 +6,14 @@ from sqlalchemy import select
 
 from app.core.auth import (
     AuthSettings,
+    BootstrappedApplicationClient,
     InvalidClientCredentialsError,
     InvalidClientScopeError,
+    Scope,
+    bootstrap_application_client,
     create_client_secret,
     issue_client_token,
+    seed_default_scopes,
     validate_access_token,
 )
 from app.core.db.models import (
@@ -20,6 +24,78 @@ from app.core.db.models import (
     AuthAuditLog,
     PermissionScope,
 )
+
+
+@pytest.mark.db
+async def test_seed_default_scopes_is_idempotent(session):
+    first_seed = await seed_default_scopes(session)
+    second_seed = await seed_default_scopes(session)
+    scopes = (await session.execute(select(PermissionScope))).scalars().all()
+
+    assert {scope.key for scope in first_seed} == {"bot:read", "bot:write", "auth:clients:manage"}
+    assert {scope.key for scope in second_seed} == {"bot:read", "bot:write", "auth:clients:manage"}
+    assert len(scopes) == 3
+    assert all(scope.active for scope in scopes)
+
+
+@pytest.mark.db
+async def test_bootstrap_skillbot_client_creates_client_secret_and_grants(session):
+    result = await _bootstrap_skillbot_client(session)
+    audit_logs = (await session.execute(select(AuthAuditLog))).scalars().all()
+    grants = (await session.execute(select(ApplicationClientScopeGrant))).scalars().all()
+
+    assert result.created_client is True
+    assert result.created_secret is not None
+    assert result.created_secret.plaintext not in result.created_secret.secret.secret_hash
+    assert result.client.client_id == "skillbot"
+    assert result.client.status == ApplicationClientStatus.ACTIVE
+    assert result.granted_scopes == frozenset({"bot:read", "bot:write"})
+    assert sorted(grant.scope_key for grant in grants) == ["bot:read", "bot:write"]
+    assert [log.event_type for log in audit_logs] == [
+        "application_client.created",
+        "scope_grant.added",
+        "scope_grant.added",
+        "client_secret.created",
+    ]
+
+
+@pytest.mark.db
+async def test_bootstrap_skillbot_client_is_idempotent_when_usable_secret_exists(session):
+    first_result = await _bootstrap_skillbot_client(session)
+    second_result = await _bootstrap_skillbot_client(session)
+    clients = (await session.execute(select(ApplicationClient))).scalars().all()
+    secrets = (await session.execute(select(ApplicationClientSecret))).scalars().all()
+    grants = (await session.execute(select(ApplicationClientScopeGrant))).scalars().all()
+
+    assert first_result.created_secret is not None
+    assert second_result.created_client is False
+    assert second_result.created_secret is None
+    assert len(clients) == 1
+    assert len(secrets) == 1
+    assert len(grants) == 2
+
+
+@pytest.mark.db
+async def test_bootstrap_skillbot_client_creates_new_secret_when_existing_is_revoked(session):
+    first_result = await _bootstrap_skillbot_client(session)
+    assert first_result.created_secret is not None
+    first_result.created_secret.secret.revoked_at = datetime.now(UTC)
+    await session.flush()
+
+    second_result = await _bootstrap_skillbot_client(session)
+    secrets = (await session.execute(select(ApplicationClientSecret))).scalars().all()
+
+    assert second_result.created_secret is not None
+    assert len(secrets) == 2
+
+
+@pytest.mark.db
+async def test_bootstrap_skillbot_client_can_bootstrap_custom_scopes(session):
+    result = await _bootstrap_skillbot_client(session, scopes=[Scope.BOT_READ])
+    grants = (await session.execute(select(ApplicationClientScopeGrant))).scalars().all()
+
+    assert result.granted_scopes == frozenset({"bot:read"})
+    assert [grant.scope_key for grant in grants] == ["bot:read"]
 
 
 @pytest.mark.db
@@ -205,6 +281,16 @@ async def _create_client_with_secret_and_scopes(
 
     await session.flush()
     return client, created_secret.secret, created_secret.plaintext
+
+
+async def _bootstrap_skillbot_client(session, *, scopes: list[Scope] | None = None) -> BootstrappedApplicationClient:
+    return await bootstrap_application_client(
+        session,
+        client_id="skillbot",
+        name="SkillBot",
+        description="Discord Bot",
+        scopes=scopes or (Scope.BOT_READ, Scope.BOT_WRITE),
+    )
 
 
 def _settings() -> AuthSettings:
