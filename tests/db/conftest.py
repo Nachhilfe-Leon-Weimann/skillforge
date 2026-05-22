@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -7,21 +8,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testcontainers.postgres import PostgresContainer
 
 import app.core.db.models  # noqa
-from app.core.db import Database, DatabaseSettings
+from app.core.db import Database
 from app.core.db.models.base import Base
 
-
-@pytest.fixture(scope="session")
-def settings() -> DatabaseSettings | None:
-    try:
-        return DatabaseSettings.from_env()
-    except Exception:
-        return None
+_PREPARED_DB_URLS: set[str] = set()
 
 
 @pytest.fixture(scope="session")
-def postgres(settings):
-    if settings and settings.url:
+def test_db_url() -> str | None:
+    return os.getenv("TEST_DB__URL")
+
+
+@pytest.fixture(scope="session")
+def postgres(test_db_url):
+    if test_db_url:
         yield None
         return
 
@@ -33,9 +33,9 @@ def postgres(settings):
 
 
 @pytest.fixture(scope="session")
-def db_url(settings, postgres) -> str:
-    if settings and settings.url:
-        return str(settings.url)
+def db_url(test_db_url, postgres) -> str:
+    if test_db_url:
+        return test_db_url
     return postgres.get_connection_url().replace("psycopg2", "asyncpg")
 
 
@@ -43,12 +43,15 @@ def db_url(settings, postgres) -> str:
 async def db(db_url) -> AsyncGenerator[Database]:
     db = Database.from_url(db_url)
 
-    async with db.engine.begin() as conn:
-        for schema in ("core", "geo", "ext", "auth"):
-            await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+    if db_url not in _PREPARED_DB_URLS:
+        async with db.engine.begin() as conn:
+            for schema in ("core", "geo", "ext", "auth"):
+                await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
 
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+
+        _PREPARED_DB_URLS.add(db_url)
 
     yield db
 

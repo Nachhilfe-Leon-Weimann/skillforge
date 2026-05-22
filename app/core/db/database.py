@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from sqlalchemy import text
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 
 @dataclass(frozen=True)
@@ -23,10 +25,12 @@ class Database:
 
     @classmethod
     def from_url(cls, url: str, *, echo: bool = False) -> Database:
+        normalized_url, engine_options = _normalize_asyncpg_engine_options(url)
         engine = create_async_engine(
-            url,
+            normalized_url,
             echo=echo,
             pool_pre_ping=True,
+            **engine_options,
         )
 
         session_factory = async_sessionmaker(
@@ -60,3 +64,27 @@ class Database:
 
     async def dispose(self) -> None:
         await self.engine.dispose()
+
+
+def _normalize_asyncpg_engine_options(url: str) -> tuple[str, dict[str, object]]:
+    parsed_url = make_url(url)
+    if parsed_url.drivername != "postgresql+asyncpg":
+        return url, {}
+
+    query = dict(parsed_url.query)
+    query.setdefault("prepared_statement_cache_size", "0")
+    normalized_url = parsed_url.set(query=query).render_as_string(hide_password=False)
+
+    engine_options: dict[str, object] = {}
+    if _uses_connection_pooler(parsed_url):
+        engine_options["poolclass"] = NullPool
+        engine_options["connect_args"] = {
+            "prepared_statement_name_func": lambda: "",
+        }
+
+    return normalized_url, engine_options
+
+
+def _uses_connection_pooler(url: URL) -> bool:
+    host = url.host or ""
+    return "pooler" in host or "pgbouncer" in host
