@@ -40,8 +40,8 @@ async def grant_application_client_scopes(
 ) -> ApplicationClient:
     await seed_default_scopes(session)
     client = await get_application_client(session, client_id=client_id)
-    scope_keys = _normalize_scope_set(scope.value if isinstance(scope, Scope) else scope for scope in scopes)
-    await _grant_client_scopes(session, client=client, scope_keys=scope_keys)
+    scope_keys = normalize_scope_set(scope.value if isinstance(scope, Scope) else scope for scope in scopes)
+    await grant_client_scopes(session, client=client, scope_keys=scope_keys)
     return await get_application_client(session, client_id=client.client_id)
 
 
@@ -68,7 +68,7 @@ async def revoke_application_client_scope(
     )
 
 
-def _granted_active_scope_keys(scope_grants: list[ApplicationClientScopeGrant]) -> frozenset[str]:
+def granted_active_scope_keys(scope_grants: list[ApplicationClientScopeGrant]) -> frozenset[str]:
     return frozenset(
         grant.scope_key
         for grant in scope_grants
@@ -76,7 +76,7 @@ def _granted_active_scope_keys(scope_grants: list[ApplicationClientScopeGrant]) 
     )
 
 
-async def _grant_client_scopes(
+async def grant_client_scopes(
     session: AsyncSession,
     *,
     client: ApplicationClient,
@@ -118,12 +118,12 @@ async def _grant_client_scopes(
     return frozenset(granted_scope_keys)
 
 
-def _resolve_token_scopes(
+def resolve_token_scopes(
     *,
     requested_scopes: Iterable[str] | str | None,
     granted_scopes: frozenset[str],
 ) -> frozenset[str]:
-    normalized_requested_scopes = _normalize_scope_set(requested_scopes)
+    normalized_requested_scopes = normalize_scope_set(requested_scopes)
     if not normalized_requested_scopes:
         if not granted_scopes:
             raise InvalidClientScopeError("Client has no active scope grants")
@@ -136,7 +136,7 @@ def _resolve_token_scopes(
     return normalized_requested_scopes
 
 
-def _normalize_scope_set(scopes: Iterable[str] | str | None) -> frozenset[str]:
+def normalize_scope_set(scopes: Iterable[str] | str | None) -> frozenset[str]:
     if scopes is None:
         return frozenset()
 

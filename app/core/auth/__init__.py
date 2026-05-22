@@ -8,7 +8,7 @@ from .secrets import (
     hash_client_secret,
     verify_client_secret,
 )
-from .service import (
+from .services import (
     ApplicationClientAlreadyExistsError,
     ApplicationClientManagementError,
     ApplicationClientNotFoundError,

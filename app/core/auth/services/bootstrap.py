@@ -8,9 +8,9 @@ from app.core.db.models import ApplicationClient, ApplicationClientStatus
 from ..audit import AuditEventType, write_auth_audit_log
 from ..results import BootstrappedApplicationClient
 from ..scopes import Scope
-from .clients import _get_application_client
-from .scopes import _grant_client_scopes, _normalize_scope_set, seed_default_scopes
-from .secrets import _client_has_usable_secret, create_client_secret
+from .clients import find_application_client
+from .scopes import grant_client_scopes, normalize_scope_set, seed_default_scopes
+from .secrets import client_has_usable_secret, create_client_secret
 
 
 async def bootstrap_application_client(
@@ -23,7 +23,7 @@ async def bootstrap_application_client(
 ) -> BootstrappedApplicationClient:
     await seed_default_scopes(session)
 
-    client = await _get_application_client(session, client_id)
+    client = await find_application_client(session, client_id)
     created_client = False
     if client is None:
         client = ApplicationClient(
@@ -48,11 +48,11 @@ async def bootstrap_application_client(
         client.description = description
         client.status = ApplicationClientStatus.ACTIVE
 
-    requested_scope_keys = _normalize_scope_set(scope.value if isinstance(scope, Scope) else scope for scope in scopes)
-    granted_scope_keys = await _grant_client_scopes(session, client=client, scope_keys=requested_scope_keys)
+    requested_scope_keys = normalize_scope_set(scope.value if isinstance(scope, Scope) else scope for scope in scopes)
+    granted_scope_keys = await grant_client_scopes(session, client=client, scope_keys=requested_scope_keys)
 
     created_secret = None
-    if not await _client_has_usable_secret(session, client_id=client.id, now=datetime.now(UTC)):
+    if not await client_has_usable_secret(session, client_id=client.id, now=datetime.now(UTC)):
         created_secret = await create_client_secret(
             session,
             application_client_id=client.id,

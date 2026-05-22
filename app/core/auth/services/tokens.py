@@ -9,10 +9,10 @@ from ..audit import AuditEventType, write_auth_audit_log
 from ..config import AuthSettings
 from ..secrets import verify_client_secret
 from ..tokens import CreatedAccessToken, create_application_access_token
-from .clients import _get_application_client
+from .clients import find_application_client
 from .errors import ClientCredentialsError, InvalidClientCredentialsError
-from .scopes import _granted_active_scope_keys, _resolve_token_scopes
-from .secrets import _is_secret_usable, _normalize_datetime
+from .scopes import granted_active_scope_keys, resolve_token_scopes
+from .secrets import is_secret_usable, normalize_datetime
 
 
 async def issue_client_token(
@@ -24,8 +24,8 @@ async def issue_client_token(
     requested_scopes: Iterable[str] | str | None = None,
     now: datetime | None = None,
 ) -> CreatedAccessToken:
-    issued_at = _normalize_datetime(now or datetime.now(UTC))
-    client = await _get_application_client(session, client_id)
+    issued_at = normalize_datetime(now or datetime.now(UTC))
+    client = await find_application_client(session, client_id)
 
     try:
         if client is None or client.status != ApplicationClientStatus.ACTIVE:
@@ -39,8 +39,8 @@ async def issue_client_token(
         if matching_secret is None:
             raise InvalidClientCredentialsError("Invalid client credentials")
 
-        granted_scopes = _granted_active_scope_keys(client.scope_grants)
-        token_scopes = _resolve_token_scopes(
+        granted_scopes = granted_active_scope_keys(client.scope_grants)
+        token_scopes = resolve_token_scopes(
             requested_scopes=requested_scopes,
             granted_scopes=granted_scopes,
         )
@@ -84,7 +84,7 @@ def _find_matching_secret(
     now: datetime,
 ) -> ApplicationClientSecret | None:
     for secret in secrets:
-        if not _is_secret_usable(secret, now=now):
+        if not is_secret_usable(secret, now=now):
             continue
 
         if verify_client_secret(client_secret, secret.secret_hash):

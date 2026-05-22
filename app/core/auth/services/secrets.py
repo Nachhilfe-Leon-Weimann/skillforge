@@ -75,7 +75,7 @@ async def revoke_application_client_secret(
     if secret is None:
         raise ApplicationClientSecretNotFoundError("Application client secret not found")
 
-    secret.revoked_at = _normalize_datetime(now or datetime.now(UTC))
+    secret.revoked_at = normalize_datetime(now or datetime.now(UTC))
     await session.flush()
     await write_auth_audit_log(
         session,
@@ -87,7 +87,7 @@ async def revoke_application_client_secret(
     )
 
 
-async def _client_has_usable_secret(session: AsyncSession, *, client_id: uuid.UUID, now: datetime) -> bool:
+async def client_has_usable_secret(session: AsyncSession, *, client_id: uuid.UUID, now: datetime) -> bool:
     secrets = (
         (
             await session.execute(
@@ -98,17 +98,17 @@ async def _client_has_usable_secret(session: AsyncSession, *, client_id: uuid.UU
         .all()
     )
 
-    return any(_is_secret_usable(secret, now=now) for secret in secrets)
+    return any(is_secret_usable(secret, now=now) for secret in secrets)
 
 
-def _is_secret_usable(secret: ApplicationClientSecret, *, now: datetime) -> bool:
+def is_secret_usable(secret: ApplicationClientSecret, *, now: datetime) -> bool:
     if secret.revoked_at is not None:
         return False
 
-    return secret.expires_at is None or _normalize_datetime(secret.expires_at) > now
+    return secret.expires_at is None or normalize_datetime(secret.expires_at) > now
 
 
-def _normalize_datetime(value: datetime) -> datetime:
+def normalize_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
 

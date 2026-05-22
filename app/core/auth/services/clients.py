@@ -25,7 +25,7 @@ async def list_application_clients(session: AsyncSession) -> list[ApplicationCli
 
 
 async def get_application_client(session: AsyncSession, *, client_id: str) -> ApplicationClient:
-    client = await _get_application_client(session, client_id)
+    client = await find_application_client(session, client_id)
     if client is None:
         raise ApplicationClientNotFoundError("Application client not found")
 
@@ -39,7 +39,7 @@ async def create_application_client(
     name: str,
     description: str | None = None,
 ) -> ApplicationClient:
-    if await _get_application_client(session, client_id) is not None:
+    if await find_application_client(session, client_id) is not None:
         raise ApplicationClientAlreadyExistsError("Application client already exists")
 
     client = ApplicationClient(
@@ -98,7 +98,7 @@ async def update_application_client(
     return await get_application_client(session, client_id=client.client_id)
 
 
-async def _get_application_client(session: AsyncSession, client_id: str) -> ApplicationClient | None:
+async def find_application_client(session: AsyncSession, client_id: str) -> ApplicationClient | None:
     result = await session.execute(
         select(ApplicationClient)
         .where(ApplicationClient.client_id == client_id)
