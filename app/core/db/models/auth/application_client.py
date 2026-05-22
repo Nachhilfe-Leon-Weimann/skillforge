@@ -2,13 +2,14 @@ import enum
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, Enum
+from sqlalchemy import UUID, Enum, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..shared import TimestampMixin
 from .base import AuthBase
 
 if TYPE_CHECKING:
+    from .application_client_scope_grant import ApplicationClientScopeGrant
     from .application_client_secret import ApplicationClientSecret
 
 
@@ -27,13 +28,24 @@ class ApplicationClient(TimestampMixin, AuthBase):
     description: Mapped[str | None] = mapped_column(nullable=True)
 
     status: Mapped[ApplicationClientStatus] = mapped_column(
-        Enum(ApplicationClientStatus, name="application_client_status"),
+        Enum(
+            ApplicationClientStatus,
+            name="application_client_status",
+            values_callable=lambda enum_type: [item.value for item in enum_type],
+        ),
         nullable=False,
         default=ApplicationClientStatus.ACTIVE,
+        server_default=text("'active'"),
     )
 
     secrets: Mapped[list[ApplicationClientSecret]] = relationship(
         "ApplicationClientSecret",
+        back_populates="application_client",
+        cascade="all, delete-orphan",
+    )
+
+    scope_grants: Mapped[list[ApplicationClientScopeGrant]] = relationship(
+        "ApplicationClientScopeGrant",
         back_populates="application_client",
         cascade="all, delete-orphan",
     )

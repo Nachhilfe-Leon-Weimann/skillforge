@@ -1,7 +1,10 @@
 from .auth import (
     ApplicationClient,
+    ApplicationClientScopeGrant,
     ApplicationClientSecret,
     ApplicationClientStatus,
+    AuthAuditLog,
+    PermissionScope,
 )
 from .core import (
     Company,
@@ -33,8 +36,11 @@ from .geo import (
 
 __all__ = [
     "ApplicationClient",
+    "ApplicationClientScopeGrant",
     "ApplicationClientSecret",
     "ApplicationClientStatus",
+    "AuthAuditLog",
+    "PermissionScope",
     "ClockodoCustomer",
     "ClockodoProject",
     "Company",
