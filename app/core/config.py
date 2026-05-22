@@ -2,10 +2,12 @@ from functools import lru_cache
 
 from skillcore.config import CoreSettings
 
+from .auth.config import AuthSettings
 from .db.config import DatabaseSettings
 
 
 class Settings(CoreSettings):
+    auth: AuthSettings
     db: DatabaseSettings
 
 
