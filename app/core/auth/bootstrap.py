@@ -1,7 +1,7 @@
 import asyncio
 
 from app.core.auth.scopes import Scope
-from app.core.auth.service import bootstrap_application_client
+from app.core.auth.services import bootstrap_application_client
 from app.core.config import get_settings
 from app.core.db import Database
 
