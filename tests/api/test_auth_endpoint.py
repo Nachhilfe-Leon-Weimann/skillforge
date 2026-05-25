@@ -2,7 +2,6 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
-from requests.auth import HTTPBasicAuth
 
 from app.api.v1.auth.token import get_issue_client_token
 from app.core.auth import AuthSettings, CreatedAccessToken, InvalidClientCredentialsError, InvalidClientScopeError
@@ -76,7 +75,7 @@ def test_auth_token_endpoint_accepts_basic_client_credentials():
     with _overrides(fake_create_token):
         response = TestClient(app).post(
             "/api/v1/auth/token",
-            auth=HTTPBasicAuth("skillbot", "secret"),
+            auth=("skillbot", "secret"),
             data={
                 "grant_type": "client_credentials",
                 "scope": "bot:read bot:write",
