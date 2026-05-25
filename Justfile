@@ -2,18 +2,18 @@
 
 dev:
     @echo "Starting the SkillForge API server..."
-    @fastapi dev
+    @uv run fastapi dev --reload-dir app
 
 # --- Testing ---
 
 test:
-    uv run pytest -m "not db"
+    uv run pytest
 
 test-db:
     uv run pytest -m db
 
-test-all:
-    uv run pytest
+test-without-db:
+    uv run pytest -m "not db"
 
 test-v:
     uv run pytest -v
