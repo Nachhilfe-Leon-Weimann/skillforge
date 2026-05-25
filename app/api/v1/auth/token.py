@@ -18,6 +18,7 @@ from app.core.auth import (
 )
 from app.core.auth.dependencies import get_auth_settings
 from app.core.db.dependencies import get_db_session
+from app.core.logging import bind_request_log_context
 
 from .schemas import AccessTokenResponse
 
@@ -52,6 +53,7 @@ async def get_client_token_form(
         resolved_client_id, resolved_client_secret = basic_auth
 
     if not resolved_client_id or not resolved_client_secret:
+        bind_request_log_context(request, auth_reason="missing_client_credentials")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="client_id and client_secret are required",
@@ -85,12 +87,14 @@ def _get_basic_credentials(request: Request) -> tuple[str, str] | None:
 
 @router.post("/token", response_model=AccessTokenResponse)
 async def create_token(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db_session)],
     settings: Annotated[AuthSettings, Depends(get_auth_settings)],
     issue_token: Annotated[IssueClientToken, Depends(get_issue_client_token)],
     form: Annotated[ClientTokenForm, Depends(get_client_token_form)],
 ) -> AccessTokenResponse | JSONResponse:
     if form.grant_type != "client_credentials":
+        bind_request_log_context(request, auth_reason="unsupported_grant_type")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unsupported grant_type",
@@ -105,12 +109,14 @@ async def create_token(
             requested_scopes=form.scope,
         )
     except InvalidClientCredentialsError:
+        bind_request_log_context(request, auth_reason="invalid_client_credentials", client_id=form.client_id)
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             headers={"WWW-Authenticate": "Bearer"},
             content={"detail": "Invalid client credentials"},
         )
     except InvalidClientScopeError:
+        bind_request_log_context(request, auth_reason="invalid_requested_scope", client_id=form.client_id)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"detail": "Invalid requested scope"},

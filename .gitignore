@@ -12,5 +12,9 @@ wheels/
 # Secrets
 .env
 
+# Logs
+*.log
+logs/
+
 # MacOS files
 .DS_Store

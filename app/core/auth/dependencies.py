@@ -1,8 +1,10 @@
 from collections.abc import Sequence
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import SecurityScopes
+
+from app.core.logging import bind_request_log_context
 
 from .config import AuthSettings
 from .principal import Principal
@@ -18,12 +20,18 @@ def get_auth_settings() -> AuthSettings:
 
 
 async def get_current_principal(
+    request: Request,
     security_scopes: SecurityScopes,
     token: Annotated[str | None, Depends(oauth2_scheme)],
     settings: Annotated[AuthSettings, Depends(get_auth_settings)],
 ) -> Principal:
     authenticate_value = _authenticate_header(security_scopes.scopes)
     if token is None:
+        bind_request_log_context(
+            request,
+            auth_reason="missing_token",
+            required_scopes=sorted(security_scopes.scopes),
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
@@ -33,6 +41,11 @@ async def get_current_principal(
     try:
         principal = validate_access_token(token, settings)
     except TokenValidationError as exc:
+        bind_request_log_context(
+            request,
+            auth_reason="invalid_token",
+            required_scopes=sorted(security_scopes.scopes),
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
@@ -41,6 +54,14 @@ async def get_current_principal(
 
     missing_scopes = set(security_scopes.scopes) - principal.scopes
     if missing_scopes:
+        bind_request_log_context(
+            request,
+            auth_reason="missing_scopes",
+            client_id=principal.client_id,
+            principal_type=principal.principal_type,
+            required_scopes=sorted(security_scopes.scopes),
+            missing_scopes=sorted(missing_scopes),
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -50,9 +71,15 @@ async def get_current_principal(
 
 
 async def require_application(
+    request: Request,
     principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> Principal:
     if principal.principal_type != PRINCIPAL_TYPE_APPLICATION:
+        bind_request_log_context(
+            request,
+            auth_reason="wrong_principal_type",
+            principal_type=principal.principal_type,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Application principal required",
