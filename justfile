@@ -50,6 +50,21 @@ test-one test:
 bootstrap-skillbot:
     uv run python -m app.core.auth.bootstrap
 
+# --- Versioning ---
+
+create-version-bump bump="patch" version="":
+    gh workflow run version-bump.yml --field bump="{{ bump }}" --field version="{{ version }}"
+
+version-info bump="patch" version="":
+    @python scripts/version.py info "{{ bump }}" "{{ version }}"
+
+release-version:
+    @python scripts/version.py release
+
+bump-version version:
+    @python scripts/version.py bump "{{ version }}"
+    @uv lock
+
 # --- Local Postgres ---
 
 postgres := "../infra/postgres/justfile"
