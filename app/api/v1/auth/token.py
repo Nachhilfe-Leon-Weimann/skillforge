@@ -75,7 +75,7 @@ def _get_basic_credentials(request: Request) -> tuple[str, str] | None:
 
     try:
         decoded = base64.b64decode(encoded).decode("utf-8")
-    except (binascii.Error, UnicodeDecodeError):
+    except binascii.Error, UnicodeDecodeError:
         return None
 
     if ":" not in decoded:

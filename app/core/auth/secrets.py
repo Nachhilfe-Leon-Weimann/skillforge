@@ -26,5 +26,5 @@ def hash_client_secret(secret: str) -> str:
 def verify_client_secret(secret: str, secret_hash: str) -> bool:
     try:
         return _PASSWORD_HASH.verify(secret, secret_hash)
-    except (pwdlib_exceptions.UnknownHashError, ValueError, TypeError):
+    except pwdlib_exceptions.UnknownHashError, ValueError, TypeError:
         return False

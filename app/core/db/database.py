@@ -59,7 +59,7 @@ class Database:
             async with self.engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             return True
-        except (SQLAlchemyError, OSError):
+        except SQLAlchemyError, OSError:
             return False
 
     async def dispose(self) -> None:
