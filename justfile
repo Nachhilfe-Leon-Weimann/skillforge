@@ -13,6 +13,8 @@ typecheck:
 
 check: lint format-check typecheck test-without-db
 
+check-all: lint format-check typecheck test
+
 # --- FastAPI ---
 
 skillcore := "../skillcore"
