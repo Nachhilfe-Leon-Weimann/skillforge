@@ -1,3 +1,18 @@
+set shell := ["bash", "-cu"]
+
+# --- Quality ---
+
+lint:
+    uv run ruff check
+
+format-check:
+    uv run ruff format --check
+
+typecheck:
+    uv run ty check
+
+check: lint format-check typecheck test-without-db
+
 # --- FastAPI ---
 
 skillcore := "../skillcore"
