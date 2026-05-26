@@ -1,4 +1,9 @@
+import os
+
 import pytest
+
+os.environ.setdefault("AUTH__SECRET_KEY", "test-signing-secret-with-at-least-32-bytes")
+os.environ.setdefault("DB__URL", "postgresql+asyncpg://skillforge:skillforge@localhost:5432/skillforge")
 
 
 def pytest_collection_modifyitems(config, items):
