@@ -1,8 +1,14 @@
 # --- FastAPI ---
 
+skillcore := "../skillcore"
+
 dev:
     @echo "Starting the SkillForge API server..."
     @uv run fastapi dev --reload-dir app
+
+dev-local-core:
+    @echo "Starting the SkillForge API server with editable SkillCore..."
+    @uv run --with-editable {{ skillcore }} fastapi dev --reload-dir app --reload-dir {{ skillcore }}/src
 
 # --- Testing ---
 
