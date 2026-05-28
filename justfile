@@ -52,6 +52,15 @@ test-one test:
 bootstrap-skillbot:
     uv run python -m app.core.auth.bootstrap
 
+# --- Docker ---
+
+docker-build image="skillforge:local":
+    @test -n "$${SKILLPLATFORM_READ_TOKEN:-}" || (echo "Set SKILLPLATFORM_READ_TOKEN, for example: export SKILLPLATFORM_READ_TOKEN=$$(gh auth token)" >&2; exit 1)
+    docker build --secret id=github_token,env=SKILLPLATFORM_READ_TOKEN -f dockerfile -t {{ image }} .
+
+docker-run image="skillforge:local":
+    docker run --rm --env-file .env -p 8000:8000 {{ image }}
+
 # --- Versioning ---
 
 create-version-bump bump="patch" version="":

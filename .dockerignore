@@ -1,0 +1,13 @@
+.DS_Store
+.env
+.git
+.github
+.pytest_cache
+.ruff_cache
+.venv
+.vscode
+__pycache__/
+*.py[cod]
+logs/
+tests/
+docs/
