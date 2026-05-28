@@ -56,7 +56,8 @@ bootstrap-skillbot:
 
 docker-build image="skillforge:local":
     @test -n "$${SKILLPLATFORM_READ_TOKEN:-}" || (echo "Set SKILLPLATFORM_READ_TOKEN, for example: export SKILLPLATFORM_READ_TOKEN=$$(gh auth token)" >&2; exit 1)
-    docker build --secret id=github_token,env=SKILLPLATFORM_READ_TOKEN -f dockerfile -t {{ image }} .
+    GITHUB_REPOSITORY="skillforge" IMAGE_VERSION="" IMAGE_TAG_LATEST="false" IMAGE_PUSH="false" bash scripts/docker-image.sh
+    docker tag ghcr.io/skillforge:sha-$(git rev-parse --short=12 HEAD) {{ image }}
 
 docker-run image="skillforge:local":
     docker run --rm --env-file .env -p 8000:8000 {{ image }}

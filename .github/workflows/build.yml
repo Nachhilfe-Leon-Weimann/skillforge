@@ -1,0 +1,81 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      push:
+        description: "Push the built image to GHCR"
+        required: true
+        default: false
+        type: boolean
+      source_ref:
+        description: "Git ref or SHA to build"
+        required: false
+        default: ""
+        type: string
+      version:
+        description: "Version tag to apply without leading v"
+        required: false
+        default: ""
+        type: string
+      tag_latest:
+        description: "Also tag the image as latest"
+        required: true
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      push:
+        required: false
+        default: false
+        type: boolean
+      source_ref:
+        required: false
+        default: ""
+        type: string
+      version:
+        required: false
+        default: ""
+        type: string
+      tag_latest:
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      SKILLPLATFORM_READ_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+
+      - name: Resolve image tags
+        id: image
+        env:
+          IMAGE_VERSION: ${{ inputs.version }}
+          IMAGE_TAG_LATEST: ${{ inputs.tag_latest }}
+        run: bash scripts/docker-image.sh --metadata
+
+      - name: Build image
+        env:
+          SKILLPLATFORM_READ_TOKEN: ${{ secrets.SKILLPLATFORM_READ_TOKEN }}
+          GHCR_TOKEN: ${{ github.token }}
+          IMAGE_PUSH: ${{ inputs.push }}
+          IMAGE_VERSION: ${{ inputs.version }}
+          IMAGE_TAG_LATEST: ${{ inputs.tag_latest }}
+        run: bash scripts/docker-image.sh

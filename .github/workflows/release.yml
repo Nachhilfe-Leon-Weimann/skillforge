@@ -1,0 +1,132 @@
+name: Release
+run-name: ${{ github.event_name == 'workflow_run' && format('Check release after CI on {0}', github.event.workflow_run.head_branch) || 'Manual release check' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Mark the GitHub release as a pre-release"
+        required: true
+        default: false
+        type: boolean
+      draft:
+        description: "Create the GitHub release as a draft"
+        required: true
+        default: false
+        type: boolean
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: ["main"]
+
+permissions:
+  actions: read
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check-release:
+    name: Check release required
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.release-state.outputs.version }}
+      draft: ${{ steps.release-state.outputs.draft }}
+      prerelease: ${{ steps.release-state.outputs.prerelease }}
+      target_sha: ${{ steps.target.outputs.sha }}
+      should_release: ${{ steps.release-state.outputs.should_release }}
+
+    steps:
+      - name: Checkout workflow scripts
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Resolve target commit
+        id: target
+        env:
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash scripts/release-target.sh
+
+      - name: Checkout release target
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Check existing release
+        id: release-state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_DRAFT: ${{ inputs.draft }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+          RELEASE_TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: bash scripts/release-check.sh
+
+  image:
+    name: Build and publish container image
+    needs: check-release
+    if: needs.check-release.result == 'success' && needs.check-release.outputs.should_release == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      push: true
+      source_ref: ${{ needs.check-release.outputs.target_sha }}
+      version: ${{ needs.check-release.outputs.version }}
+      tag_latest: ${{ needs.check-release.outputs.draft != 'true' && needs.check-release.outputs.prerelease != 'true' }}
+    secrets:
+      SKILLPLATFORM_READ_TOKEN: ${{ secrets.SKILLPLATFORM_READ_TOKEN }}
+    permissions:
+      contents: read
+      packages: write
+
+  release:
+    name: Create GitHub release
+    needs:
+      - check-release
+      - image
+    if: needs.check-release.result == 'success' && needs.check-release.outputs.should_release == 'true' && needs.image.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.check-release.outputs.target_sha }}
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.check-release.outputs.version }}
+          RELEASE_DRAFT: ${{ needs.check-release.outputs.draft }}
+          RELEASE_PRERELEASE: ${{ needs.check-release.outputs.prerelease }}
+          RELEASE_TARGET_SHA: ${{ needs.check-release.outputs.target_sha }}
+        run: bash scripts/create-release.sh
+
+  deploy:
+    name: Trigger deploy webhook
+    needs:
+      - check-release
+      - image
+      - release
+    if: needs.check-release.outputs.draft != 'true' && needs.release.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.check-release.outputs.target_sha }}
+
+      - name: Trigger deploy webhook
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+          RELEASE_VERSION: ${{ needs.check-release.outputs.version }}
+          RELEASE_TARGET_SHA: ${{ needs.check-release.outputs.target_sha }}
+        run: bash scripts/deploy-webhook.sh
