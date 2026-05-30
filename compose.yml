@@ -1,0 +1,9 @@
+services:
+  app:
+    image: ghcr.io/nachhilfe-leon-weimann/skillforge:latest
+    pull_policy: always
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
