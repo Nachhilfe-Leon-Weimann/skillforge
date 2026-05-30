@@ -23,6 +23,11 @@ on:
         required: true
         default: false
         type: boolean
+      platforms:
+        description: "Target platforms for pushed images"
+        required: false
+        default: "linux/amd64,linux/arm64"
+        type: string
   workflow_call:
     inputs:
       push:
@@ -41,6 +46,10 @@ on:
         required: false
         default: false
         type: boolean
+      platforms:
+        required: false
+        default: "linux/amd64,linux/arm64"
+        type: string
     secrets:
       SKILLPLATFORM_READ_TOKEN:
         required: true
@@ -69,13 +78,78 @@ jobs:
         env:
           IMAGE_VERSION: ${{ inputs.version }}
           IMAGE_TAG_LATEST: ${{ inputs.tag_latest }}
-        run: bash scripts/docker-image.sh --metadata
+          IMAGE_PLATFORMS: ${{ inputs.platforms }}
+        shell: bash
+        run: |
+          repository="${GITHUB_REPOSITORY,,}"
+          image="ghcr.io/${repository}"
+          source_sha="$(git rev-parse HEAD)"
+          short_sha="${source_sha:0:12}"
+
+          {
+            printf 'image=%s\n' "${image}"
+            printf 'source_sha=%s\n' "${source_sha}"
+            printf 'primary_tag=%s\n' "${image}:sha-${short_sha}"
+            printf 'platforms=%s\n' "${IMAGE_PLATFORMS}"
+            if [[ -n "${IMAGE_VERSION}" ]]; then
+              printf 'version_tag=%s\n' "${image}:v${IMAGE_VERSION}"
+            fi
+            printf 'tags<<EOF\n'
+            printf '%s\n' "${image}:sha-${short_sha}"
+            if [[ -n "${IMAGE_VERSION}" ]]; then
+              printf '%s\n' "${image}:v${IMAGE_VERSION}"
+            fi
+            if [[ "${IMAGE_TAG_LATEST}" == "true" ]]; then
+              printf '%s\n' "${image}:latest"
+            fi
+            printf 'EOF\n'
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Set up cross-platform emulation
+        if: inputs.push
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm64
+
+      - name: Set up Docker Buildx
+        if: inputs.push
+        run: docker buildx create --use --name skillforge-builder
 
       - name: Build image
         env:
           SKILLPLATFORM_READ_TOKEN: ${{ secrets.SKILLPLATFORM_READ_TOKEN }}
           GHCR_TOKEN: ${{ github.token }}
           IMAGE_PUSH: ${{ inputs.push }}
-          IMAGE_VERSION: ${{ inputs.version }}
-          IMAGE_TAG_LATEST: ${{ inputs.tag_latest }}
-        run: bash scripts/docker-image.sh
+          IMAGE_PLATFORMS: ${{ inputs.platforms }}
+          IMAGE_TAGS: ${{ steps.image.outputs.tags }}
+        shell: bash
+        run: |
+          if [[ -z "${SKILLPLATFORM_READ_TOKEN}" ]]; then
+            echo "SKILLPLATFORM_READ_TOKEN is required to build the image." >&2
+            exit 1
+          fi
+
+          docker_args=()
+          while IFS= read -r tag; do
+            docker_args+=("-t" "${tag}")
+          done <<< "${IMAGE_TAGS}"
+
+          if [[ "${IMAGE_PUSH}" == "true" ]]; then
+            if [[ -z "${GHCR_TOKEN}" || -z "${GITHUB_ACTOR}" ]]; then
+              echo "GHCR_TOKEN and GITHUB_ACTOR are required when push=true." >&2
+              exit 1
+            fi
+
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+            docker buildx build \
+              --platform "${IMAGE_PLATFORMS}" \
+              --secret id=github_token,env=SKILLPLATFORM_READ_TOKEN \
+              -f dockerfile \
+              "${docker_args[@]}" \
+              --push \
+              .
+          else
+            docker build \
+              --secret id=github_token,env=SKILLPLATFORM_READ_TOKEN \
+              -f dockerfile \
+              "${docker_args[@]}" \
+              .
+          fi

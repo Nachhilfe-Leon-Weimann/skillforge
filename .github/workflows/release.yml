@@ -42,14 +42,15 @@ jobs:
       should_release: ${{ steps.release-state.outputs.should_release }}
 
     steps:
-      - name: Checkout workflow scripts
+      - name: Checkout workflow
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Resolve target commit
         id: target
         env:
           WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: bash scripts/release-target.sh
+        shell: bash
+        run: printf 'sha=%s\n' "${WORKFLOW_RUN_HEAD_SHA:-${GITHUB_SHA}}" >> "${GITHUB_OUTPUT}"
 
       - name: Checkout release target
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -64,7 +65,35 @@ jobs:
           INPUT_DRAFT: ${{ inputs.draft }}
           INPUT_PRERELEASE: ${{ inputs.prerelease }}
           RELEASE_TARGET_SHA: ${{ steps.target.outputs.sha }}
-        run: bash scripts/release-check.sh
+        shell: bash
+        run: |
+          release_version="$(python scripts/version.py release | sed -n 's/^version=//p')"
+
+          if [[ "${GITHUB_REF}" != "refs/heads/main" && "${GITHUB_EVENT_NAME}" != "workflow_run" ]]; then
+            echo "Releases must be dispatched from main." >&2
+            exit 1
+          fi
+
+          should_release="true"
+          if gh release view "v${release_version}" >/dev/null 2>&1; then
+            echo "Version v${release_version} already has a GitHub release; skipping release."
+            should_release="false"
+          elif git rev-parse "v${release_version}" >/dev/null 2>&1; then
+            tag_sha="$(git rev-list -n 1 "v${release_version}")"
+            if [[ "${tag_sha}" != "${RELEASE_TARGET_SHA}" ]]; then
+              echo "Tag v${release_version} points to ${tag_sha}, expected ${RELEASE_TARGET_SHA}." >&2
+              exit 1
+            fi
+
+            echo "Version v${release_version} already has a matching tag; creating missing GitHub release."
+          fi
+
+          {
+            printf 'version=%s\n' "${release_version}"
+            printf 'draft=%s\n' "${INPUT_DRAFT:-false}"
+            printf 'prerelease=%s\n' "${INPUT_PRERELEASE:-false}"
+            printf 'should_release=%s\n' "${should_release}"
+          } >> "${GITHUB_OUTPUT}"
 
   image:
     name: Build and publish container image
@@ -76,6 +105,7 @@ jobs:
       source_ref: ${{ needs.check-release.outputs.target_sha }}
       version: ${{ needs.check-release.outputs.version }}
       tag_latest: ${{ needs.check-release.outputs.draft != 'true' && needs.check-release.outputs.prerelease != 'true' }}
+      platforms: "linux/amd64"
     secrets:
       SKILLPLATFORM_READ_TOKEN: ${{ secrets.SKILLPLATFORM_READ_TOKEN }}
     permissions:
@@ -106,7 +136,26 @@ jobs:
           RELEASE_DRAFT: ${{ needs.check-release.outputs.draft }}
           RELEASE_PRERELEASE: ${{ needs.check-release.outputs.prerelease }}
           RELEASE_TARGET_SHA: ${{ needs.check-release.outputs.target_sha }}
-        run: bash scripts/create-release.sh
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:v${RELEASE_VERSION}"
+          notes=$'Container image:\n\n'"${image}"
+          flags=()
+
+          if [[ "${RELEASE_DRAFT}" == "true" ]]; then
+            flags+=(--draft)
+          fi
+
+          if [[ "${RELEASE_PRERELEASE}" == "true" ]]; then
+            flags+=(--prerelease)
+          fi
+
+          gh release create "v${RELEASE_VERSION}" \
+            --target "${RELEASE_TARGET_SHA}" \
+            --title "v${RELEASE_VERSION}" \
+            --generate-notes \
+            --notes "${notes}" \
+            "${flags[@]}"
 
   deploy:
     name: Trigger deploy webhook
@@ -129,4 +178,26 @@ jobs:
           DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
           RELEASE_VERSION: ${{ needs.check-release.outputs.version }}
           RELEASE_TARGET_SHA: ${{ needs.check-release.outputs.target_sha }}
-        run: bash scripts/deploy-webhook.sh
+        shell: bash
+        run: |
+          if [[ -z "${DEPLOY_WEBHOOK_URL}" ]]; then
+            echo "DEPLOY_WEBHOOK_URL is required to trigger deployment." >&2
+            exit 1
+          fi
+
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:v${RELEASE_VERSION}"
+          payload="$(jq -n \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --arg version "${RELEASE_VERSION}" \
+            --arg image "${image}" \
+            --arg sha "${RELEASE_TARGET_SHA}" \
+            '{repository: $repository, version: $version, image: $image, sha: $sha}')"
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data "${payload}" \
+            "${DEPLOY_WEBHOOK_URL}"
