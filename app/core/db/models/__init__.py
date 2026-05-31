@@ -7,6 +7,8 @@ from .auth import (
     PermissionScope,
 )
 from .bot import (
+    DiscordChannel,
+    DiscordChannelType,
     DiscordGuild,
     DiscordUser,
     MemberRole,
@@ -46,6 +48,8 @@ __all__ = [
     "ApplicationClientStatus",
     "AuthAuditLog",
     "PermissionScope",
+    "DiscordChannel",
+    "DiscordChannelType",
     "DiscordGuild",
     "DiscordUser",
     "MemberRole",
