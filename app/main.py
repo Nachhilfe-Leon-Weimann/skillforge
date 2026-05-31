@@ -23,6 +23,11 @@ register_request_logging(app)
 app.include_router(v1_router)
 
 
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the skillforge API!"}
+
+
 @app.get("/health")
 async def health(database: Annotated[Database, Depends(get_database)]):
     try:
