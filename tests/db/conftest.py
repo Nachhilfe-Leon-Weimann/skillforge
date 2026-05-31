@@ -10,6 +10,7 @@ from testcontainers.postgres import PostgresContainer
 import app.core.db.models  # noqa
 from app.core.db import Database
 from app.core.db.models.base import Base
+from app.core.db.models.schemata import get_schemata
 
 _PREPARED_DB_URLS: set[str] = set()
 
@@ -45,7 +46,7 @@ async def db(db_url) -> AsyncGenerator[Database]:
 
     if db_url not in _PREPARED_DB_URLS:
         async with db.engine.begin() as conn:
-            for schema in ("core", "geo", "ext", "auth"):
+            for schema in get_schemata():
                 await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
 
             await conn.run_sync(Base.metadata.drop_all)
