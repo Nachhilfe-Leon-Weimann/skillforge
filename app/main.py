@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
+from skillcore import get_project_version
 
 from app.api.v1.router import router as v1_router
 from app.core.config import get_settings
@@ -15,7 +16,7 @@ logger = get_logger(__name__)
 
 app = FastAPI(
     title="skillforge",
-    version="0.1.0",
+    version=get_project_version(),
     description="Backend of the skill-platform",
 )
 register_request_logging(app)
