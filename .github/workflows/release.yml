@@ -201,3 +201,56 @@ jobs:
             --header "Content-Type: application/json" \
             --data "${payload}" \
             "${DEPLOY_WEBHOOK_URL}"
+
+  summary:
+    name: Summarize release
+    needs:
+      - check-release
+      - image
+      - release
+      - deploy
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Write release summary
+        env:
+          CHECK_RESULT: ${{ needs.check-release.result }}
+          IMAGE_RESULT: ${{ needs.image.result }}
+          RELEASE_RESULT: ${{ needs.release.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          RELEASE_VERSION: ${{ needs.check-release.outputs.version }}
+          SHOULD_RELEASE: ${{ needs.check-release.outputs.should_release }}
+          RELEASE_DRAFT: ${{ needs.check-release.outputs.draft }}
+          RELEASE_PRERELEASE: ${{ needs.check-release.outputs.prerelease }}
+          RELEASE_TARGET_SHA: ${{ needs.check-release.outputs.target_sha }}
+        shell: bash
+        run: |
+          {
+            echo "## Release summary"
+            echo
+
+            if [[ "${CHECK_RESULT}" != "success" ]]; then
+              echo "Release check did not complete successfully."
+            elif [[ "${SHOULD_RELEASE}" != "true" ]]; then
+              echo "No new GitHub release was required."
+            elif [[ "${RELEASE_RESULT}" == "success" ]]; then
+              echo "Created GitHub release v${RELEASE_VERSION}."
+            else
+              echo "GitHub release v${RELEASE_VERSION} was required but was not created successfully."
+            fi
+
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Version | ${RELEASE_VERSION:-n/a} |"
+            echo "| Target SHA | ${RELEASE_TARGET_SHA:-n/a} |"
+            echo "| Draft | ${RELEASE_DRAFT:-n/a} |"
+            echo "| Pre-release | ${RELEASE_PRERELEASE:-n/a} |"
+            echo "| Should release | ${SHOULD_RELEASE:-n/a} |"
+            echo "| Check | ${CHECK_RESULT} |"
+            echo "| Image | ${IMAGE_RESULT} |"
+            echo "| Release | ${RELEASE_RESULT} |"
+            echo "| Deploy | ${DEPLOY_RESULT} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
