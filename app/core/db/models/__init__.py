@@ -6,6 +6,10 @@ from .auth import (
     AuthAuditLog,
     PermissionScope,
 )
+from .bot import (
+    DiscordUser,
+    MemberRole,
+)
 from .core import (
     Company,
     ContactInfo,
@@ -41,6 +45,8 @@ __all__ = [
     "ApplicationClientStatus",
     "AuthAuditLog",
     "PermissionScope",
+    "DiscordUser",
+    "MemberRole",
     "ClockodoCustomer",
     "ClockodoProject",
     "Company",
