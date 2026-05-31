@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, Index, String, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..shared import TimestampMixin
@@ -21,7 +21,19 @@ class DiscordAccount(TimestampMixin, ExtBase):
     party_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("core.party.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
+    )
+
+    is_primary: Mapped[bool] = mapped_column(nullable=False, default=False)
+    active: Mapped[bool] = mapped_column(nullable=False, default=True)
+
+    __table_args__ = ExtBase.extend_table_args(
+        Index("ix_discord_account_party_id_active", "party_id", "active"),
+        Index(
+            "uq_discord_account_party_id_primary_active",
+            "party_id",
+            unique=True,
+            postgresql_where=is_primary.is_(true()) & active.is_(true()),
+        ),
     )
 
     party: Mapped[Party] = relationship("Party", back_populates="discord_account")

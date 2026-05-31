@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy.dialects import postgresql
 
 
 @pytest.mark.db
@@ -13,6 +14,29 @@ async def test_ext_relationships(session):
 
     assert discord_account.party_id == party.id
     assert party.discord_account is discord_account
+
+
+def test_discord_account_indexes():
+    from app.core.db.models import DiscordAccount
+
+    indexes = {index.name: index for index in DiscordAccount.__table__.indexes}  # type: ignore -> exists at runtime
+
+    party_active_index = indexes["ix_discord_account_party_id_active"]
+    assert tuple(party_active_index.columns.keys()) == ("party_id", "active")
+    assert party_active_index.unique is False
+
+    primary_active_index = indexes["uq_discord_account_party_id_primary_active"]
+    assert tuple(primary_active_index.columns.keys()) == ("party_id",)
+    assert primary_active_index.unique is True
+
+    where = primary_active_index.dialect_options["postgresql"]["where"]
+    compiled_where = str(
+        where.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+    assert compiled_where == "ext.discord_account.is_primary IS true AND ext.discord_account.active IS true"
 
 
 @pytest.mark.db
