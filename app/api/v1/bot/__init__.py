@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1.common import auth_error_responses
 
-from . import runtime
+from . import jobs, runtime
 
 router = APIRouter(
     prefix="/bot",
@@ -10,6 +10,7 @@ router = APIRouter(
     responses=auth_error_responses(),
 )
 router.include_router(runtime.router)
+router.include_router(jobs.router)
 
 
 __all__ = [
