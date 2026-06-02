@@ -16,3 +16,11 @@ class StudentContextNotFoundError(BotServiceError):
 
 class CommandEnvNotFoundError(BotServiceError):
     """No command env channel matches the requested coordinates."""
+
+
+class JobNotFoundError(BotServiceError):
+    """No job exists for the requested job_id."""
+
+
+class JobNotClaimedError(BotServiceError):
+    """The job is not in the claimed state required for completion/failure."""

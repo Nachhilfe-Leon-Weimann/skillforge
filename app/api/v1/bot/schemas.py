@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -8,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.core.db.models import (
     CommandEnvKind,
     ContactInfoType,
+    JobStatus,
     MemberRole,
     PartyRelationType,
     StudentChannelState,
@@ -16,6 +18,7 @@ from app.core.db.models import (
 if TYPE_CHECKING:
     from app.core.db.models import (
         DiscordUser,
+        Job,
         Party,
         StudentWorkspace,
         TutorWorkspace,
@@ -216,3 +219,53 @@ class CommandEnvChannelResponse(BaseModel):
     @classmethod
     def from_model(cls, command_env: object) -> CommandEnvChannelResponse:
         return cls.model_validate(command_env)
+
+
+# --- Jobs -------------------------------------------------------------------
+
+
+class JobClaimRequest(BaseModel):
+    kinds: list[str] | None = None
+    limit: int = Field(default=1, ge=1, le=50)
+    worker: str | None = None
+
+
+class JobFailRequest(BaseModel):
+    error: str | None = None
+    retry: bool = False
+
+
+class BotJob(BaseModel):
+    """Processing view returned when a job is claimed."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    job_id: UUID
+    kind: str
+    payload: dict[str, Any]
+    claimed_at: datetime | None
+    attempt: int
+
+    @classmethod
+    def from_model(cls, job: Job) -> BotJob:
+        return cls.model_validate(job)
+
+
+class JobResponse(BaseModel):
+    """State view returned after completing or failing a job."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    job_id: UUID
+    kind: str
+    status: JobStatus
+    attempt: int
+    available_at: datetime
+    claimed_at: datetime | None
+    completed_at: datetime | None
+    failed_at: datetime | None
+    last_error: str | None
+
+    @classmethod
+    def from_model(cls, job: Job) -> JobResponse:
+        return cls.model_validate(job)
