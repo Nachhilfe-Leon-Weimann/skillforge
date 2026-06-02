@@ -2,12 +2,13 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import app.core.db.models  # noqa: F401  -- imported for its side effect of populating Base.metadata
 from app.core.db.config import DatabaseSettings
 from app.core.db.models.base import Base
+from app.core.db.models.schemata import get_schemata
 
 config = context.config
 
@@ -43,6 +44,11 @@ def _do_run_migrations(connection) -> None:
         compare_type=True,
     )
     with context.begin_transaction():
+        # Alembic does not manage schemas; create them within the migration transaction so
+        # they (and the migration DDL) commit together. Doing this outside the transaction
+        # leaves an uncommitted transaction that Alembic rolls back.
+        for schema in sorted(get_schemata()):
+            connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
         context.run_migrations()
 
 

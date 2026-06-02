@@ -49,6 +49,10 @@ unfixable = [
     "F401", # unused imports
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Alembic version scripts are generated DDL; long constraint/index lines are unavoidable.
+"migrations/versions/*" = ["E501"]
+
 [tool.fastapi]
 entrypoint = "app.main:app"
 
