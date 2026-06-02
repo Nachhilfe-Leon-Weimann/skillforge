@@ -6,6 +6,7 @@ authors = [{ name = "Leon Weimann", email = "coding@leonweimann.de" }]
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "alembic>=1.18.4",
     "asyncpg>=0.31.0",
     "fastapi[standard]>=0.135.2",
     "pwdlib[argon2]>=0.3.0",

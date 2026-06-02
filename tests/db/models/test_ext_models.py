@@ -7,7 +7,7 @@ async def test_ext_relationships(session):
     from app.core.db.models import DiscordAccount, Party, PartyType
 
     party = Party(type=PartyType.PERSON)
-    discord_account = DiscordAccount(discord_id="123456789", party=party)
+    discord_account = DiscordAccount(discord_id=123456789, party=party)
 
     session.add_all([party, discord_account])
     await session.flush()

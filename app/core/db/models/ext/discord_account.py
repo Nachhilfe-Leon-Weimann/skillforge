@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Index, String, true
+from sqlalchemy import BigInteger, ForeignKey, Index, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..shared import TimestampMixin
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class DiscordAccount(TimestampMixin, ExtBase):
     __tablename__ = "discord_account"
 
-    discord_id: Mapped[str] = mapped_column(String, primary_key=True)
+    discord_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
 
     party_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("core.party.id", ondelete="CASCADE"),
