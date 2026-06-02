@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 def test_bot_model_contracts():
     import app.core.db.models  # noqa: F401
-    from app.core.db.models import CommandEnvKind, MemberRole, StudentChannelState
+    from app.core.db.models import CommandEnvKind, JobStatus, MemberRole, StudentChannelState
     from app.core.db.models.base import Base
 
     bot_tables = {table.name for table in Base.metadata.tables.values() if table.schema == "bot"}
@@ -18,6 +18,7 @@ def test_bot_model_contracts():
         "discord_role_binding",
         "discord_user",
         "discord_user_permission_group",
+        "job",
         "permission_grant",
         "permission_group",
         "student_workspace",
@@ -26,6 +27,7 @@ def test_bot_model_contracts():
     assert [item.value for item in MemberRole] == ["admin", "tutor", "student"]
     assert [item.value for item in CommandEnvKind] == ["admin_cmd", "tutor_cmd"]
     assert [item.value for item in StudentChannelState] == ["tutor_category", "archive_category"]
+    assert [item.value for item in JobStatus] == ["pending", "claimed", "completed", "failed"]
 
 
 @pytest.mark.db
