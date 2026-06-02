@@ -366,26 +366,16 @@ def upgrade() -> None:
         "discord_account",
         # discord_id starts as String to match the pre-Alembic production schema; it is
         # converted to BigInteger by revision 0002_discord_id_bigint.
+        # is_primary and active did not exist in the pre-Alembic schema; they are added
+        # by revision 0004_discord_account_flags.
         sa.Column("discord_id", sa.String(), nullable=False),
         sa.Column("party_id", sa.UUID(), nullable=False),
-        sa.Column("is_primary", sa.Boolean(), nullable=False),
-        sa.Column("active", sa.Boolean(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.ForeignKeyConstraint(["party_id"], ["core.party.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("discord_id"),
+        sa.UniqueConstraint("party_id", name="discord_account_party_id_key"),
         schema="ext",
-    )
-    op.create_index(
-        "ix_discord_account_party_id_active", "discord_account", ["party_id", "active"], unique=False, schema="ext"
-    )
-    op.create_index(
-        "uq_discord_account_party_id_primary_active",
-        "discord_account",
-        ["party_id"],
-        unique=True,
-        schema="ext",
-        postgresql_where=sa.text("is_primary IS true AND active IS true"),
     )
     op.create_table(
         "microsoft_account",
@@ -674,13 +664,6 @@ def downgrade() -> None:
     op.drop_table("sevdesk_contact", schema="ext")
     op.drop_table("microsoft_contact", schema="ext")
     op.drop_table("microsoft_account", schema="ext")
-    op.drop_index(
-        "uq_discord_account_party_id_primary_active",
-        table_name="discord_account",
-        schema="ext",
-        postgresql_where=sa.text("is_primary IS true AND active IS true"),
-    )
-    op.drop_index("ix_discord_account_party_id_active", table_name="discord_account", schema="ext")
     op.drop_table("discord_account", schema="ext")
     op.drop_table("clockodo_project", schema="ext")
     op.drop_table("clockodo_customer", schema="ext")
