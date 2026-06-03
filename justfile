@@ -11,9 +11,11 @@ format-check:
 typecheck:
     uv run ty check
 
-check: lint format-check typecheck test-without-db
+static-checks: lint format-check typecheck
 
-check-all: lint format-check typecheck test
+check: static-checks test-without-db
+
+check-all: static-checks test
 
 # --- FastAPI ---
 
@@ -31,6 +33,9 @@ dev-local-core:
 
 test:
     uv run pytest
+
+test-coverage:
+    uv run pytest --cov=app --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml
 
 test-db:
     uv run pytest -m db
