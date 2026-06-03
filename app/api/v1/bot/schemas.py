@@ -221,6 +221,13 @@ class CommandEnvChannelResponse(BaseModel):
         return cls.model_validate(command_env)
 
 
+class CommandEnvUpsertRequest(BaseModel):
+    guild_id: int
+    channel_id: int
+    kind: CommandEnvKind
+    owner_discord_id: int | None = None
+
+
 # --- Jobs -------------------------------------------------------------------
 
 

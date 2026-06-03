@@ -1,8 +1,10 @@
-from .command_envs import resolve_command_env
+from .command_envs import delete_command_env, resolve_command_env, upsert_command_env
 from .contexts import get_student_context_view, get_tutor_context_view
 from .errors import (
     BotServiceError,
+    CommandEnvConflictError,
     CommandEnvNotFoundError,
+    CommandEnvValidationError,
     JobNotClaimedError,
     JobNotFoundError,
     PrincipalNotFoundError,
@@ -16,7 +18,9 @@ from .views import PrincipalView, StudentContextView, TutorContextView
 
 __all__ = [
     "BotServiceError",
+    "CommandEnvConflictError",
     "CommandEnvNotFoundError",
+    "CommandEnvValidationError",
     "JobNotClaimedError",
     "JobNotFoundError",
     "PrincipalNotFoundError",
@@ -27,6 +31,7 @@ __all__ = [
     "TutorContextView",
     "claim_jobs",
     "complete_job",
+    "delete_command_env",
     "enqueue_job",
     "fail_job",
     "get_principal_view",
@@ -34,4 +39,5 @@ __all__ = [
     "get_tutor_context_view",
     "load_party_for_discord_id",
     "resolve_command_env",
+    "upsert_command_env",
 ]
