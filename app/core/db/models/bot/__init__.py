@@ -7,6 +7,7 @@ from .discord_role_binding import DiscordRoleBinding
 from .discord_user import DiscordUser, MemberRole
 from .discord_user_permission_group import DiscordUserPermissionGroup
 from .job import Job, JobStatus
+from .operation import Operation, OperationKind, OperationStatus
 from .permission_grant import PermissionGrant, PermissionGrantEffect, PermissionSubjectType
 from .permission_group import PermissionGroup
 from .student_workspace import StudentChannelState, StudentWorkspace
@@ -26,6 +27,9 @@ __all__ = [
     "Job",
     "JobStatus",
     "MemberRole",
+    "Operation",
+    "OperationKind",
+    "OperationStatus",
     "PermissionGrant",
     "PermissionGrantEffect",
     "PermissionGroup",
