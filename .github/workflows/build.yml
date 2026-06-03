@@ -60,7 +60,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-image-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   image:
@@ -105,21 +105,9 @@ jobs:
             printf 'EOF\n'
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Set up cross-platform emulation
-        if: inputs.push
-        run: docker run --privileged --rm tonistiigi/binfmt --install arm64
-
-      - name: Set up Docker Buildx
-        if: inputs.push
-        run: docker buildx create --use --name skillforge-builder
-
-      - name: Build image
+      - name: Validate build secret
         env:
           SKILLPLATFORM_READ_TOKEN: ${{ secrets.SKILLPLATFORM_READ_TOKEN }}
-          GHCR_TOKEN: ${{ github.token }}
-          IMAGE_PUSH: ${{ inputs.push }}
-          IMAGE_PLATFORMS: ${{ inputs.platforms }}
-          IMAGE_TAGS: ${{ steps.image.outputs.tags }}
         shell: bash
         run: |
           if [[ -z "${SKILLPLATFORM_READ_TOKEN}" ]]; then
@@ -127,29 +115,31 @@ jobs:
             exit 1
           fi
 
-          docker_args=()
-          while IFS= read -r tag; do
-            docker_args+=("-t" "${tag}")
-          done <<< "${IMAGE_TAGS}"
+      - name: Set up QEMU
+        if: inputs.push && contains(inputs.platforms, 'arm')
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
 
-          if [[ "${IMAGE_PUSH}" == "true" ]]; then
-            if [[ -z "${GHCR_TOKEN}" || -z "${GITHUB_ACTOR}" ]]; then
-              echo "GHCR_TOKEN and GITHUB_ACTOR are required when push=true." >&2
-              exit 1
-            fi
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
-            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
-            docker buildx build \
-              --platform "${IMAGE_PLATFORMS}" \
-              --secret id=github_token,env=SKILLPLATFORM_READ_TOKEN \
-              -f dockerfile \
-              "${docker_args[@]}" \
-              --push \
-              .
-          else
-            docker build \
-              --secret id=github_token,env=SKILLPLATFORM_READ_TOKEN \
-              -f dockerfile \
-              "${docker_args[@]}" \
-              .
-          fi
+      - name: Log in to GHCR
+        if: inputs.push
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: dockerfile
+          platforms: ${{ inputs.push && inputs.platforms || 'linux/amd64' }}
+          push: ${{ inputs.push }}
+          tags: ${{ steps.image.outputs.tags }}
+          provenance: false
+          secrets: |
+            github_token=${{ secrets.SKILLPLATFORM_READ_TOKEN }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
