@@ -46,7 +46,7 @@ async def upsert_command_env_endpoint(
             owner_discord_id=request.owner_discord_id,
         )
     except CommandEnvValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=COMMAND_ENV_INVALID) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=COMMAND_ENV_INVALID) from exc
     except CommandEnvConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=COMMAND_ENV_CONFLICT) from exc
 

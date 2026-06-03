@@ -43,8 +43,23 @@ async def upsert_command_env(
     channel = await session.get(DiscordChannel, channel_id)
     if channel is None or channel.guild_id != guild_id:
         raise CommandEnvValidationError("Channel not found in guild")
-    if owner_discord_id is not None and await session.get(DiscordUser, owner_discord_id) is None:
-        raise CommandEnvValidationError("Owner discord user not found")
+    if owner_discord_id is not None:
+        if await session.get(DiscordUser, owner_discord_id) is None:
+            raise CommandEnvValidationError("Owner discord user not found")
+        # An owner may own at most one command env of a given kind per guild. Check up front so
+        # the common case raises cleanly instead of relying on the unique-constraint violation.
+        conflicting_channel_id = await session.scalar(
+            select(CommandEnvChannel.channel_id)
+            .where(
+                CommandEnvChannel.guild_id == guild_id,
+                CommandEnvChannel.kind == kind,
+                CommandEnvChannel.owner_discord_id == owner_discord_id,
+                CommandEnvChannel.channel_id != channel_id,
+            )
+            .limit(1)
+        )
+        if conflicting_channel_id is not None:
+            raise CommandEnvConflictError("Owner already owns a command env of this kind in the guild")
 
     command_env = await session.get(CommandEnvChannel, {"guild_id": guild_id, "channel_id": channel_id, "kind": kind})
     if command_env is None:
@@ -55,8 +70,11 @@ async def upsert_command_env(
     else:
         command_env.owner_discord_id = owner_discord_id
 
+    # Flush inside a SAVEPOINT so a uniqueness violation only rolls back this statement and
+    # leaves the surrounding transaction usable (and avoids a deassociated-transaction warning).
     try:
-        await session.flush()
+        async with session.begin_nested():
+            await session.flush()
     except IntegrityError as exc:
         raise CommandEnvConflictError("Owner already owns a command env of this kind in the guild") from exc
 

@@ -55,7 +55,7 @@ async def get_client_token_form(
     if not resolved_client_id or not resolved_client_secret:
         bind_request_log_context(request, auth_reason="missing_client_credentials")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="client_id and client_secret are required",
         )
 
