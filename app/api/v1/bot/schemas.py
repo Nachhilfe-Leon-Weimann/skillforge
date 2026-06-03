@@ -11,6 +11,8 @@ from app.core.db.models import (
     ContactInfoType,
     JobStatus,
     MemberRole,
+    OperationKind,
+    OperationStatus,
     PartyRelationType,
     StudentChannelState,
 )
@@ -19,6 +21,7 @@ if TYPE_CHECKING:
     from app.core.db.models import (
         DiscordUser,
         Job,
+        Operation,
         Party,
         StudentWorkspace,
         TutorWorkspace,
@@ -276,3 +279,52 @@ class JobResponse(BaseModel):
     @classmethod
     def from_model(cls, job: Job) -> JobResponse:
         return cls.model_validate(job)
+
+
+# --- Transitions (prepare/commit) -------------------------------------------
+
+
+class TransitionPrepareResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    operation_id: UUID
+    kind: OperationKind
+    expires_at: datetime
+    plan: dict[str, Any]
+
+    @classmethod
+    def from_model(cls, operation: Operation) -> TransitionPrepareResponse:
+        return cls.model_validate(operation)
+
+
+class TransitionCommitResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    operation_id: UUID
+    kind: OperationKind
+    status: OperationStatus
+    committed_at: datetime | None
+
+    @classmethod
+    def from_model(cls, operation: Operation) -> TransitionCommitResponse:
+        return cls.model_validate(operation)
+
+
+class TutorActivationPrepareRequest(BaseModel):
+    guild_id: int
+    tutor_discord_id: int
+
+
+class TutorActivationCommitRequest(BaseModel):
+    category_channel_id: int
+    command_channel_id: int
+
+
+class StudentActivationPrepareRequest(BaseModel):
+    guild_id: int
+    student_discord_id: int
+    tutor_discord_id: int
+
+
+class StudentActivationCommitRequest(BaseModel):
+    channel_id: int
