@@ -16,5 +16,11 @@ wheels/
 *.log
 logs/
 
+# Coverage reports
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
 # MacOS files
 .DS_Store
