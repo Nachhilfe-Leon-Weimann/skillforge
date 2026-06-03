@@ -221,7 +221,7 @@ async def _override_db_session() -> AsyncIterator[object]:
 @asynccontextmanager
 async def _client() -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_db_session] = _override_db_session
-    app.dependency_overrides[get_auth_settings] = lambda: _auth_settings()
+    app.dependency_overrides[get_auth_settings] = _auth_settings
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
             yield client
