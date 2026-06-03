@@ -37,6 +37,6 @@ def transition_http_exception(exc: Exception) -> HTTPException:
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc) or "Transition conflict")
     if isinstance(exc, TransitionValidationError):
         return HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc) or "Transition validation failed"
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc) or "Transition validation failed"
         )
     raise exc
