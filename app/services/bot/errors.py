@@ -32,3 +32,19 @@ class JobNotFoundError(BotServiceError):
 
 class JobNotClaimedError(BotServiceError):
     """The job is not in the claimed state required for completion/failure."""
+
+
+class OperationNotFoundError(BotServiceError):
+    """No operation exists for the requested operation_id (and kind)."""
+
+
+class OperationNotPendingError(BotServiceError):
+    """The operation is not in the PREPARED state (already committed/failed, or expired)."""
+
+
+class TransitionValidationError(BotServiceError):
+    """A transition precondition failed (role, active flag, guild/channel context, missing entity)."""
+
+
+class TransitionConflictError(BotServiceError):
+    """A transition conflicts with current state (already exists, capacity reached, wrong channel state)."""
