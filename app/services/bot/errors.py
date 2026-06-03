@@ -18,6 +18,14 @@ class CommandEnvNotFoundError(BotServiceError):
     """No command env channel matches the requested coordinates."""
 
 
+class CommandEnvValidationError(BotServiceError):
+    """The referenced guild/channel/owner for a command env does not exist or is inconsistent."""
+
+
+class CommandEnvConflictError(BotServiceError):
+    """The command env violates a uniqueness rule (e.g. owner already owns one of this kind)."""
+
+
 class JobNotFoundError(BotServiceError):
     """No job exists for the requested job_id."""
 
