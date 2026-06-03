@@ -5,4 +5,4 @@ queries:
 
 paths-ignore:
   - "tests/**"
-  - "migrations/**"
+  - "migrations/versions/**"
