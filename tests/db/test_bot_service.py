@@ -33,14 +33,18 @@ from app.core.db.models import (
     TutorWorkspace,
 )
 from app.services.bot import (
+    CommandEnvConflictError,
     CommandEnvNotFoundError,
+    CommandEnvValidationError,
     PrincipalNotFoundError,
     StudentContextNotFoundError,
     TutorContextNotFoundError,
+    delete_command_env,
     get_principal_view,
     get_student_context_view,
     get_tutor_context_view,
     resolve_command_env,
+    upsert_command_env,
 )
 
 # Snowflake-sized id (> 2**32) so the test fails if discord_id is not a BIGINT.
@@ -195,6 +199,78 @@ async def test_resolve_command_env_missing_raises(session):
 
     with pytest.raises(CommandEnvNotFoundError):
         await resolve_command_env(session, guild_id=1, channel_id=100, kind=CommandEnvKind.TUTOR_CMD)
+
+
+@pytest.mark.db
+async def test_upsert_command_env_creates_then_updates_owner(session):
+    await _add_guild(session, 1)
+    await _add_user(session, 10, MemberRole.TUTOR, "Tutor A")
+    await _add_user(session, 11, MemberRole.TUTOR, "Tutor B")
+    await _add_channel(session, 1, 100, DiscordChannelType.TEXT)
+
+    created = await upsert_command_env(
+        session, guild_id=1, channel_id=100, kind=CommandEnvKind.TUTOR_CMD, owner_discord_id=10
+    )
+    assert created.owner_discord_id == 10
+
+    updated = await upsert_command_env(
+        session, guild_id=1, channel_id=100, kind=CommandEnvKind.TUTOR_CMD, owner_discord_id=11
+    )
+    assert updated.owner_discord_id == 11
+
+    resolved = await resolve_command_env(session, guild_id=1, channel_id=100, kind=CommandEnvKind.TUTOR_CMD)
+    assert resolved.owner_discord_id == 11
+
+
+@pytest.mark.db
+async def test_upsert_command_env_unknown_channel_raises(session):
+    await _add_guild(session, 1)
+
+    with pytest.raises(CommandEnvValidationError):
+        await upsert_command_env(session, guild_id=1, channel_id=999, kind=CommandEnvKind.TUTOR_CMD)
+
+
+@pytest.mark.db
+async def test_upsert_command_env_unknown_owner_raises(session):
+    await _add_guild(session, 1)
+    await _add_channel(session, 1, 100, DiscordChannelType.TEXT)
+
+    with pytest.raises(CommandEnvValidationError):
+        await upsert_command_env(
+            session, guild_id=1, channel_id=100, kind=CommandEnvKind.TUTOR_CMD, owner_discord_id=999
+        )
+
+
+@pytest.mark.db
+async def test_upsert_command_env_owner_conflict_raises(session):
+    await _add_guild(session, 1)
+    await _add_user(session, 10, MemberRole.TUTOR, "Tutor")
+    await _add_channel(session, 1, 100, DiscordChannelType.TEXT)
+    await _add_channel(session, 1, 101, DiscordChannelType.TEXT)
+    await upsert_command_env(session, guild_id=1, channel_id=100, kind=CommandEnvKind.TUTOR_CMD, owner_discord_id=10)
+
+    with pytest.raises(CommandEnvConflictError):
+        await upsert_command_env(
+            session, guild_id=1, channel_id=101, kind=CommandEnvKind.TUTOR_CMD, owner_discord_id=10
+        )
+
+
+@pytest.mark.db
+async def test_delete_command_env_removes_row(session):
+    await _seed_command_env(session)
+
+    await delete_command_env(session, guild_id=1, channel_id=100, kind=CommandEnvKind.TUTOR_CMD)
+
+    with pytest.raises(CommandEnvNotFoundError):
+        await resolve_command_env(session, guild_id=1, channel_id=100, kind=CommandEnvKind.TUTOR_CMD)
+
+
+@pytest.mark.db
+async def test_delete_command_env_unknown_raises(session):
+    await _add_guild(session, 1)
+
+    with pytest.raises(CommandEnvNotFoundError):
+        await delete_command_env(session, guild_id=1, channel_id=100, kind=CommandEnvKind.TUTOR_CMD)
 
 
 # --- seed helpers -----------------------------------------------------------
