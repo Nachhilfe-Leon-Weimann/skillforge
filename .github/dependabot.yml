@@ -1,5 +1,12 @@
 version: 2
 
+registries:
+  github-private-repos:
+    type: git
+    url: https://github.com
+    username: x-access-token
+    password: ${{secrets.DEPENDABOT_SKILLPLATFORM_READ_TOKEN}}
+
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -12,6 +19,8 @@ updates:
 
   - package-ecosystem: "uv"
     directory: "/"
+    registries:
+      - github-private-repos
     schedule:
       interval: "weekly"
     groups:
