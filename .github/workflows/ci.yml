@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  code-quality: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Configure skill-platform access
         env:
@@ -49,6 +52,14 @@ jobs:
 
       - name: Run tests with coverage
         run: just test-coverage
+
+      - name: Upload coverage report
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-code-coverage@abb5995db9e0199b0e2bb9dbd136fce4cb1ec4d3 # v1
+        with:
+          file: coverage.xml
+          language: Python
+          label: code-coverage/pytest
 
       - name: Write coverage summary
         if: always()
