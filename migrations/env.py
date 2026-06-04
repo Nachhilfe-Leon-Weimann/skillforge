@@ -19,8 +19,10 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
-    # DB__URL from the environment (or .env); an explicit env var overrides .env.
-    return str(DatabaseSettings.from_env().url)
+    # Prefer DB__MIGRATION_URL (a direct, unpooled endpoint) when set; otherwise use
+    # DB__URL. See DatabaseSettings for why pooled endpoints are unsafe for migrations.
+    settings = DatabaseSettings.from_env()
+    return str(settings.migration_url or settings.url)
 
 
 def run_migrations_offline() -> None:
