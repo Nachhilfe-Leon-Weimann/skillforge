@@ -39,6 +39,14 @@ RUN useradd --create-home --shell /usr/sbin/nologin skillforge
 COPY --from=builder --chown=skillforge:skillforge /app/.venv ./.venv
 COPY --from=builder --chown=skillforge:skillforge /app/app ./app
 
+# pyproject.toml stays in the runtime image: the app resolves its version from it at
+# startup (skillcore.get_project_version).
+COPY --chown=skillforge:skillforge pyproject.toml ./pyproject.toml
+
+# Migrations + Alembic config so the migrate service can run `alembic upgrade head`.
+COPY --chown=skillforge:skillforge alembic.ini ./alembic.ini
+COPY --chown=skillforge:skillforge migrations ./migrations
+
 RUN mkdir -p /app/logs && chown -R skillforge:skillforge /app
 
 USER skillforge
