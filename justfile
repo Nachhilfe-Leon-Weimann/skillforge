@@ -11,11 +11,27 @@ format-check:
 typecheck:
     uv run ty check
 
-static-checks: lint format-check typecheck
+static-checks: lint format-check typecheck openapi-check
 
 check: static-checks test-without-db
 
 check-all: static-checks test
+
+# --- Contract ---
+
+# Regenerate openapi.json (the source of truth API consumers generate clients from).
+openapi:
+    uv run python scripts/dump_openapi.py
+
+# Fail if the committed openapi.json is stale relative to the current API.
+openapi-check: openapi
+    #!/usr/bin/env bash
+    if git diff --exit-code -- openapi.json; then
+        printf '\033[1;32mopenapi.json is up to date!\033[0m\n'
+    else
+        printf '\033[1;31mopenapi.json is stale: run `just openapi` and commit.\033[0m\n' >&2
+        exit 1
+    fi
 
 # --- FastAPI ---
 
