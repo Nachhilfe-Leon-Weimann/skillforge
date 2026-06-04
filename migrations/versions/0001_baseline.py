@@ -709,4 +709,16 @@ def downgrade() -> None:
     op.drop_index("ix_auth_audit_log_created_at", table_name="auth_audit_log", schema="auth")
     op.drop_table("auth_audit_log", schema="auth")
     op.drop_table("application_client", schema="auth")
+
+    op.execute(sa.text("DROP TYPE IF EXISTS bot.command_env_kind"))
+    op.execute(sa.text("DROP TYPE IF EXISTS bot.discord_channel_type"))
+    op.execute(sa.text("DROP TYPE IF EXISTS bot.member_role"))
+    op.execute(sa.text("DROP TYPE IF EXISTS bot.permission_grant_effect"))
+    op.execute(sa.text("DROP TYPE IF EXISTS bot.permission_subject_type"))
+    op.execute(sa.text("DROP TYPE IF EXISTS bot.student_channel_state"))
+    op.execute(sa.text("DROP TYPE IF EXISTS public.application_client_status"))
+    op.execute(sa.text("DROP TYPE IF EXISTS public.contact_info_type"))
+    op.execute(sa.text("DROP TYPE IF EXISTS public.party_relation_type"))
+    op.execute(sa.text("DROP TYPE IF EXISTS public.party_type"))
+    op.execute(sa.text("DROP TYPE IF EXISTS public.preferred_meeting_tool"))
     # ### end Alembic commands ###
