@@ -1,6 +1,6 @@
 # Architecture
 
-This file describes the **living structure** of SkillForge — what exists *now* and how it fits
+This file describes the **living structure** of SkillForge - what exists *now* and how it fits
 together. The *why* behind larger decisions lives in [`decisions/`](decisions/) (ADRs),
 forward-looking design in [`specs/`](specs/).
 
@@ -13,33 +13,33 @@ orchestrates SkillBot (the Discord bot) through three channels:
 - a **job queue** that SkillBot pulls work from,
 - **two-phase operations** (`prepare`/`commit`) for Discord state changes.
 
-Forge **never touches the Discord API itself** — only SkillBot does.
+Forge **never touches the Discord API itself** - only SkillBot does.
 
 ## Layers
 
 ```
-HTTP ─▶ app/api/v1        endpoints, request/response schemas, scope checks
+HTTP -> app/api/v1        endpoints, request/response schemas, scope checks
         app/services/bot  business logic (transitions, jobs, permissions, views)
-        app/core          cross-cutting: auth · db · logging · config
-                          └─▶ Postgres (schemas: core/geo/ext/bot/auth)
+        app/core          cross-cutting: auth, db, logging, config
+                          `-> Postgres (schemas: core/geo/ext/bot/auth)
 ```
 
-- **`app/main.py`** — FastAPI entry point. Mounts the v1 router, registers request logging, and
+- **`app/main.py`** - FastAPI entry point. Mounts the v1 router, registers request logging, and
   exposes `GET /` (welcome) and `GET /health` (checks DB connectivity, `503` on failure).
-- **`app/api/v1/`** — `router.py` with prefix `/api/v1` aggregates two areas:
-  - `auth/` — `token.py` (OAuth2 token endpoint), `clients.py` (client management).
-  - `bot/` — `runtime.py` (read: principals, contexts, command envs), `jobs.py`
+- **`app/api/v1/`** - `router.py` with prefix `/api/v1` aggregates two areas:
+  - `auth/` - `token.py` (OAuth2 token endpoint), `clients.py` (client management).
+  - `bot/` - `runtime.py` (read: principals, contexts, command envs), `jobs.py`
     (claim/complete/fail), `students.py` & `tutors.py` (state transitions), `command_envs.py`.
     `_transitions.py` maps service errors to HTTP codes, `dependencies.py` wires the scope gates.
-- **`app/services/bot/`** — the actual logic, free of HTTP concerns: `transitions.py`,
+- **`app/services/bot/`** - the actual logic, free of HTTP concerns: `transitions.py`,
   `jobs.py`, `principals.py`, `command_envs.py`, `contexts.py`, `profile.py`, `views.py`
   (immutable view models for responses), `errors.py` (service error hierarchy).
-- **`app/core/`** — `auth/` (OAuth2, JWT, scopes, bootstrap), `db/` (async engine, sessions,
+- **`app/core/`** - `auth/` (OAuth2, JWT, scopes, bootstrap), `db/` (async engine, sessions,
   models), `logging/` (structured logging via `skillcore`), `config.py` (settings).
 
 ## Two core concepts
 
-### Two-phase transitions (`prepare` → `commit`)
+### Two-phase transitions (`prepare` -> `commit`)
 
 Discord state changes go through `bot.operation` and are deliberately decoupled: Forge plans and
 reserves, SkillBot executes, Forge confirms.
@@ -62,8 +62,8 @@ Rationale & trade-offs: [ADR 0003](decisions/0003-two-phase-transitions.md).
 Forge `enqueue`s work, SkillBot polls it.
 
 - Claiming is atomic via **`SELECT ... FOR UPDATE SKIP LOCKED`**
-  ([`jobs.py:48`](../app/services/bot/jobs.py)) — concurrent workers never collide.
-- Lifecycle `PENDING → CLAIMED → COMPLETED | FAILED`; failures requeue with backoff
+  ([`jobs.py:48`](../app/services/bot/jobs.py)) - concurrent workers never collide.
+- Lifecycle `PENDING -> CLAIMED -> COMPLETED | FAILED`; failures requeue with backoff
   (`RETRY_BACKOFF = 60 s`, [`jobs.py:13`](../app/services/bot/jobs.py)) until `max_attempts`.
 - **At-least-once**: handlers in the bot must be idempotent.
 
@@ -72,7 +72,7 @@ sweeper) is described in the [lifecycle guardian spec](specs/lifecycle-guardian.
 
 ## Database
 
-One Postgres DB, five schemas by domain — details in
+One Postgres DB, five schemas by domain - details in
 [`DATABASE_SCHEMA.md`](DATABASE_SCHEMA.md):
 
 | Schema | Contents |
@@ -86,7 +86,7 @@ One Postgres DB, five schemas by domain — details in
 - **Async SQLAlchemy 2** over `asyncpg`; models under `app/core/db/models/<schema>/`, one
   `*Base` class per schema with `{"schema": ...}`.
 - **Migrations** via Alembic (`migrations/`). The app uses the pooled connection, migrations the
-  direct one — see [ADR 0002](decisions/0002-pooled-vs-migration-url.md). Schema/baseline
+  direct one - see [ADR 0002](decisions/0002-pooled-vs-migration-url.md). Schema/baseline
   convention: [ADR 0005](decisions/0005-multi-schema-db.md).
 
 ## Auth
@@ -106,7 +106,7 @@ Argon2-hashed secret at the token endpoint and receive a JWT. Endpoints are gate
 ## API contract
 
 The committed **`openapi.json` is the contract**; consumers generate their clients from it.
-`just openapi` regenerates it, `just openapi-check` (in CI) prevents drift. Never edit it by hand —
+`just openapi` regenerates it, `just openapi-check` (in CI) prevents drift. Never edit it by hand -
 see [ADR 0001](decisions/0001-openapi-as-contract.md).
 
 ## Roadmap: capability arcs
@@ -114,12 +114,12 @@ see [ADR 0001](decisions/0001-openapi-as-contract.md).
 The platform grows along four arcs that build on each other (details in the
 [lifecycle guardian spec](specs/lifecycle-guardian.md)):
 
-1. **Guardian** — self-healing for jobs & operations *(current)*.
-2. **Ops plane** — read/observability layer (queue depth, funnel views, audit search).
-3. **Eventing** — outbox + webhooks, idempotency keys on the service API.
-4. **Integration sync** — generic job/worker pattern for Clockodo/sevDesk/Microsoft.
+1. **Guardian** - self-healing for jobs & operations *(current)*.
+2. **Ops plane** - read/observability layer (queue depth, funnel views, audit search).
+3. **Eventing** - outbox + webhooks, idempotency keys on the service API.
+4. **Integration sync** - generic job/worker pattern for Clockodo/sevDesk/Microsoft.
 
-## Where do I find…?
+## Where do I find...?
 
 | Question | Location |
 |---|---|

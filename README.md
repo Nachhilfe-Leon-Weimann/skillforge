@@ -2,21 +2,21 @@
 
 Backend of the **skill-platform** and source of truth for SkillBot (the Discord bot).
 SkillForge orchestrates the bot through an OAuth2-protected REST API, a Postgres-backed
-job queue, and two-phase `prepare`/`commit` operations — Forge plans and confirms, the bot
+job queue, and two-phase `prepare`/`commit` operations - Forge plans and confirms, the bot
 performs the Discord actions.
 
 ```
-HTTP ─▶ app/api/v1        endpoints · schemas · scope checks
-        app/services/bot  business logic (transitions · jobs · permissions)
-        app/core          auth · db · logging · config
-                          └─▶ Postgres  (core · geo · ext · bot · auth)
+HTTP -> app/api/v1        endpoints, schemas, scope checks
+        app/services/bot  business logic (transitions, jobs, permissions)
+        app/core          auth, db, logging, config
+                          `-> Postgres  (core, geo, ext, bot, auth)
 ```
 
 ## Tech stack
 
-Python 3.14 · FastAPI · SQLAlchemy 2 (async/`asyncpg`) · Alembic · PostgreSQL (Neon in prod) ·
-Pydantic Settings · OAuth2 client credentials + JWT (PyJWT, Argon2) · pytest + testcontainers ·
-[uv](https://docs.astral.sh/uv/) · [just](https://just.systems/).
+Python 3.14, FastAPI, SQLAlchemy 2 (async/`asyncpg`), Alembic, PostgreSQL (Neon in prod),
+Pydantic Settings, OAuth2 client credentials + JWT (PyJWT, Argon2), pytest + testcontainers,
+[uv](https://docs.astral.sh/uv/), [just](https://just.systems/).
 
 ## Quickstart
 
@@ -26,7 +26,7 @@ just check       # lint + format + typecheck + openapi-check + fast tests (no DB
 just test        # full suite incl. DB tests
 ```
 
-The DB tests spin up an ephemeral Postgres via [testcontainers](https://testcontainers.com/) —
+The DB tests spin up an ephemeral Postgres via [testcontainers](https://testcontainers.com/) -
 no manual database needed (Docker required; they are skipped if Docker is unavailable).
 Set `TEST_DB__URL` to run them against an existing Postgres instead.
 

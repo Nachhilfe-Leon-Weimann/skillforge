@@ -1,6 +1,6 @@
-# ADR 0002 — Separate DB URLs for the app and migrations
+# ADR 0002 - Separate DB URLs for the app and migrations
 
-Status: Accepted · 2026-05
+Status: Accepted, 2026-05
 
 ## Context
 
@@ -18,8 +18,8 @@ transaction-mode pooler (statements don't survive the connection).
 
 Two connections, split by purpose:
 
-- **`DB__URL`** — pooled, for the app runtime.
-- **`DB__MIGRATION_URL`** — direct (unpooled) connection, used exclusively by Alembic. Falls back
+- **`DB__URL`** - pooled, for the app runtime.
+- **`DB__MIGRATION_URL`** - direct (unpooled) connection, used exclusively by Alembic. Falls back
   to `DB__URL` when unset (local/tests, where no pooler sits in between).
 
 Accompanying: Alembic always uses `NullPool`; the asyncpg prepared-statement cache is disabled
@@ -32,6 +32,6 @@ See `app/core/db/config.py`, `app/core/db/database.py`, `migrations/env.py`.
 - Migrations run safely against the direct connection; the app keeps benefiting from pooling.
 - Two URLs to maintain (deploy: `DB__MIGRATION_URL` for the one-shot `migrate` service,
   `DB__URL` for the app and reaper).
-- Nothing extra is needed locally — the fallback kicks in.
+- Nothing extra is needed locally - the fallback kicks in.
 
 Introduced in PR #25.

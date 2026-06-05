@@ -3,7 +3,7 @@
 The other DB tests build their schema from the models via ``Base.metadata.create_all``
 and therefore never exercise the migrations. This test closes that gap: it applies the
 migrations on an empty database, asserts the result matches the models (no drift), and
-verifies the chain is reversible — catching breakage in CI instead of on a prod deploy.
+verifies the chain is reversible - catching breakage in CI instead of on a prod deploy.
 
 Alembic runs in a subprocess on purpose: in-process it would run ``logging.fileConfig``
 (disabling the app loggers other tests assert on) and resolve ``Base.metadata`` from this
@@ -70,7 +70,7 @@ def _alembic(db_url: str, *args: str) -> None:
 def test_migrations_apply_match_models_and_reverse(migration_db_url: str) -> None:
     # 1. Every migration applies cleanly from an empty database.
     _alembic(migration_db_url, "upgrade", "head")
-    # 2. The migrated schema matches the models — fails if a revision is missing or
+    # 2. The migrated schema matches the models - fails if a revision is missing or
     #    incomplete (drift), which create_all-based tests cannot detect.
     _alembic(migration_db_url, "check")
     # 3. The chain is reversible and can be rebuilt from scratch.

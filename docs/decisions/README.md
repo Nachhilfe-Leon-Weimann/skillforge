@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Short, numbered notes that capture the **why** behind structural decisions — so that "why did we
+Short, numbered notes that capture the **why** behind structural decisions - so that "why did we
 do it this way?" doesn't get lost in commit messages and memory. They complement
 [`ARCHITECTURE.md`](../ARCHITECTURE.md) (*what exists now*) and [`specs/`](../specs/)
 (*what's coming*).
@@ -25,9 +25,9 @@ in six months. Trivia doesn't need an ADR.
 One record per file, `NNNN-short-slug.md`, numbered sequentially. Keep it short:
 
 ```markdown
-# ADR NNNN — Title
+# ADR NNNN - Title
 
-Status: Accepted · YYYY-MM
+Status: Accepted, YYYY-MM
 
 ## Context
 Which problem / constraint led to the decision?
@@ -39,5 +39,5 @@ What was decided (and deliberately *not*)?
 What gets better / what price is paid?
 ```
 
-Status values: `Proposed` · `Accepted` · `Superseded by NNNN` · `Deprecated`. An ADR is not
-rewritten when it becomes obsolete — instead a new record supersedes the old one.
+Status values: `Proposed`, `Accepted`, `Superseded by NNNN`, `Deprecated`. An ADR is not
+rewritten when it becomes obsolete - instead a new record supersedes the old one.
