@@ -2,14 +2,15 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 
-from app.core.db.models import Job, JobStatus
+from app.core.db.models import Job, JobStatus, Operation, OperationKind, OperationStatus
 from app.services.bot import claim_jobs, enqueue_job
 from app.services.bot.reaper import (
     JOB_LEASE,
     LEASE_EXPIRED_ERROR,
     reap_expired_jobs,
+    sweep_expired_operations,
 )
 
 
@@ -20,6 +21,19 @@ async def _stale_claimed_job(session, *, max_attempts: int = 5, lease_age: timed
     job.claimed_at = datetime.now(UTC) - lease_age
     await session.flush()
     return job
+
+
+def _prepared_operation(*, status: OperationStatus = OperationStatus.PREPARED, expired: bool = True) -> Operation:
+    offset = timedelta(seconds=1)
+    expires_at = datetime.now(UTC) - offset if expired else datetime.now(UTC) + timedelta(minutes=10)
+    return Operation(
+        kind=OperationKind.TUTOR_ACTIVATE,
+        status=status,
+        guild_id=1,
+        subject_discord_id=10,
+        plan={},
+        expires_at=expires_at,
+    )
 
 
 # --- Job reaper -------------------------------------------------------------
@@ -121,3 +135,75 @@ async def test_reap_uses_skip_locked_for_concurrent_guardians(db):
     finally:
         async with db.session() as cleanup:
             await cleanup.execute(delete(Job))
+
+
+# --- Operation sweeper ------------------------------------------------------
+
+
+@pytest.mark.db
+async def test_sweep_expires_past_prepared_operations(session):
+    operation = _prepared_operation(expired=True)
+    session.add(operation)
+    await session.flush()
+
+    expired = await sweep_expired_operations(session)
+
+    assert expired == 1
+    await session.refresh(operation)
+    assert operation.status is OperationStatus.EXPIRED
+
+
+@pytest.mark.db
+async def test_sweep_leaves_future_prepared_operations(session):
+    operation = _prepared_operation(expired=False)
+    session.add(operation)
+    await session.flush()
+
+    expired = await sweep_expired_operations(session)
+
+    assert expired == 0
+    await session.refresh(operation)
+    assert operation.status is OperationStatus.PREPARED
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("status", [OperationStatus.COMMITTED, OperationStatus.FAILED, OperationStatus.EXPIRED])
+async def test_sweep_never_touches_terminal_operations(session, status):
+    operation = _prepared_operation(status=status, expired=True)
+    session.add(operation)
+    await session.flush()
+
+    expired = await sweep_expired_operations(session)
+
+    assert expired == 0
+    await session.refresh(operation)
+    assert operation.status is status
+
+
+@pytest.mark.db
+async def test_sweep_expires_only_past_prepared_in_bulk(session):
+    for _ in range(3):
+        session.add(_prepared_operation(expired=True))
+    for _ in range(2):
+        session.add(_prepared_operation(expired=False))
+    await session.flush()
+
+    expired = await sweep_expired_operations(session)
+
+    assert expired == 3
+    still_prepared = await session.scalar(
+        select(func.count()).select_from(Operation).where(Operation.status == OperationStatus.PREPARED)
+    )
+    assert still_prepared == 2
+
+
+@pytest.mark.db
+async def test_sweep_is_idempotent(session):
+    operation = _prepared_operation(expired=True)
+    session.add(operation)
+    await session.flush()
+
+    assert await sweep_expired_operations(session) == 1
+    assert await sweep_expired_operations(session) == 0
+    await session.refresh(operation)
+    assert operation.status is OperationStatus.EXPIRED

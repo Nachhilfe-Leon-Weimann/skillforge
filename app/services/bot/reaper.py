@@ -8,11 +8,12 @@ worker in :mod:`app.workers.reaper` and the spec in ``docs/specs/lifecycle-guard
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
-from sqlalchemy import select
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.models import Job, JobStatus
+from app.core.db.models import Job, JobStatus, Operation, OperationStatus
 
 from .jobs import fail_job
 
@@ -60,3 +61,25 @@ async def reap_expired_jobs(session: AsyncSession, *, batch_limit: int | None = 
             reclaimed += 1
 
     return reclaimed, dead_lettered
+
+
+async def sweep_expired_operations(session: AsyncSession) -> int:
+    """Materialize expired two-phase reservations to ``EXPIRED``.
+
+    Flips ``PREPARED`` operations whose ``expires_at`` has passed in a single bulk update.
+    Terminal rows (``COMMITTED``/``FAILED``/``EXPIRED``) are untouched, and the marking is
+    idempotent: it never collides with the lazy ``EXPIRED`` transition in ``commit`` because
+    the ``status = PREPARED`` predicate simply won't match an already-flipped row. The freed
+    capacity slot was already passively available (capacity counts only reservations with
+    ``expires_at`` still in the future).
+
+    Returns the number of operations expired.
+    """
+    statement = (
+        update(Operation)
+        .where(Operation.status == OperationStatus.PREPARED, Operation.expires_at <= datetime.now(UTC))
+        .values(status=OperationStatus.EXPIRED)
+    )
+    # execute() is typed as Result, but a Core UPDATE always yields a CursorResult with rowcount.
+    result = cast(CursorResult, await session.execute(statement))
+    return result.rowcount
