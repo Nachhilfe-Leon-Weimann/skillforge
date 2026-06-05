@@ -1,0 +1,34 @@
+# ADR 0004 - Forge-first job queue with at-least-once delivery
+
+Status: Accepted, 2026-05
+
+## Context
+
+Forge needs to hand SkillBot work (e.g. trigger Discord actions) without calling the bot directly -
+the bot isn't necessarily reachable, and Forge should remain the driving side. This needs a
+mechanism that delivers work reliably, survives worker crashes, and avoids extra infrastructure
+(a broker like Redis/RabbitMQ).
+
+## Decision
+
+A **Forge-first job queue in Postgres** (`bot.job`, `app/services/bot/jobs.py`):
+
+- Forge `enqueue`s jobs (`kind` + `payload` JSONB); SkillBot **polls and claims** them.
+- Claiming is atomic via **`SELECT ... FOR UPDATE SKIP LOCKED`** - multiple workers never grab the
+  same job. Index `ix_job_claimable` covers the claim query (pending, ordered by `available_at`).
+- Lifecycle: `PENDING -> CLAIMED -> COMPLETED | FAILED`. Failures requeue with backoff
+  (`RETRY_BACKOFF = 60 s`) until `max_attempts` is exhausted -> `FAILED`.
+- **At-least-once**: delivery is guaranteed at least once; SkillBot's handlers **must be
+  idempotent**, since a reclaimed job can be redelivered.
+
+Deliberately *no* external message broker - Postgres is enough for the current load and keeps the
+stack small. No exactly-once.
+
+## Consequences
+
+- No extra infrastructure; queue, workspaces, and operations share one transaction/DB.
+- Consumers carry the idempotency obligation - the contract is documented explicitly.
+- A worker that dies between `claim` and `complete`/`fail` leaves the job stuck in `CLAIMED`.
+  Actively making it deliverable again (lease reclaim) is the subject of the
+  [lifecycle guardian spec](../specs/lifecycle-guardian.md) - this ADR justifies the queue, the
+  spec makes it self-healing.
