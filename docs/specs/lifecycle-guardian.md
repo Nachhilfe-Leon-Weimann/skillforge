@@ -121,12 +121,14 @@ handlers must be idempotent; the reaper makes re-delivery real, not hypothetical
 **P1-1 - Dead-letter requeue.** An operator path (`just` command for v1) that resets a `FAILED` job to `PENDING`,
 `attempt = 0`, `available_at = now()`.
 - *Acceptance criteria:*
-  - [ ] Given a `FAILED` job, when the operator calls `requeue <job_id>`, then the job is `PENDING` with
+  - [x] Given a `FAILED` job, when the operator calls `requeue <job_id>`, then the job is `PENDING` with
         `attempt = 0` and immediately deliverable.
-  - [ ] A non-existent or non-`FAILED` job returns a clear error.
+  - [x] A non-existent or non-`FAILED` job returns a clear error.
 
 **P1-2 - Dead-letter list.** A simple read path (`just` command) that lists `FAILED` jobs with `kind`, `last_error`,
 `failed_at`.
+- *Acceptance criteria:*
+  - [x] Lists all `FAILED` jobs with `kind`, `last_error`, `failed_at`.
 
 ### Future considerations (P2)
 

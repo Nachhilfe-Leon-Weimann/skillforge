@@ -34,6 +34,10 @@ class JobNotClaimedError(BotServiceError):
     """The job is not in the claimed state required for completion/failure."""
 
 
+class JobNotFailedError(BotServiceError):
+    """The job is not in the failed state required for an operator requeue."""
+
+
 class OperationNotFoundError(BotServiceError):
     """No operation exists for the requested operation_id (and kind)."""
 

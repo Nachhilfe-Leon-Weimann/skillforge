@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.models import Job, JobStatus
 
-from .errors import JobNotClaimedError, JobNotFoundError
+from .errors import JobNotClaimedError, JobNotFailedError, JobNotFoundError
 
 # Delay before a failed-but-retryable job becomes claimable again.
 RETRY_BACKOFF = timedelta(seconds=60)
@@ -97,6 +97,40 @@ async def fail_job(
         job.failed_at = datetime.now(UTC)
     await session.flush()
     return job
+
+
+async def requeue_job(session: AsyncSession, *, job_id: uuid.UUID) -> Job:
+    """Reset a dead-lettered (``FAILED``) job to ``PENDING`` so it is claimable again now.
+
+    Operator recovery path for the dead-letter queue (lifecycle guardian spec, P1). Clears the
+    failure and claim bookkeeping and resets ``attempt`` to 0, so the job starts a fresh
+    delivery cycle. Raises :class:`JobNotFoundError` if the id is unknown and
+    :class:`JobNotFailedError` if the job is not in ``FAILED`` (only dead-letters are requeued).
+    """
+    job = await session.get(Job, job_id)
+    if job is None:
+        raise JobNotFoundError(f"No job with id {job_id}")
+    if job.status is not JobStatus.FAILED:
+        raise JobNotFailedError(f"Job {job_id} is {job.status.value}, not failed; only failed jobs can be requeued")
+
+    job.status = JobStatus.PENDING
+    job.attempt = 0
+    job.available_at = datetime.now(UTC)
+    job.claimed_at = None
+    job.claimed_by = None
+    job.failed_at = None
+    job.last_error = None
+    await session.flush()
+    return job
+
+
+async def list_dead_lettered_jobs(session: AsyncSession) -> list[Job]:
+    """Return all dead-lettered (``FAILED``) jobs, most recently failed first.
+
+    Read-only operator view of the dead-letter queue (lifecycle guardian spec, P1).
+    """
+    statement = select(Job).where(Job.status == JobStatus.FAILED).order_by(Job.failed_at.desc())
+    return list((await session.execute(statement)).scalars().all())
 
 
 async def _get_claimed_job(session: AsyncSession, job_id: uuid.UUID) -> Job:

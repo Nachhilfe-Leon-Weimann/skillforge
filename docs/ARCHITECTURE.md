@@ -83,7 +83,11 @@ transitions ([`reaper.py`](../app/services/bot/reaper.py)):
   (the lazy commit path already did this on access; the sweep makes it active and bounded).
 
 Every run logs one structured counter line (`jobs_reclaimed`, `jobs_dead_lettered`,
-`operations_expired`, `duration_ms`). Rationale & scope:
+`operations_expired`, `duration_ms`).
+
+Dead-lettered (`FAILED`) jobs have an operator path: `just dead-jobs` lists them and
+`just requeue <job_id>` resets one to `PENDING` so it is claimable again
+([`app/cli/deadletters.py`](../app/cli/deadletters.py)). Rationale & scope:
 [ADR 0004](decisions/0004-forge-first-job-queue.md),
 [lifecycle guardian spec](specs/lifecycle-guardian.md).
 

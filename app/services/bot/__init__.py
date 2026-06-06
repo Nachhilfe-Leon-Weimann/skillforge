@@ -6,6 +6,7 @@ from .errors import (
     CommandEnvNotFoundError,
     CommandEnvValidationError,
     JobNotClaimedError,
+    JobNotFailedError,
     JobNotFoundError,
     OperationNotFoundError,
     OperationNotPendingError,
@@ -15,7 +16,7 @@ from .errors import (
     TransitionValidationError,
     TutorContextNotFoundError,
 )
-from .jobs import claim_jobs, complete_job, enqueue_job, fail_job
+from .jobs import claim_jobs, complete_job, enqueue_job, fail_job, list_dead_lettered_jobs, requeue_job
 from .principals import get_principal_view
 from .profile import load_party_for_discord_id
 from .reaper import reap_expired_jobs, sweep_expired_operations
@@ -37,6 +38,7 @@ __all__ = [
     "CommandEnvNotFoundError",
     "CommandEnvValidationError",
     "JobNotClaimedError",
+    "JobNotFailedError",
     "JobNotFoundError",
     "OperationNotFoundError",
     "OperationNotPendingError",
@@ -60,12 +62,14 @@ __all__ = [
     "get_principal_view",
     "get_student_context_view",
     "get_tutor_context_view",
+    "list_dead_lettered_jobs",
     "load_party_for_discord_id",
     "prepare_student_activation",
     "prepare_student_pop",
     "prepare_student_stash",
     "prepare_tutor_activation",
     "reap_expired_jobs",
+    "requeue_job",
     "resolve_command_env",
     "sweep_expired_operations",
     "upsert_command_env",
