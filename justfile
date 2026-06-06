@@ -68,6 +68,12 @@ test-file file:
 test-one test:
     uv run pytest -k {{ test }}
 
+# --- Workers ---
+
+# Run the lifecycle guardian (job reaper + operation sweeper) loop locally.
+worker-reaper:
+    uv run python -m app.workers.reaper
+
 # --- Auth ---
 
 bootstrap-skillbot:

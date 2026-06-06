@@ -18,3 +18,17 @@ services:
         condition: service_completed_successfully
     ports:
       - "8000:8000"
+
+  # Lifecycle guardian: reclaims expired job leases and sweeps stale prepared operations.
+  # Same image as the app, separate entrypoint, pooled DB connection. Runs independently of
+  # the app; SKIP LOCKED / idempotent sweeps make multiple replicas safe.
+  worker:
+    image: ghcr.io/nachhilfe-leon-weimann/skillforge:latest
+    pull_policy: always
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: [ "python", "-m", "app.workers.reaper" ]
