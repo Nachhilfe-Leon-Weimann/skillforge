@@ -560,6 +560,59 @@
         "title": "CreatedClientSecretResponse",
         "type": "object"
       },
+      "DiscordAccountLinkRequest": {
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "is_primary": {
+            "default": false,
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "party_id": {
+            "format": "uuid",
+            "title": "Party Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "party_id"
+        ],
+        "title": "DiscordAccountLinkRequest",
+        "type": "object"
+      },
+      "DiscordAccountLinkResponse": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "discord_id": {
+            "title": "Discord Id",
+            "type": "integer"
+          },
+          "is_primary": {
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "party_id": {
+            "format": "uuid",
+            "title": "Party Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "discord_id",
+          "party_id",
+          "is_primary",
+          "active"
+        ],
+        "title": "DiscordAccountLinkResponse",
+        "type": "object"
+      },
       "DiscordAccountProfile": {
         "properties": {
           "active": {
@@ -581,6 +634,56 @@
           "active"
         ],
         "title": "DiscordAccountProfile",
+        "type": "object"
+      },
+      "DiscordUserResponse": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "discord_id": {
+            "title": "Discord Id",
+            "type": "integer"
+          },
+          "nick_name": {
+            "title": "Nick Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/MemberRole"
+          }
+        },
+        "required": [
+          "discord_id",
+          "role",
+          "nick_name",
+          "active"
+        ],
+        "title": "DiscordUserResponse",
+        "type": "object"
+      },
+      "DiscordUserUpsertRequest": {
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "nick_name": {
+            "minLength": 1,
+            "title": "Nick Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/MemberRole"
+          }
+        },
+        "required": [
+          "role",
+          "nick_name"
+        ],
+        "title": "DiscordUserUpsertRequest",
         "type": "object"
       },
       "ErrorResponse": {
@@ -3592,6 +3695,224 @@
           }
         ],
         "summary": "Commit Tutor Activation Endpoint",
+        "tags": [
+          "bot"
+        ]
+      }
+    },
+    "/api/v1/bot/users/{discord_id}": {
+      "put": {
+        "description": "Register or update a Discord user.\n\nIdempotent: re-registering an existing `discord_id` updates role/nick/active instead of\nconflicting, so the bot can safely replay an onboarding event.",
+        "operationId": "upsert_discord_user_endpoint_api_v1_bot_users__discord_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discord_id",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Discord Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscordUserUpsertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscordUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Not enough permissions"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "bot:write"
+            ]
+          }
+        ],
+        "summary": "Upsert Discord User Endpoint",
+        "tags": [
+          "bot"
+        ]
+      }
+    },
+    "/api/v1/bot/users/{discord_id}/account": {
+      "put": {
+        "description": "Link a Discord account to an existing party.\n\nThe party must already exist (the CRM owns party creation); linking to an unknown party returns\n404. Promoting an account to primary demotes the party's current primary account in the same\ntransaction.",
+        "operationId": "link_discord_account_endpoint_api_v1_bot_users__discord_id__account_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discord_id",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Discord Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscordAccountLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscordAccountLinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Not enough permissions"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Party not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Party not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Another primary account already exists for this party"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Another primary account already exists for this party"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "bot:write"
+            ]
+          }
+        ],
+        "summary": "Link Discord Account Endpoint",
         "tags": [
           "bot"
         ]

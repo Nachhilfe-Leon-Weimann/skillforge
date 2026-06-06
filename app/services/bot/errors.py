@@ -26,6 +26,14 @@ class CommandEnvConflictError(BotServiceError):
     """The command env violates a uniqueness rule (e.g. owner already owns one of this kind)."""
 
 
+class PartyNotFoundError(BotServiceError):
+    """No party exists for the requested party_id when linking a Discord account."""
+
+
+class AccountLinkConflictError(BotServiceError):
+    """Linking would violate the one-primary-active-account-per-party invariant."""
+
+
 class JobNotFoundError(BotServiceError):
     """No job exists for the requested job_id."""
 

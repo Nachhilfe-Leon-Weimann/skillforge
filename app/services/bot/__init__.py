@@ -1,6 +1,7 @@
 from .command_envs import delete_command_env, resolve_command_env, upsert_command_env
 from .contexts import get_student_context_view, get_tutor_context_view
 from .errors import (
+    AccountLinkConflictError,
     BotServiceError,
     CommandEnvConflictError,
     CommandEnvNotFoundError,
@@ -10,6 +11,7 @@ from .errors import (
     JobNotFoundError,
     OperationNotFoundError,
     OperationNotPendingError,
+    PartyNotFoundError,
     PrincipalNotFoundError,
     StudentContextNotFoundError,
     TransitionConflictError,
@@ -19,6 +21,7 @@ from .errors import (
 from .jobs import claim_jobs, complete_job, enqueue_job, fail_job, list_dead_lettered_jobs, requeue_job
 from .principals import get_principal_view
 from .profile import load_party_for_discord_id
+from .provisioning import link_discord_account, upsert_discord_user
 from .reaper import reap_expired_jobs, sweep_expired_operations
 from .transitions import (
     commit_student_activation,
@@ -33,6 +36,7 @@ from .transitions import (
 from .views import PrincipalView, StudentContextView, TutorContextView
 
 __all__ = [
+    "AccountLinkConflictError",
     "BotServiceError",
     "CommandEnvConflictError",
     "CommandEnvNotFoundError",
@@ -42,6 +46,7 @@ __all__ = [
     "JobNotFoundError",
     "OperationNotFoundError",
     "OperationNotPendingError",
+    "PartyNotFoundError",
     "PrincipalNotFoundError",
     "PrincipalView",
     "StudentContextNotFoundError",
@@ -62,6 +67,7 @@ __all__ = [
     "get_principal_view",
     "get_student_context_view",
     "get_tutor_context_view",
+    "link_discord_account",
     "list_dead_lettered_jobs",
     "load_party_for_discord_id",
     "prepare_student_activation",
@@ -73,4 +79,5 @@ __all__ = [
     "resolve_command_env",
     "sweep_expired_operations",
     "upsert_command_env",
+    "upsert_discord_user",
 ]
