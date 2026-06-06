@@ -2,13 +2,14 @@
 
 Started as its own service in ``compose.yml`` (same image as the app, separate entrypoint,
 pooled DB connection) via ``python -m app.workers.reaper``. Each cycle reaps expired job
-leases and sweeps stale prepared operations. The reclaim/sweep queries are concurrency-safe
-(``SKIP LOCKED`` / idempotent bulk update), so running multiple replicas causes no double
-effects.
+leases and sweeps stale prepared operations, then emits one structured counter line. The
+reclaim/sweep queries are concurrency-safe (``SKIP LOCKED`` / idempotent bulk update), so
+running multiple replicas causes no double effects.
 """
 
 import asyncio
 import signal
+import time
 from datetime import timedelta
 
 from app.core.config import get_settings
@@ -21,22 +22,39 @@ REAPER_INTERVAL = timedelta(seconds=30)
 
 
 async def run_cycle(database: Database, logger) -> None:
-    """Run one reap+sweep cycle.
+    """Run one reap+sweep cycle and emit exactly one structured counter line.
 
     Reaper and sweeper run in separate transactions so a failure in one never rolls back the
-    other; each failure is logged on its own and never stops the cycle.
+    other. A failing pass is logged on its own *and* leaves its counters at zero -- truthfully,
+    since the failed transaction rolled back and changed nothing. Either way the cycle always
+    emits exactly one ``reaper_cycle`` line: no silent silence, so a systematic problem (e.g.
+    the bot never committing, or the DB being unreachable) stays visible in every run.
     """
+    started = time.perf_counter()
+
+    jobs_reclaimed = 0
+    jobs_dead_lettered = 0
+    operations_expired = 0
+
     try:
         async with database.session() as session:
-            await reap_expired_jobs(session)
+            jobs_reclaimed, jobs_dead_lettered = await reap_expired_jobs(session)
     except Exception:
         logger.exception("reaper_reap_failed")
 
     try:
         async with database.session() as session:
-            await sweep_expired_operations(session)
+            operations_expired = await sweep_expired_operations(session)
     except Exception:
         logger.exception("reaper_sweep_failed")
+
+    logger.info(
+        "reaper_cycle",
+        jobs_reclaimed=jobs_reclaimed,
+        jobs_dead_lettered=jobs_dead_lettered,
+        operations_expired=operations_expired,
+        duration_ms=round((time.perf_counter() - started) * 1000, 2),
+    )
 
 
 async def run_forever() -> None:
@@ -58,8 +76,9 @@ async def run_forever() -> None:
             try:
                 await run_cycle(database, logger)
             except Exception:
-                # A single failed cycle must not stop the loop; compose would otherwise just
-                # restart us into the same state. Log and try again next tick.
+                # run_cycle already handles reap/sweep failures internally; this is a backstop
+                # for anything unexpected (e.g. logging itself) so one bad tick never stops the
+                # loop -- compose would otherwise just restart us into the same state.
                 logger.exception("reaper_cycle_failed")
             try:
                 await asyncio.wait_for(stop.wait(), timeout=REAPER_INTERVAL.total_seconds())
