@@ -76,7 +76,9 @@ transitions ([`reaper.py`](../app/services/bot/reaper.py)):
 
 - **Job reaper** - reclaims `CLAIMED` jobs whose `claimed_at` is older than `JOB_LEASE` (5 min)
   via the regular `fail_job` retry path (`PENDING` with backoff, or `FAILED` once attempts are
-  exhausted). The lease reclaim costs no extra attempt - the increment on `claim` carries it.
+  exhausted). The lease reclaim costs no extra attempt - the increment on `claim` carries it. It
+  works in bounded batches (`REAP_BATCH_LIMIT`), draining the backlog across batches so one run
+  never locks an unbounded number of rows in a single transaction.
 - **Operation sweeper** - flips `PREPARED` operations past their `expires_at` to `EXPIRED`
   (the lazy commit path already did this on access; the sweep makes it active and bounded).
 

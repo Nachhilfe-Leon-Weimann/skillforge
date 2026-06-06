@@ -20,15 +20,22 @@ from app.services.bot.reaper import reap_expired_jobs, sweep_expired_operations
 # How often the guardian runs a reap+sweep cycle.
 REAPER_INTERVAL = timedelta(seconds=30)
 
+# Max jobs a single reap transaction may lock and process. Bounds the lock-hold time and
+# transaction size on a large backlog; one cycle keeps draining batches until the backlog is
+# empty (see ``run_cycle``), so the bound never leaves expired jobs behind for the next tick.
+REAP_BATCH_LIMIT = 100
+
 
 async def run_cycle(database: Database, logger) -> None:
     """Run one reap+sweep cycle and emit exactly one structured counter line.
 
     Reaper and sweeper run in separate transactions so a failure in one never rolls back the
-    other. A failing pass is logged on its own *and* leaves its counters at zero -- truthfully,
-    since the failed transaction rolled back and changed nothing. Either way the cycle always
-    emits exactly one ``reaper_cycle`` line: no silent silence, so a systematic problem (e.g.
-    the bot never committing, or the DB being unreachable) stays visible in every run.
+    other. The reaper drains the backlog in bounded batches (:data:`REAP_BATCH_LIMIT` per
+    transaction) so a large backlog never locks an unbounded number of rows at once; committed
+    batches keep their counts, and a batch that fails rolls back only itself. A failing pass is
+    logged on its own. Either way the cycle always emits exactly one ``reaper_cycle`` line: no
+    silent silence, so a systematic problem (e.g. the bot never committing, or the DB being
+    unreachable) stays visible in every run.
     """
     started = time.perf_counter()
 
@@ -37,8 +44,16 @@ async def run_cycle(database: Database, logger) -> None:
     operations_expired = 0
 
     try:
-        async with database.session() as session:
-            jobs_reclaimed, jobs_dead_lettered = await reap_expired_jobs(session)
+        while True:
+            async with database.session() as session:
+                reclaimed, dead_lettered = await reap_expired_jobs(session, batch_limit=REAP_BATCH_LIMIT)
+            jobs_reclaimed += reclaimed
+            jobs_dead_lettered += dead_lettered
+            # A short batch means the backlog is drained. Each reaped job leaves CLAIMED (to
+            # PENDING with a future available_at, or to FAILED), so the next batch can't re-match
+            # it -- the loop always makes progress and terminates.
+            if reclaimed + dead_lettered < REAP_BATCH_LIMIT:
+                break
     except Exception:
         logger.exception("reaper_reap_failed")
 
