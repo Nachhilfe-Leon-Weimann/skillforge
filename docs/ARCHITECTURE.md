@@ -62,13 +62,28 @@ Rationale & trade-offs: [ADR 0003](decisions/0003-two-phase-transitions.md).
 Forge `enqueue`s work, SkillBot polls it.
 
 - Claiming is atomic via **`SELECT ... FOR UPDATE SKIP LOCKED`**
-  ([`jobs.py:48`](../app/services/bot/jobs.py)) - concurrent workers never collide.
+  ([`jobs.py`](../app/services/bot/jobs.py)) - concurrent workers never collide.
 - Lifecycle `PENDING -> CLAIMED -> COMPLETED | FAILED`; failures requeue with backoff
-  (`RETRY_BACKOFF = 60 s`, [`jobs.py:13`](../app/services/bot/jobs.py)) until `max_attempts`.
-- **At-least-once**: handlers in the bot must be idempotent.
+  (`RETRY_BACKOFF = 60 s`, [`jobs.py`](../app/services/bot/jobs.py)) until `max_attempts`.
+- **At-least-once**: a claimed job whose worker dies is reclaimed once its lease expires and
+  delivered again, so handlers in the bot **must be idempotent**.
 
-Rationale: [ADR 0004](decisions/0004-forge-first-job-queue.md). Self-healing (lease reclaim,
-sweeper) is described in the [lifecycle guardian spec](specs/lifecycle-guardian.md).
+### Lifecycle guardian (self-healing)
+
+A dedicated worker ([`app/workers/reaper.py`](../app/workers/reaper.py), its own `worker`
+service in `compose.yml`) runs two passes every `REAPER_INTERVAL` (30 s), reusing the existing
+transitions ([`reaper.py`](../app/services/bot/reaper.py)):
+
+- **Job reaper** - reclaims `CLAIMED` jobs whose `claimed_at` is older than `JOB_LEASE` (5 min)
+  via the regular `fail_job` retry path (`PENDING` with backoff, or `FAILED` once attempts are
+  exhausted). The lease reclaim costs no extra attempt - the increment on `claim` carries it.
+- **Operation sweeper** - flips `PREPARED` operations past their `expires_at` to `EXPIRED`
+  (the lazy commit path already did this on access; the sweep makes it active and bounded).
+
+Every run logs one structured counter line (`jobs_reclaimed`, `jobs_dead_lettered`,
+`operations_expired`, `duration_ms`). Rationale & scope:
+[ADR 0004](decisions/0004-forge-first-job-queue.md),
+[lifecycle guardian spec](specs/lifecycle-guardian.md).
 
 ## Database
 

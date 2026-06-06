@@ -1,3 +1,13 @@
+"""Forge-first job queue.
+
+Forge enqueues jobs; SkillBot claims them, runs them, and reports completion or failure.
+
+**Delivery is at-least-once.** A claimed job whose worker dies is reclaimed once its lease
+expires (see :mod:`app.services.bot.reaper`) and handed out again, so the same job can be
+delivered more than once. Consumers must therefore make their handlers idempotent -- a
+re-delivered job must not trigger a duplicate side effect (e.g. a second Discord action).
+"""
+
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -39,7 +49,9 @@ async def claim_jobs(
 ) -> list[Job]:
     """Atomically claim up to ``limit`` due pending jobs.
 
-    Uses ``FOR UPDATE SKIP LOCKED`` so concurrent workers never claim the same job.
+    Uses ``FOR UPDATE SKIP LOCKED`` so concurrent workers never claim the same job. Delivery
+    is at-least-once: a claimed job whose lease expires is reclaimed and re-delivered, so the
+    claiming handler must be idempotent.
     """
     now = datetime.now(UTC)
     statement = select(Job).where(Job.status == JobStatus.PENDING, Job.available_at <= now)

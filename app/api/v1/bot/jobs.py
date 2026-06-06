@@ -29,6 +29,13 @@ async def claim_jobs_endpoint(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     _: BotWrite,
 ) -> list[BotJob]:
+    """Claim up to `limit` due jobs for processing.
+
+    **Delivery is at-least-once.** A claimed job whose worker dies is reclaimed once its lease
+    (5 minutes) expires and handed out again, so the same job can be delivered more than once.
+    Re-delivery is real, not hypothetical -- handlers **must be idempotent** and must not
+    trigger a duplicate side effect on a job they have already processed.
+    """
     jobs = await claim_jobs(session, kinds=request.kinds, limit=request.limit, worker=request.worker)
     return [BotJob.from_model(job) for job in jobs]
 
@@ -70,6 +77,12 @@ async def fail_job_endpoint(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     _: BotWrite,
 ) -> JobResponse:
+    """Report a claimed job as failed.
+
+    With `retry` set and attempts remaining, the job is requeued with backoff; otherwise it is
+    dead-lettered to `failed`. A worker that crashes without reporting reaches the same outcome
+    automatically once its lease expires (see the at-least-once contract on `claim`).
+    """
     try:
         job = await fail_job(session, job_id=job_id, error=request.error, retry=request.retry)
     except JobNotFoundError as exc:

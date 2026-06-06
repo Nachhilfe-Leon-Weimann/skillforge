@@ -79,42 +79,42 @@ applies the existing `fail_job` reclaim transition.
   `available_at = now() + RETRY_BACKOFF`, `claimed_at`/`claimed_by` cleared; on exhausted attempts -> `FAILED`,
   `error = "lease expired"`.
 - *Acceptance criteria:*
-  - [ ] Given a job is `CLAIMED` and `claimed_at` is older than `JOB_LEASE`, when the reaper runs, then the job is
+  - [x] Given a job is `CLAIMED` and `claimed_at` is older than `JOB_LEASE`, when the reaper runs, then the job is
         `PENDING` with `available_at` in the future and `claimed_by` cleared.
-  - [ ] Given a job is `CLAIMED` but within the lease window, when the reaper runs, then the job stays
+  - [x] Given a job is `CLAIMED` but within the lease window, when the reaper runs, then the job stays
         unchanged `CLAIMED`.
-  - [ ] Given a reclaimed job has `attempt >= max_attempts`, when the reaper picks it up, then it becomes `FAILED`
+  - [x] Given a reclaimed job has `attempt >= max_attempts`, when the reaper picks it up, then it becomes `FAILED`
         (not `PENDING`) with `failed_at` and `last_error` set.
-  - [ ] `attempt` is **not additionally** incremented by the reaper (the increment happens only on `claim`).
-  - [ ] Two reaper instances running at the same time do not reclaim the same job twice (`SKIP LOCKED`).
+  - [x] `attempt` is **not additionally** incremented by the reaper (the increment happens only on `claim`).
+  - [x] Two reaper instances running at the same time do not reclaim the same job twice (`SKIP LOCKED`).
 
 **P0-2 - Operation sweeper.** A periodic run sets `PREPARED` operations with `expires_at <= now()` to `EXPIRED`.
 - *Technique:* Pure materialization; the capacity slot is already passively free (the count uses `expires_at > now`).
 - *Acceptance criteria:*
-  - [ ] Given an operation is `PREPARED` with `expires_at` in the past, when the sweeper runs, then it is
+  - [x] Given an operation is `PREPARED` with `expires_at` in the past, when the sweeper runs, then it is
         `EXPIRED`.
-  - [ ] A `COMMITTED`/`FAILED`/`EXPIRED` operation is not touched by the sweeper.
-  - [ ] The lazy path in `commit` ([`transitions.py:423`](../../app/services/bot/transitions.py)) stays correct and
+  - [x] A `COMMITTED`/`FAILED`/`EXPIRED` operation is not touched by the sweeper.
+  - [x] The lazy path in `commit` ([`transitions.py:423`](../../app/services/bot/transitions.py)) stays correct and
         does not collide with the sweeper (idempotent marking).
 
 **P0-3 - Dedicated worker service.** A new service in `compose.yml` runs reaper + sweeper in a loop
 (`REAPER_INTERVAL = 30 s`), same image as the app, its own entrypoint, uses the **pooler connection** (the same
 DB URL as the app).
 - *Acceptance criteria:*
-  - [ ] The worker starts independently in the compose stack and runs independently of app replicas.
-  - [ ] A crash of the worker doesn't stop the app and vice versa.
-  - [ ] Multiple worker replicas are safe (no double effects, thanks to `SKIP LOCKED`).
+  - [x] The worker starts independently in the compose stack and runs independently of app replicas.
+  - [x] A crash of the worker doesn't stop the app and vice versa.
+  - [x] Multiple worker replicas are safe (no double effects, thanks to `SKIP LOCKED`).
 
 **P0-4 - Structured counters.** Every run logs structured: `jobs_reclaimed`, `jobs_dead_lettered`,
 `operations_expired`, `duration_ms`. **Logs only - no alerting** in this phase.
 - *Acceptance criteria:*
-  - [ ] Every reaper run produces exactly one structured log line with the four fields.
-  - [ ] A run with no hits logs zero values (no silent silence).
+  - [x] Every reaper run produces exactly one structured log line with the four fields.
+  - [x] A run with no hits logs zero values (no silent silence).
 
 **P0-5 - At-least-once contract documented.** The API/job docs state: jobs are delivered at least once,
 handlers must be idempotent; the reaper makes re-delivery real, not hypothetical.
 - *Acceptance criteria:*
-  - [ ] The contract is captured in the job docs (and in the OpenAPI context, where consumers see it).
+  - [x] The contract is captured in the job docs (and in the OpenAPI context, where consumers see it).
 
 ### Nice-to-have (P1)
 

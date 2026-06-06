@@ -1907,6 +1907,7 @@
     },
     "/api/v1/bot/jobs/claim": {
       "post": {
+        "description": "Claim up to `limit` due jobs for processing.\n\n**Delivery is at-least-once.** A claimed job whose worker dies is reclaimed once its lease\n(5 minutes) expires and handed out again, so the same job can be delivered more than once.\nRe-delivery is real, not hypothetical -- handlers **must be idempotent** and must not\ntrigger a duplicate side effect on a job they have already processed.",
         "operationId": "claim_jobs_endpoint_api_v1_bot_jobs_claim_post",
         "requestBody": {
           "content": {
@@ -2105,6 +2106,7 @@
     },
     "/api/v1/bot/jobs/{job_id}/fail": {
       "post": {
+        "description": "Report a claimed job as failed.\n\nWith `retry` set and attempts remaining, the job is requeued with backoff; otherwise it is\ndead-lettered to `failed`. A worker that crashes without reporting reaches the same outcome\nautomatically once its lease expires (see the at-least-once contract on `claim`).",
         "operationId": "fail_job_endpoint_api_v1_bot_jobs__job_id__fail_post",
         "parameters": [
           {
