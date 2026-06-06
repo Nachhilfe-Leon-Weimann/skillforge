@@ -98,6 +98,8 @@ async def run_forever() -> None:
             try:
                 await asyncio.wait_for(stop.wait(), timeout=REAPER_INTERVAL.total_seconds())
             except TimeoutError:
+                # Expected: the interval elapsed without a stop signal, so loop into the next
+                # cycle. A real shutdown sets `stop` instead, which ends the while loop.
                 pass
     finally:
         await database.dispose()
