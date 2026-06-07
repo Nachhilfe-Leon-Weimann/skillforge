@@ -598,6 +598,52 @@
         "title": "CreatedClientSecretResponse",
         "type": "object"
       },
+      "DependenciesHealthCheckResponse": {
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HealthStatus"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/DependencyName"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "DependenciesHealthCheckResponse",
+        "type": "object"
+      },
+      "DependencyHealthCheckResponse": {
+        "properties": {
+          "dependency_name": {
+            "$ref": "#/components/schemas/DependencyName"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          }
+        },
+        "required": [
+          "status",
+          "dependency_name"
+        ],
+        "title": "DependencyHealthCheckResponse",
+        "type": "object"
+      },
+      "DependencyName": {
+        "enum": [
+          "database"
+        ],
+        "title": "DependencyName",
+        "type": "string"
+      },
       "DiscordAccountLinkRequest": {
         "properties": {
           "active": {
@@ -793,6 +839,27 @@
         },
         "title": "HTTPValidationError",
         "type": "object"
+      },
+      "HealthCheckResponse": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthCheckResponse",
+        "type": "object"
+      },
+      "HealthStatus": {
+        "enum": [
+          "ok",
+          "unhealthy",
+          "error"
+        ],
+        "title": "HealthStatus",
+        "type": "string"
       },
       "JobClaimRequest": {
         "properties": {
@@ -1197,6 +1264,26 @@
         "title": "StudentContext",
         "type": "object"
       },
+      "SystemHealthCheckResponse": {
+        "properties": {
+          "dependencies": {
+            "$ref": "#/components/schemas/DependenciesHealthCheckResponse"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          },
+          "workers": {
+            "$ref": "#/components/schemas/WorkersHealthCheckResponse"
+          }
+        },
+        "required": [
+          "status",
+          "dependencies",
+          "workers"
+        ],
+        "title": "SystemHealthCheckResponse",
+        "type": "object"
+      },
       "TransitionCommitResponse": {
         "properties": {
           "committed_at": {
@@ -1368,6 +1455,52 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WorkerHealthCheckResponse": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          },
+          "worker_name": {
+            "$ref": "#/components/schemas/WorkerName"
+          }
+        },
+        "required": [
+          "status",
+          "worker_name"
+        ],
+        "title": "WorkerHealthCheckResponse",
+        "type": "object"
+      },
+      "WorkerName": {
+        "enum": [
+          "bot-ops-reaper"
+        ],
+        "title": "WorkerName",
+        "type": "string"
+      },
+      "WorkersHealthCheckResponse": {
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HealthStatus"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/WorkerName"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "WorkersHealthCheckResponse",
         "type": "object"
       }
     },
@@ -4379,18 +4512,174 @@
     },
     "/health": {
       "get": {
-        "operationId": "health_health_get",
+        "description": "Aggregate health across all dependencies and workers.",
+        "operationId": "system_health_check_health_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SystemHealthCheckResponse"
+                }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Health"
+        "summary": "System Health Check",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/health/dependencies": {
+      "get": {
+        "description": "Aggregate health across all external dependencies.",
+        "operationId": "dependencies_health_check_health_dependencies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependenciesHealthCheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dependencies Health Check",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/health/dependencies/{dependency_name}": {
+      "get": {
+        "description": "Health of a single dependency.",
+        "operationId": "dependency_health_check_health_dependencies__dependency_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dependency_name",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DependencyName"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependencyHealthCheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dependency Health Check",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "description": "Liveness probe: the process is up and serving requests.",
+        "operationId": "liveness_check_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness Check",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/health/workers": {
+      "get": {
+        "description": "Aggregate health across all background workers.",
+        "operationId": "workers_health_check_health_workers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkersHealthCheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Workers Health Check",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/health/workers/{worker_name}": {
+      "get": {
+        "description": "Health of a single background worker.",
+        "operationId": "worker_health_check_health_workers__worker_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_name",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/WorkerName"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerHealthCheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Worker Health Check",
+        "tags": [
+          "system"
+        ]
       }
     }
   }
