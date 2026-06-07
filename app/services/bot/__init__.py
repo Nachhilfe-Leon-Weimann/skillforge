@@ -1,3 +1,4 @@
+from .authz import check_authorization
 from .command_envs import delete_command_env, resolve_command_env, upsert_command_env
 from .contexts import get_student_context_view, get_tutor_context_view
 from .errors import (
@@ -68,6 +69,7 @@ __all__ = [
     "TutorContextNotFoundError",
     "TutorContextView",
     "add_user_to_group",
+    "check_authorization",
     "claim_jobs",
     "commit_student_activation",
     "commit_student_pop",

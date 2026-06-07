@@ -285,6 +285,19 @@ class GroupMembershipResponse(BaseModel):
         return cls.model_validate(membership)
 
 
+# --- Authorization ----------------------------------------------------------
+
+
+class AuthorizationCheckRequest(BaseModel):
+    actor_discord_id: int
+    action_key: str = Field(min_length=1)
+    target_party_id: UUID
+
+
+class AuthorizationCheckResponse(BaseModel):
+    allowed: bool
+
+
 # --- Jobs -------------------------------------------------------------------
 
 

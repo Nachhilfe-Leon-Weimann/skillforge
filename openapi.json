@@ -292,6 +292,44 @@
         "title": "ApplicationClientUpdateRequest",
         "type": "object"
       },
+      "AuthorizationCheckRequest": {
+        "properties": {
+          "action_key": {
+            "minLength": 1,
+            "title": "Action Key",
+            "type": "string"
+          },
+          "actor_discord_id": {
+            "title": "Actor Discord Id",
+            "type": "integer"
+          },
+          "target_party_id": {
+            "format": "uuid",
+            "title": "Target Party Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_discord_id",
+          "action_key",
+          "target_party_id"
+        ],
+        "title": "AuthorizationCheckRequest",
+        "type": "object"
+      },
+      "AuthorizationCheckResponse": {
+        "properties": {
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allowed"
+        ],
+        "title": "AuthorizationCheckResponse",
+        "type": "object"
+      },
       "Body_create_token_api_v1_auth_token_post": {
         "properties": {
           "client_id": {
@@ -1815,6 +1853,103 @@
         "summary": "Create Token",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/bot/authz/check": {
+      "post": {
+        "description": "Check whether an actor may perform an action on a target party (direct or delegated).\n\nCombines the grant engine (*whether* the actor may run `action_key`) with the delegation set\nderived from `PartyRelation` (*on whose behalf* -- own party plus `PARENT_OF` / `PAYS_FOR`\ntargets). An inactive actor is denied; an unknown actor returns 404.",
+        "operationId": "check_authorization_endpoint_api_v1_bot_authz_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizationCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationCheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Not enough permissions"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Actor principal not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Actor principal not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "bot:read"
+            ]
+          }
+        ],
+        "summary": "Check Authorization Endpoint",
+        "tags": [
+          "bot"
         ]
       }
     },

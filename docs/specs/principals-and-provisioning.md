@@ -51,8 +51,9 @@ The gap is the **write surface** over this model and the **delegation semantics*
    without touching the DB by hand.
 3. **Decouple bot identity from CRM identity.** A `DiscordUser` may exist before any `Party`/profile
    (the principal's `profile` is already optional). Registration and account-linking are distinct steps.
-4. **A delegation model (P2).** Make "principal A may act on behalf of party B" explicit and surfaced
-   on the principal view, derived from `PartyRelation`, evaluated through the existing grant engine.
+4. **A delegation model (P2).** Make "principal A may act on behalf of party B" explicit via a
+   server-side authorization check, deriving the allowed target parties from `PartyRelation` and
+   combining them with the existing grant engine.
 5. **Contract-first.** Endpoints land in `openapi.json`; consumers regenerate clients (ADR 0001).
 
 ## Non-goals
@@ -77,17 +78,17 @@ The gap is the **write surface** over this model and the **delegation semantics*
 | **Role & privileged changes** | `DiscordUser.role` and similar privileged mutations are set by **workflows gated by permission grants** in the `bot` schema, not a bespoke admin endpoint. Forge exposes the effective `permissions` on the principal; "who may run which workflow" is evaluated against the grant engine. | The grant engine (`PermissionGrant`, USER/GROUP/ROLE, priority/DENY) already ships and is the single authz mechanism. |
 | **(De)activation ownership** | Registration here only sets `active = true`; flipping `active` off + teardown is owned by the off-boarding arc (#47). | One identity model, two directions. |
 
-## Open question (P2 - delegation only)
+## P2 delegation decisions
 
-P0 and P1 are decision-complete. One design question remains, and it is **P2-scoped** - it does not
-block provisioning:
+A `PermissionGrant` gates *whether* a principal may perform an `action_key`; it does not encode *on
+which target party*. The delegation layer adds that missing "on whose behalf" dimension:
 
-- **"On whose behalf" is a dimension grants do not have.** A `PermissionGrant` gates *whether* a
-  principal may perform an `action_key`; it does not encode *on which target party*. Delegated action
-  (a `PARENT_OF` / `PAYS_FOR` principal acting for a student) therefore needs an extra dimension:
-  either derive an `acts_for: [party_id]` set from `PartyRelation` and check the workflow's target
-  party against it, **or** extend grants with a target/object dimension. This is an authorization
-  change reviewed on its own.
+| Topic | Decision | Rationale |
+|---|---|---|
+| **Mechanism** | Derive the allowed target parties from `PartyRelation` (no schema change); do **not** add a target dimension to `PermissionGrant`. | Relations already model the parent/payer link; keeps grants as the pure "whether" layer. |
+| **Delegating relations** | `PARENT_OF` and `PAYS_FOR` (the relation's `to_party`), plus the actor's own party. `TUTOR_OF` does **not** delegate. | Tutor authority runs through role/grants, not delegation. |
+| **Enforcement** | A server-side check endpoint (`POST /bot/authz/check`) owns the full "whether AND on-whom" decision; `acts_for` is **not** exposed on the principal view. | One authoritative decision point; the bot asks instead of reimplementing the AND. |
+| **Grant scope** | Guild-agnostic `USER`/`GROUP` grants only (as in the principal lookup); role-scoped (guild-specific) grants stay out of scope. | Matches `get_principal_view`; role grants are a later extension. |
 
 ## User stories
 
@@ -125,13 +126,16 @@ active)`.
 - **P1-2 - Group membership management** (`DiscordUserPermissionGroup`) via API.
 - **P1-3 - Unlink / re-point an account** (move a `discord_id` to a different party; deactivate a link).
 
-### Future (P2) - delegated actors
+### P2 - delegated actors
 
-- **P2-1 - `acts_for` on the principal view**, derived from `PartyRelation`.
-- **P2-2 - Authorization check** "may principal X do action A on party B?", evaluated through the grant
-  engine including delegation.
-- **P2-3 - Surface delegated relations** that are currently filtered out of the operational profile
-  (e.g. `PAYS_FOR`) where authorization needs them.
+- **P2-1 - Authorization check endpoint.** `POST /bot/authz/check` with `{actor_discord_id,
+  action_key, target_party_id} -> {allowed}`, combining the grant engine ("whether") with the
+  delegation set ("on whose behalf"). `BotRead`.
+- **P2-2 - Delegation derivation.** The allowed target parties are the actor's own party plus the
+  `to_party` of its outgoing `PARENT_OF` / `PAYS_FOR` relations. An inactive actor is denied; an
+  unknown actor is a 404.
+- *Dropped:* exposing `acts_for` on the principal view and un-filtering `PAYS_FOR` in the profile -
+  with server-side enforcement the bot never needs the raw delegation data.
 
 ## Timeline / phasing
 
@@ -141,5 +145,5 @@ active)`.
 3. **P2 (delegation)** as its own sub-arc with its own decision pass - it is an authorization change,
    not just a write surface, and deserves separate review.
 
-**Depends on:** nothing for P0/P1 (decisions locked); P2 awaits the delegation-mechanism decision.
-**Relates to:** #47 (off-boarding shares the identity model), #48 (same idempotency-on-retry reality).
+**Depends on:** nothing - all phases decided. **Relates to:** #47 (off-boarding shares the identity
+model), #48 (same idempotency-on-retry reality).
