@@ -14,7 +14,7 @@
 
 SkillForge orchestrates SkillBot through a job queue (`bot.job`) and two-phase transitions (`bot.operation`).
 Neither state machine can **clean up after itself** today: if the worker dies between `claim` and
-`complete`/`fail`, the job stays in `CLAIMED` forever ([`jobs.py:52`](../../app/services/bot/jobs.py)); if the bot crashes after
+`complete`/`fail`, the job stays in `CLAIMED` forever ([`jobs.py:64`](../../app/services/bot/jobs.py)); if the bot crashes after
 `prepare`, the operation stays in `PREPARED` forever - `EXPIRED` is only set lazily on the commit attempt
 ([`transitions.py:423`](../../app/services/bot/transitions.py)). Every deploy, OOM, or network drop can thus silently
 strand work that nobody sees. With every planned integration (arc 3/4) this risk multiplies.
@@ -75,7 +75,7 @@ strand work that nobody sees. With every planned integration (arc 3/4) this risk
 
 **P0-1 - Job reaper.** A periodic run finds jobs with `status = CLAIMED AND claimed_at < now() - JOB_LEASE` and
 applies the existing `fail_job` reclaim transition.
-- *Technique:* Reuse of the existing logic ([`jobs.py:75`](../../app/services/bot/jobs.py)) - status -> `PENDING`,
+- *Technique:* Reuse of the existing logic ([`jobs.py:80`](../../app/services/bot/jobs.py)) - status -> `PENDING`,
   `available_at = now() + RETRY_BACKOFF`, `claimed_at`/`claimed_by` cleared; on exhausted attempts -> `FAILED`,
   `error = "lease expired"`.
 - *Acceptance criteria:*

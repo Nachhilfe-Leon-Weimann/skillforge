@@ -1,6 +1,6 @@
 # Spec: Principals & Provisioning (identity, account linking, delegated actors)
 
-> Status: Draft
+> Status: Implemented (P0-P2 shipped on #4)
 > Tracking: [#4](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/4)
 > Foundational capability: the transition flows already require an **active** principal that the API
 > cannot create today. Adjacent to the off-boarding arc ([#47](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/47)),
@@ -107,18 +107,19 @@ which target party*. The delegation layer adds that missing "on whose behalf" di
 
 **P0-1 - Register/upsert a Discord user.** Idempotent write of `discord_id`, `role`, `nick_name`,
 `active`.
-- [ ] New user is created; existing user is updated (no 409).
-- [ ] Validation matches the model (`nick_name` non-empty).
-- [ ] `_require_active_user` is satisfiable end-to-end via the API afterwards.
+- [x] New user is created; existing user is updated (no 409).
+- [x] Validation matches the model (`nick_name` non-empty).
+- [x] `_require_active_user` is satisfiable end-to-end via the API afterwards.
 
 **P0-2 - Link a Discord account to a party.** Write `DiscordAccount(discord_id -> party_id, is_primary,
 active)`.
-- [ ] Respects the one-primary-active-per-party partial unique index (promoting a new primary demotes
+- [x] Respects the one-primary-active-per-party partial unique index (promoting a new primary demotes
       the old one in the same transaction).
-- [ ] Re-linking the same pair is idempotent.
-- [ ] Linking to a non-existent party returns a clear error (no auto-create).
+- [x] Re-linking the same pair is idempotent.
+- [x] Linking to a non-existent party returns a clear error (no auto-create).
 
 **P0-3 - Contract & docs.** Endpoints in `openapi.json`; `just openapi-check` green.
+- [x] Provisioning + authz endpoints are in `openapi.json` (`/bot/users/*`, `/bot/authz/check`).
 
 ### Nice-to-have (P1) - lifecycle of identity
 

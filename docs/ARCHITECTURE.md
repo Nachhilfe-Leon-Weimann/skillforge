@@ -29,11 +29,14 @@ HTTP -> app/api/v1        endpoints, request/response schemas, scope checks
 - **`app/api/v1/`** - `router.py` with prefix `/api/v1` aggregates two areas:
   - `auth/` - `token.py` (OAuth2 token endpoint), `clients.py` (client management).
   - `bot/` - `runtime.py` (read: principals, contexts, command envs), `jobs.py`
-    (claim/complete/fail), `students.py` & `tutors.py` (state transitions), `command_envs.py`.
-    `_transitions.py` maps service errors to HTTP codes, `dependencies.py` wires the scope gates.
+    (claim/complete/fail), `students.py` & `tutors.py` (state transitions), `command_envs.py`,
+    `users.py` (provisioning: register users, link/deactivate accounts, group membership),
+    `authz.py` (delegated authorization check). `_transitions.py` maps service errors to HTTP
+    codes, `dependencies.py` wires the scope gates.
 - **`app/services/bot/`** - the actual logic, free of HTTP concerns: `transitions.py`,
-  `jobs.py`, `principals.py`, `command_envs.py`, `contexts.py`, `profile.py`, `views.py`
-  (immutable view models for responses), `errors.py` (service error hierarchy).
+  `jobs.py`, `principals.py`, `provisioning.py`, `authz.py`, `command_envs.py`, `contexts.py`,
+  `profile.py`, `reaper.py`, `views.py` (immutable view models for responses), `errors.py`
+  (service error hierarchy).
 - **`app/core/`** - `auth/` (OAuth2, JWT, scopes, bootstrap), `db/` (async engine, sessions,
   models), `logging/` (structured logging via `skillcore`), `config.py` (settings).
 
@@ -45,7 +48,7 @@ Discord state changes go through `bot.operation` and are deliberately decoupled:
 reserves, SkillBot executes, Forge confirms.
 
 - **`prepare`** ([`transitions.py:50`](../app/services/bot/transitions.py)) validates, locks the
-  affected rows with `FOR UPDATE` ([`transitions.py:282`](../app/services/bot/transitions.py)),
+  affected rows with `FOR UPDATE` ([`transitions.py:291`](../app/services/bot/transitions.py)),
   reserves capacity, and writes a `PREPARED` operation with a `plan` and `expires_at`
   (TTL **10 min**, `OPERATION_TTL`, [`transitions.py:41`](../app/services/bot/transitions.py)).
   Forge hands SkillBot an executable plan in return.
@@ -135,8 +138,8 @@ see [ADR 0001](decisions/0001-openapi-as-contract.md).
 The platform grows along four arcs that build on each other (details in the
 [lifecycle guardian spec](specs/lifecycle-guardian.md)):
 
-1. **Guardian** - self-healing for jobs & operations *(current)*.
-2. **Ops plane** - read/observability layer (queue depth, funnel views, audit search).
+1. **Guardian** - self-healing for jobs & operations *(shipped)*.
+2. **Ops plane** - read/observability layer (queue depth, funnel views, audit search) *(next)*.
 3. **Eventing** - outbox + webhooks, idempotency keys on the service API.
 4. **Integration sync** - generic job/worker pattern for Clockodo/sevDesk/Microsoft.
 

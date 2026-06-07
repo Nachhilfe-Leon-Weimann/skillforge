@@ -24,8 +24,12 @@ Postgres reachable via `DB__URL`.
 ```
 app/
   main.py            FastAPI entry point (/, /health)
-  api/v1/            endpoints: auth/ (token, clients), bot/ (runtime, jobs, students, tutors)
-  services/bot/      business logic: transitions, jobs, principals, views, errors
+  api/v1/            endpoints: auth/ (token, clients), bot/ (runtime, jobs, students, tutors,
+                     command_envs, users, authz)
+  services/bot/      business logic: transitions, jobs, principals, provisioning, authz,
+                     command_envs, contexts, profile, reaper, views, errors
+  workers/           reaper.py (lifecycle guardian: job reaper + operation sweeper)
+  cli/               deadletters.py (dead-letter list/requeue operator commands)
   core/              auth/ (OAuth2, JWT, scopes), db/ (engine, models/<schema>/), logging/, config.py
 migrations/          Alembic (env.py creates schemas; baseline = explicit DDL)
 tests/               api/, auth/, db/  (DB tests via @pytest.mark.db)
