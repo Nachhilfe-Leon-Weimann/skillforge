@@ -58,6 +58,10 @@ from .ext import (
 from .geo import (
     PlzOrt,
 )
+from .system import (
+    WorkerCycleStatus,
+    WorkerHeartbeat,
+)
 
 __all__ = [
     "ApplicationClient",
@@ -110,4 +114,6 @@ __all__ = [
     "Subject",
     "Tutor",
     "TutorSubject",
+    "WorkerCycleStatus",
+    "WorkerHeartbeat",
 ]
