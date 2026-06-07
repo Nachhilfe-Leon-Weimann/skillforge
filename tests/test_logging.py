@@ -3,7 +3,7 @@ import logging
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Response
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -70,6 +70,66 @@ def test_request_logging_includes_auth_context_for_missing_scopes(capsys):
     assert event["client_id"] == "skillbot"
     assert event["required_scopes"] == ["bot:write"]
     assert event["missing_scopes"] == ["bot:write"]
+
+
+def test_request_logging_stays_silent_for_healthy_probe(capsys):
+    configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
+    app = FastAPI()
+    register_request_logging(app)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    capsys.readouterr()
+
+    response = TestClient(app).get("/health")
+
+    assert response.status_code == 200
+    assert capsys.readouterr().out == ""
+
+
+def test_request_logging_warns_on_unhealthy_probe(capsys):
+    configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
+    app = FastAPI()
+    register_request_logging(app)
+
+    @app.get("/health")
+    async def health(response: Response):
+        response.status_code = 503
+        return {"status": "unhealthy"}
+
+    capsys.readouterr()
+
+    response = TestClient(app).get("/health")
+
+    event = json.loads(capsys.readouterr().out)
+
+    assert response.status_code == 503
+    assert event["event"] == "http_probe_unhealthy"
+    assert event["level"] == "warning"
+    assert event["status_code"] == 503
+
+
+def test_request_logging_still_errors_on_non_probe_5xx(capsys):
+    configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
+    app = FastAPI()
+    register_request_logging(app)
+
+    @app.get("/boom")
+    async def boom(response: Response):
+        response.status_code = 500
+        return {"detail": "nope"}
+
+    capsys.readouterr()
+
+    response = TestClient(app).get("/boom")
+
+    event = json.loads(capsys.readouterr().out)
+
+    assert response.status_code == 500
+    assert event["event"] == "http_request_failed"
+    assert event["level"] == "error"
 
 
 def test_configure_logging_disables_uvicorn_access_log():

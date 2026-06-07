@@ -9,6 +9,11 @@ from structlog import contextvars
 request_logger = get_logger("app.request")
 _REQUEST_LOG_CONTEXT_STATE = "request_log_context"
 
+# Path prefixes treated as health/readiness probes: silenced while healthy and
+# warned (not errored) on 5xx, since they are polled constantly and report
+# health via the status code.
+_PROBE_PATH_PREFIXES = ("/health",)
+
 
 def bind_request_log_context(request: Request | None = None, **values: object) -> None:
     context = {key: value for key, value in values.items() if value is not None}
@@ -49,10 +54,21 @@ def register_request_logging(app: FastAPI) -> None:
 
 def _log_http_request(request: Request, response: Response, started_at: float) -> None:
     status_code = response.status_code
+    is_probe = _is_probe_path(request.url.path)
+
+    # Probe endpoints (health/readiness) are polled constantly and encode health
+    # in the status code. Stay silent while healthy; a 5xx means the probe
+    # reported a problem, not that the request itself failed.
+    if is_probe and status_code < 500:
+        return
+
     log = request_logger.info
     event = "http_request_completed"
 
-    if status_code >= 500:
+    if is_probe:  # implies status_code >= 500 here
+        log = request_logger.warning
+        event = "http_probe_unhealthy"
+    elif status_code >= 500:
         log = request_logger.error
         event = "http_request_failed"
     elif status_code == 404:
@@ -79,6 +95,10 @@ def _log_http_request(request: Request, response: Response, started_at: float) -
         client_ip=_client_ip(request),
         **_request_log_context(request),
     )
+
+
+def _is_probe_path(path: str) -> bool:
+    return any(path == prefix or path.startswith(f"{prefix}/") for prefix in _PROBE_PATH_PREFIXES)
 
 
 def _duration_ms(started_at: float) -> float:
