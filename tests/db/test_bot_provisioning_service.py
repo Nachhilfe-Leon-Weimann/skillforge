@@ -2,12 +2,26 @@ import uuid
 
 import pytest
 
-from app.core.db.models import DiscordAccount, DiscordUser, MemberRole, Party, PartyType
+from app.core.db.models import (
+    DiscordAccount,
+    DiscordUser,
+    MemberRole,
+    Party,
+    PartyType,
+    PermissionGroup,
+)
 from app.services.bot import (
+    DiscordAccountNotFoundError,
+    GroupMembershipNotFoundError,
     PartyNotFoundError,
+    PermissionGroupNotFoundError,
+    PrincipalNotFoundError,
+    add_user_to_group,
+    deactivate_discord_account,
     get_principal_view,
     link_discord_account,
     load_party_for_discord_id,
+    remove_user_from_group,
     upsert_discord_user,
 )
 
@@ -95,6 +109,78 @@ async def test_relink_same_account_is_idempotent(session):
     assert again.is_primary is True
 
 
+# --- deactivate account -----------------------------------------------------
+
+
+@pytest.mark.db
+async def test_deactivate_discord_account_clears_active_and_primary(session):
+    party = await _add_party(session)
+    await link_discord_account(session, discord_id=DISCORD_ID, party_id=party.id, is_primary=True)
+
+    deactivated = await deactivate_discord_account(session, discord_id=DISCORD_ID)
+    assert deactivated.active is False
+    assert deactivated.is_primary is False
+
+    fetched = await session.get(DiscordAccount, DISCORD_ID)
+    assert fetched is not None
+    assert fetched.active is False
+    assert fetched.is_primary is False
+
+
+@pytest.mark.db
+async def test_deactivate_discord_account_unknown_raises(session):
+    with pytest.raises(DiscordAccountNotFoundError):
+        await deactivate_discord_account(session, discord_id=DISCORD_ID)
+
+
+# --- group membership -------------------------------------------------------
+
+
+@pytest.mark.db
+async def test_add_user_to_group_creates_and_is_idempotent(session):
+    await upsert_discord_user(session, discord_id=DISCORD_ID, role=MemberRole.TUTOR, nick_name="Tutor")
+    await _add_group(session, "support")
+
+    first = await add_user_to_group(session, discord_id=DISCORD_ID, group_key="support")
+    assert (first.discord_id, first.group_key) == (DISCORD_ID, "support")
+    # Idempotent: a second add does not raise and does not duplicate.
+    await add_user_to_group(session, discord_id=DISCORD_ID, group_key="support")
+
+    view = await get_principal_view(session, DISCORD_ID)
+    assert view.group_keys == ["support"]
+
+
+@pytest.mark.db
+async def test_add_user_to_group_unknown_user_raises(session):
+    await _add_group(session, "support")
+
+    with pytest.raises(PrincipalNotFoundError):
+        await add_user_to_group(session, discord_id=DISCORD_ID, group_key="support")
+
+
+@pytest.mark.db
+async def test_add_user_to_group_unknown_group_raises(session):
+    await upsert_discord_user(session, discord_id=DISCORD_ID, role=MemberRole.TUTOR, nick_name="Tutor")
+
+    with pytest.raises(PermissionGroupNotFoundError):
+        await add_user_to_group(session, discord_id=DISCORD_ID, group_key="nope")
+
+
+@pytest.mark.db
+async def test_remove_user_from_group_removes_then_unknown_raises(session):
+    await upsert_discord_user(session, discord_id=DISCORD_ID, role=MemberRole.TUTOR, nick_name="Tutor")
+    await _add_group(session, "support")
+    await add_user_to_group(session, discord_id=DISCORD_ID, group_key="support")
+
+    await remove_user_from_group(session, discord_id=DISCORD_ID, group_key="support")
+
+    view = await get_principal_view(session, DISCORD_ID)
+    assert view.group_keys == []
+
+    with pytest.raises(GroupMembershipNotFoundError):
+        await remove_user_from_group(session, discord_id=DISCORD_ID, group_key="support")
+
+
 # --- helpers ----------------------------------------------------------------
 
 
@@ -103,3 +189,8 @@ async def _add_party(session) -> Party:
     session.add(party)
     await session.flush()
     return party
+
+
+async def _add_group(session, key: str) -> None:
+    session.add(PermissionGroup(key=key, name=key.title()))
+    await session.flush()

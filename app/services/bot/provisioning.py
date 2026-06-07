@@ -4,9 +4,23 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.models import DiscordAccount, DiscordUser, MemberRole, Party
+from app.core.db.models import (
+    DiscordAccount,
+    DiscordUser,
+    DiscordUserPermissionGroup,
+    MemberRole,
+    Party,
+    PermissionGroup,
+)
 
-from .errors import AccountLinkConflictError, PartyNotFoundError
+from .errors import (
+    AccountLinkConflictError,
+    DiscordAccountNotFoundError,
+    GroupMembershipNotFoundError,
+    PartyNotFoundError,
+    PermissionGroupNotFoundError,
+    PrincipalNotFoundError,
+)
 
 
 async def upsert_discord_user(
@@ -89,3 +103,55 @@ async def link_discord_account(
         raise AccountLinkConflictError("Another primary account already exists for this party") from exc
 
     return account
+
+
+async def deactivate_discord_account(session: AsyncSession, *, discord_id: int) -> DiscordAccount:
+    """Deactivate the Discord account link for ``discord_id`` (unlink without deleting).
+
+    Sets ``active = False`` and clears ``is_primary`` so the party's primary slot is freed, while the
+    row is retained (consistent with the "terminal rows are retained" discipline). Re-linking via
+    :func:`link_discord_account` reactivates it. Raises :class:`DiscordAccountNotFoundError` if no
+    account is linked.
+    """
+    account = await session.get(DiscordAccount, discord_id)
+    if account is None:
+        raise DiscordAccountNotFoundError("Discord account not found")
+
+    account.active = False
+    account.is_primary = False
+    await session.flush()
+    return account
+
+
+async def add_user_to_group(session: AsyncSession, *, discord_id: int, group_key: str) -> DiscordUserPermissionGroup:
+    """Add a Discord user to a permission group. Idempotent: an existing membership is returned as-is.
+
+    Validates both the user and the group up front so the common errors surface cleanly
+    (:class:`PrincipalNotFoundError` / :class:`PermissionGroupNotFoundError`) instead of as a foreign
+    key violation.
+    """
+    if await session.get(DiscordUser, discord_id) is None:
+        raise PrincipalNotFoundError("Discord principal not found")
+    if await session.get(PermissionGroup, group_key) is None:
+        raise PermissionGroupNotFoundError("Permission group not found")
+
+    membership = await session.get(DiscordUserPermissionGroup, {"discord_id": discord_id, "group_key": group_key})
+    if membership is None:
+        membership = DiscordUserPermissionGroup(discord_id=discord_id, group_key=group_key)
+        session.add(membership)
+        await session.flush()
+
+    return membership
+
+
+async def remove_user_from_group(session: AsyncSession, *, discord_id: int, group_key: str) -> None:
+    """Remove a Discord user from a permission group.
+
+    Raises :class:`GroupMembershipNotFoundError` if the user is not a member of the group.
+    """
+    membership = await session.get(DiscordUserPermissionGroup, {"discord_id": discord_id, "group_key": group_key})
+    if membership is None:
+        raise GroupMembershipNotFoundError("Group membership not found")
+
+    await session.delete(membership)
+    await session.flush()

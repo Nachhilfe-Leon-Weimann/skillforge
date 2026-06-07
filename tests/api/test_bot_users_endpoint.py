@@ -10,9 +10,16 @@ from pydantic import SecretStr
 from app.core.auth import AuthSettings, Scope, create_application_access_token
 from app.core.auth.dependencies import get_auth_settings
 from app.core.db.dependencies import get_db_session
-from app.core.db.models import DiscordAccount, DiscordUser, MemberRole
+from app.core.db.models import DiscordAccount, DiscordUser, DiscordUserPermissionGroup, MemberRole
 from app.main import app
-from app.services.bot import AccountLinkConflictError, PartyNotFoundError
+from app.services.bot import (
+    AccountLinkConflictError,
+    DiscordAccountNotFoundError,
+    GroupMembershipNotFoundError,
+    PartyNotFoundError,
+    PermissionGroupNotFoundError,
+    PrincipalNotFoundError,
+)
 
 PARTY_ID = UUID("11111111-1111-1111-1111-111111111111")
 
@@ -129,7 +136,109 @@ async def test_link_account_returns_409_for_primary_conflict(monkeypatch):
     assert response.status_code == 409
 
 
+# --- deactivate account -----------------------------------------------------
+
+
+async def test_deactivate_account_returns_deactivated(monkeypatch):
+    async def fake_deactivate(session, **kwargs):
+        return DiscordAccount(discord_id=42, party_id=PARTY_ID, is_primary=False, active=False)
+
+    _patch(monkeypatch, "deactivate_discord_account", fake_deactivate)
+
+    async with _client() as client:
+        response = await client.delete("/api/v1/bot/users/42/account", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 200
+    assert response.json() == {"discord_id": 42, "party_id": str(PARTY_ID), "is_primary": False, "active": False}
+
+
+async def test_deactivate_account_requires_bot_write_scope():
+    async with _client() as client:
+        response = await client.delete("/api/v1/bot/users/42/account", headers=_auth_headers(Scope.BOT_READ))
+
+    assert response.status_code == 403
+
+
+async def test_deactivate_account_returns_404(monkeypatch):
+    _patch(monkeypatch, "deactivate_discord_account", _raises(DiscordAccountNotFoundError()))
+
+    async with _client() as client:
+        response = await client.delete("/api/v1/bot/users/42/account", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 404
+
+
+# --- group membership -------------------------------------------------------
+
+
+async def test_add_group_returns_membership(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fake_add(session, **kwargs):
+        captured.update(kwargs)
+        return DiscordUserPermissionGroup(discord_id=42, group_key="support")
+
+    _patch(monkeypatch, "add_user_to_group", fake_add)
+
+    async with _client() as client:
+        response = await client.put("/api/v1/bot/users/42/groups/support", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 200
+    assert response.json() == {"discord_id": 42, "group_key": "support"}
+    assert captured == {"discord_id": 42, "group_key": "support"}
+
+
+async def test_add_group_requires_bot_write_scope():
+    async with _client() as client:
+        response = await client.put("/api/v1/bot/users/42/groups/support", headers=_auth_headers(Scope.BOT_READ))
+
+    assert response.status_code == 403
+
+
+async def test_add_group_returns_404_for_unknown_user(monkeypatch):
+    _patch(monkeypatch, "add_user_to_group", _raises(PrincipalNotFoundError()))
+
+    async with _client() as client:
+        response = await client.put("/api/v1/bot/users/42/groups/support", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 404
+
+
+async def test_add_group_returns_404_for_unknown_group(monkeypatch):
+    _patch(monkeypatch, "add_user_to_group", _raises(PermissionGroupNotFoundError()))
+
+    async with _client() as client:
+        response = await client.put("/api/v1/bot/users/42/groups/nope", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 404
+
+
+async def test_remove_group_returns_204(monkeypatch):
+    _patch(monkeypatch, "remove_user_from_group", _returns(None))
+
+    async with _client() as client:
+        response = await client.delete("/api/v1/bot/users/42/groups/support", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 204
+
+
+async def test_remove_group_returns_404(monkeypatch):
+    _patch(monkeypatch, "remove_user_from_group", _raises(GroupMembershipNotFoundError()))
+
+    async with _client() as client:
+        response = await client.delete("/api/v1/bot/users/42/groups/support", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 404
+
+
 # --- helpers ----------------------------------------------------------------
+
+
+def _returns(value):
+    async def _inner(*args, **kwargs):
+        return value
+
+    return _inner
 
 
 def _patch(monkeypatch, name: str, replacement) -> None:

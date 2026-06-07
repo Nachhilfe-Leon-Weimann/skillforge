@@ -34,6 +34,18 @@ class AccountLinkConflictError(BotServiceError):
     """Linking would violate the one-primary-active-account-per-party invariant."""
 
 
+class DiscordAccountNotFoundError(BotServiceError):
+    """No Discord account is linked for the requested discord_id."""
+
+
+class PermissionGroupNotFoundError(BotServiceError):
+    """No permission group exists for the requested group_key."""
+
+
+class GroupMembershipNotFoundError(BotServiceError):
+    """The Discord user is not a member of the requested permission group."""
+
+
 class JobNotFoundError(BotServiceError):
     """No job exists for the requested job_id."""
 

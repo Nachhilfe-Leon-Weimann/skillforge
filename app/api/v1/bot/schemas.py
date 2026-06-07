@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.core.db.models import (
         DiscordAccount,
         DiscordUser,
+        DiscordUserPermissionGroup,
         Job,
         Operation,
         Party,
@@ -271,6 +272,17 @@ class DiscordAccountLinkResponse(BaseModel):
     @classmethod
     def from_model(cls, account: DiscordAccount) -> DiscordAccountLinkResponse:
         return cls.model_validate(account)
+
+
+class GroupMembershipResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    discord_id: int
+    group_key: str
+
+    @classmethod
+    def from_model(cls, membership: DiscordUserPermissionGroup) -> GroupMembershipResponse:
+        return cls.model_validate(membership)
 
 
 # --- Jobs -------------------------------------------------------------------

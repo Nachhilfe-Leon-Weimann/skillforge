@@ -725,6 +725,24 @@
         "title": "ExternalAccountsProfile",
         "type": "object"
       },
+      "GroupMembershipResponse": {
+        "properties": {
+          "discord_id": {
+            "title": "Discord Id",
+            "type": "integer"
+          },
+          "group_key": {
+            "title": "Group Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "discord_id",
+          "group_key"
+        ],
+        "title": "GroupMembershipResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3797,6 +3815,103 @@
       }
     },
     "/api/v1/bot/users/{discord_id}/account": {
+      "delete": {
+        "description": "Deactivate (unlink) a Discord account without deleting it.\n\nSets `active` to false and clears `is_primary`, freeing the party's primary slot while keeping\nthe row for history. Re-linking via the `PUT` endpoint reactivates it.",
+        "operationId": "deactivate_discord_account_endpoint_api_v1_bot_users__discord_id__account_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discord_id",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Discord Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscordAccountLinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Not enough permissions"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Discord account not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Discord account not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "bot:write"
+            ]
+          }
+        ],
+        "summary": "Deactivate Discord Account Endpoint",
+        "tags": [
+          "bot"
+        ]
+      },
       "put": {
         "description": "Link a Discord account to an existing party.\n\nThe party must already exist (the CRM owns party creation); linking to an unknown party returns\n404. Promoting an account to primary demotes the party's current primary account in the same\ntransaction.",
         "operationId": "link_discord_account_endpoint_api_v1_bot_users__discord_id__account_put",
@@ -3913,6 +4028,215 @@
           }
         ],
         "summary": "Link Discord Account Endpoint",
+        "tags": [
+          "bot"
+        ]
+      }
+    },
+    "/api/v1/bot/users/{discord_id}/groups/{group_key}": {
+      "delete": {
+        "description": "Remove a Discord user from a permission group.",
+        "operationId": "remove_user_from_group_endpoint_api_v1_bot_users__discord_id__groups__group_key__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discord_id",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Discord Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "group_key",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Group Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Not enough permissions"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Group membership not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Group membership not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "bot:write"
+            ]
+          }
+        ],
+        "summary": "Remove User From Group Endpoint",
+        "tags": [
+          "bot"
+        ]
+      },
+      "put": {
+        "description": "Add a Discord user to a permission group. Idempotent on (user, group).",
+        "operationId": "add_user_to_group_endpoint_api_v1_bot_users__discord_id__groups__group_key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discord_id",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Discord Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "group_key",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Group Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMembershipResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Not enough permissions"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Discord user not found or Permission group not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Discord user not found or Permission group not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "bot:write"
+            ]
+          }
+        ],
+        "summary": "Add User To Group Endpoint",
         "tags": [
           "bot"
         ]
