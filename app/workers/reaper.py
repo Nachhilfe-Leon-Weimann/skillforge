@@ -14,11 +14,18 @@ from datetime import timedelta
 
 from app.core.config import get_settings
 from app.core.db import Database
+from app.core.db.models import WorkerCycleStatus
 from app.core.logging import configure_logging, get_logger
 from app.services.bot.reaper import reap_expired_jobs, sweep_expired_operations
+from app.services.system import WorkerName, record_worker_heartbeat
 
 # How often the guardian runs a reap+sweep cycle.
 REAPER_INTERVAL = timedelta(seconds=30)
+
+# How long a heartbeat stays "fresh" for the health plane: a few cycles, so a single slow or
+# missed tick doesn't flip the worker to unhealthy. Derived from REAPER_INTERVAL so changing
+# the cadence can never desync the staleness threshold (the beat carries this window itself).
+HEARTBEAT_FRESH_FOR = REAPER_INTERVAL * 3
 
 # Max jobs a single reap transaction may lock and process. Bounds the lock-hold time and
 # transaction size on a large backlog; one cycle keeps draining batches until the backlog is
@@ -42,6 +49,7 @@ async def run_cycle(database: Database, logger) -> None:
     jobs_reclaimed = 0
     jobs_dead_lettered = 0
     operations_expired = 0
+    cycle_ok = True
 
     try:
         while True:
@@ -56,20 +64,44 @@ async def run_cycle(database: Database, logger) -> None:
                 break
     except Exception:
         logger.exception("reaper_reap_failed")
+        cycle_ok = False
 
     try:
         async with database.session() as session:
             operations_expired = await sweep_expired_operations(session)
     except Exception:
         logger.exception("reaper_sweep_failed")
+        cycle_ok = False
+
+    duration_ms = round((time.perf_counter() - started) * 1000, 2)
 
     logger.info(
         "reaper_cycle",
         jobs_reclaimed=jobs_reclaimed,
         jobs_dead_lettered=jobs_dead_lettered,
         operations_expired=operations_expired,
-        duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        duration_ms=duration_ms,
     )
+
+    # Liveness signal for the health plane: a separate transaction so a heartbeat write
+    # never masks reap/sweep results -- and a missing beat is exactly what marks the worker
+    # unhealthy. OK only when both reap and sweep ran cleanly, else DEGRADED (alive, failing).
+    try:
+        async with database.session() as session:
+            await record_worker_heartbeat(
+                session,
+                worker_name=WorkerName.REAPER.value,
+                status=WorkerCycleStatus.OK if cycle_ok else WorkerCycleStatus.DEGRADED,
+                fresh_for=HEARTBEAT_FRESH_FOR,
+                detail={
+                    "jobs_reclaimed": jobs_reclaimed,
+                    "jobs_dead_lettered": jobs_dead_lettered,
+                    "operations_expired": operations_expired,
+                    "duration_ms": duration_ms,
+                },
+            )
+    except Exception:
+        logger.exception("reaper_heartbeat_failed")
 
 
 async def run_forever() -> None:

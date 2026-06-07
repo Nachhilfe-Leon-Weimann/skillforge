@@ -2,8 +2,19 @@ from contextlib import asynccontextmanager
 from typing import cast
 from unittest.mock import AsyncMock
 
+import pytest
+
 from app.core.db import Database
+from app.core.db.models import WorkerCycleStatus
 from app.workers import reaper as reaper_worker
+
+
+@pytest.fixture(autouse=True)
+def heartbeat(monkeypatch) -> AsyncMock:
+    """Stub the heartbeat write -- the stub database has no real session to upsert into."""
+    mock = AsyncMock()
+    monkeypatch.setattr(reaper_worker, "record_worker_heartbeat", mock)
+    return mock
 
 
 class _StubLogger:
@@ -89,6 +100,29 @@ async def test_run_cycle_still_logs_counter_when_sweep_fails(monkeypatch):
     assert fields["jobs_dead_lettered"] == 1
     assert fields["operations_expired"] == 0
     assert any(name == "reaper_sweep_failed" for name, _ in logger.exceptions)
+
+
+async def test_run_cycle_records_ok_heartbeat_after_clean_cycle(monkeypatch, heartbeat):
+    monkeypatch.setattr(reaper_worker, "reap_expired_jobs", AsyncMock(return_value=(1, 0)))
+    monkeypatch.setattr(reaper_worker, "sweep_expired_operations", AsyncMock(return_value=2))
+
+    await reaper_worker.run_cycle(cast(Database, _StubDatabase()), _StubLogger())
+
+    heartbeat.assert_awaited_once()
+    assert heartbeat.await_args.kwargs["worker_name"] == "bot-ops-reaper"
+    assert heartbeat.await_args.kwargs["status"] is WorkerCycleStatus.OK
+    assert heartbeat.await_args.kwargs["fresh_for"] == reaper_worker.HEARTBEAT_FRESH_FOR
+    assert heartbeat.await_args.kwargs["detail"]["operations_expired"] == 2
+
+
+async def test_run_cycle_records_degraded_heartbeat_when_a_pass_fails(monkeypatch, heartbeat):
+    monkeypatch.setattr(reaper_worker, "reap_expired_jobs", AsyncMock(side_effect=RuntimeError("db down")))
+    monkeypatch.setattr(reaper_worker, "sweep_expired_operations", AsyncMock(return_value=0))
+
+    await reaper_worker.run_cycle(cast(Database, _StubDatabase()), _StubLogger())
+
+    heartbeat.assert_awaited_once()
+    assert heartbeat.await_args.kwargs["status"] is WorkerCycleStatus.DEGRADED
 
 
 async def test_run_cycle_drains_backlog_across_batches(monkeypatch):
