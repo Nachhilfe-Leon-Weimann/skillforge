@@ -24,9 +24,9 @@ Issues     = "https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues"
 skillcore = { git = "https://github.com/Nachhilfe-Leon-Weimann/skillcore.git", tag = "v0.2.0" }
 
 [dependency-groups]
-dev = [{ include-group = "tests" }, "ruff>=0.15.15"]
+dev = [{ include-group = "tests" }, "ruff>=0.15.16"]
 tests = [
-    "ty>=0.0.42",
+    "ty>=0.0.46",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
