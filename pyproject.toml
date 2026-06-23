@@ -8,12 +8,12 @@ requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.18.4",
     "asyncpg>=0.31.0",
-    "fastapi[standard]>=0.136.3",
+    "fastapi[standard]>=0.138.0",
     "pwdlib[argon2]>=0.3.0",
-    "pydantic-settings>=2.13.1",
+    "pydantic-settings>=2.14.2",
     "pyjwt>=2.13.0",
     "skillcore>=0.2.0",
-    "sqlalchemy[asyncio]>=2.0.50",
+    "sqlalchemy[asyncio]>=2.0.51",
 ]
 
 [project.urls]
@@ -24,10 +24,10 @@ Issues     = "https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues"
 skillcore = { git = "https://github.com/Nachhilfe-Leon-Weimann/skillcore.git", tag = "v0.2.0" }
 
 [dependency-groups]
-dev = [{ include-group = "tests" }, "ruff>=0.15.15"]
+dev = [{ include-group = "tests" }, "ruff>=0.15.18"]
 tests = [
-    "ty>=0.0.42",
-    "pytest>=9.0.3",
+    "ty>=0.0.52",
+    "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "testcontainers>=4.14.2",
