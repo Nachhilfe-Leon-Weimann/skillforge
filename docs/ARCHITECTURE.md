@@ -48,7 +48,7 @@ Discord state changes go through `bot.operation` and are deliberately decoupled:
 reserves, SkillBot executes, Forge confirms.
 
 - **`prepare`** ([`transitions.py:50`](../app/services/bot/transitions.py)) validates, locks the
-  affected rows with `FOR UPDATE` ([`transitions.py:291`](../app/services/bot/transitions.py)),
+  affected rows with `FOR UPDATE` ([`transitions.py:357`](../app/services/bot/transitions.py)),
   reserves capacity, and writes a `PREPARED` operation with a `plan` and `expires_at`
   (TTL **10 min**, `OPERATION_TTL`, [`transitions.py:41`](../app/services/bot/transitions.py)).
   Forge hands SkillBot an executable plan in return.
@@ -57,7 +57,11 @@ reserves, SkillBot executes, Forge confirms.
 - Capacity counts committed workspaces **plus** outstanding `PREPARED` reservations, so parallel
   prepares cannot overbook.
 
-Operations: `TUTOR_ACTIVATE`, `STUDENT_ACTIVATE`, `STUDENT_STASH`, `STUDENT_POP`.
+Operations: `TUTOR_ACTIVATE`, `STUDENT_ACTIVATE`, `STUDENT_STASH`, `STUDENT_POP`,
+`STUDENT_DEACTIVATE`, `TUTOR_DEACTIVATE`. The two off-boarding kinds tear a workspace down
+(hard-deleting the workspace + channel rows and flipping `DiscordUser.active` off), the exact
+inverse of activation; a tutor teardown refuses while any student still hangs under it. See
+[off-boarding transitions](specs/off-boarding-transitions.md).
 Rationale & trade-offs: [ADR 0003](decisions/0003-two-phase-transitions.md).
 
 ### Forge-first job queue

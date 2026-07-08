@@ -181,6 +181,98 @@ async def test_prepare_student_activation_uses_static_route(monkeypatch):
     assert response.json()["kind"] == "student_activate"
 
 
+# --- student / tutor deactivation (path-based) ------------------------------
+
+
+async def test_prepare_student_deactivation_returns_operation(monkeypatch):
+    async def fake_prepare(session, **kwargs):
+        assert kwargs == {"guild_id": 1, "student_discord_id": 20}
+        return _operation(kind=OperationKind.STUDENT_DEACTIVATE, plan={"action": "delete_student_channel"})
+
+    _patch(monkeypatch, "students", "prepare_student_deactivation", fake_prepare)
+
+    async with _client() as client:
+        response = await client.post(
+            "/api/v1/bot/students/1/20/deactivate/prepare", headers=_auth_headers(Scope.BOT_WRITE)
+        )
+
+    assert response.status_code == 200
+    assert response.json()["kind"] == "student_deactivate"
+
+
+async def test_prepare_student_deactivation_requires_bot_write():
+    async with _client() as client:
+        response = await client.post(
+            "/api/v1/bot/students/1/20/deactivate/prepare", headers=_auth_headers(Scope.BOT_READ)
+        )
+    assert response.status_code == 403
+
+
+async def test_commit_student_deactivation_returns_committed(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fake_commit(session, **kwargs):
+        captured.update(kwargs)
+        return _operation(kind=OperationKind.STUDENT_DEACTIVATE, status=OperationStatus.COMMITTED, committed_at=_NOW)
+
+    _patch(monkeypatch, "students", "commit_student_deactivation", fake_commit)
+    op_id = uuid4()
+
+    async with _client() as client:
+        response = await client.post(
+            f"/api/v1/bot/students/1/20/deactivate/{op_id}/commit", headers=_auth_headers(Scope.BOT_WRITE)
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "committed"
+    assert captured == {"operation_id": op_id}
+
+
+async def test_prepare_tutor_deactivation_returns_operation(monkeypatch):
+    async def fake_prepare(session, **kwargs):
+        assert kwargs == {"guild_id": 1, "tutor_discord_id": 10}
+        return _operation(kind=OperationKind.TUTOR_DEACTIVATE, plan={"action": "delete_tutor_workspace"})
+
+    _patch(monkeypatch, "tutors", "prepare_tutor_deactivation", fake_prepare)
+
+    async with _client() as client:
+        response = await client.post(
+            "/api/v1/bot/tutors/1/10/deactivate/prepare", headers=_auth_headers(Scope.BOT_WRITE)
+        )
+
+    assert response.status_code == 200
+    assert response.json()["kind"] == "tutor_deactivate"
+
+
+async def test_prepare_tutor_deactivation_refuses_while_occupied_409(monkeypatch):
+    _patch(monkeypatch, "tutors", "prepare_tutor_deactivation", _raises(TransitionConflictError("still occupied")))
+    async with _client() as client:
+        response = await client.post(
+            "/api/v1/bot/tutors/1/10/deactivate/prepare", headers=_auth_headers(Scope.BOT_WRITE)
+        )
+    assert response.status_code == 409
+
+
+async def test_commit_tutor_deactivation_returns_committed(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fake_commit(session, **kwargs):
+        captured.update(kwargs)
+        return _operation(kind=OperationKind.TUTOR_DEACTIVATE, status=OperationStatus.COMMITTED, committed_at=_NOW)
+
+    _patch(monkeypatch, "tutors", "commit_tutor_deactivation", fake_commit)
+    op_id = uuid4()
+
+    async with _client() as client:
+        response = await client.post(
+            f"/api/v1/bot/tutors/1/10/deactivate/{op_id}/commit", headers=_auth_headers(Scope.BOT_WRITE)
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "committed"
+    assert captured == {"operation_id": op_id}
+
+
 # --- helpers ----------------------------------------------------------------
 
 

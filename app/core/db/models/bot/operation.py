@@ -16,6 +16,8 @@ class OperationKind(StrEnum):
     STUDENT_ACTIVATE = "student_activate"
     STUDENT_STASH = "student_stash"
     STUDENT_POP = "student_pop"
+    STUDENT_DEACTIVATE = "student_deactivate"
+    TUTOR_DEACTIVATE = "tutor_deactivate"
 
 
 class OperationStatus(StrEnum):

@@ -35,13 +35,17 @@ from .provisioning import (
 from .reaper import reap_expired_jobs, sweep_expired_operations
 from .transitions import (
     commit_student_activation,
+    commit_student_deactivation,
     commit_student_pop,
     commit_student_stash,
     commit_tutor_activation,
+    commit_tutor_deactivation,
     prepare_student_activation,
+    prepare_student_deactivation,
     prepare_student_pop,
     prepare_student_stash,
     prepare_tutor_activation,
+    prepare_tutor_deactivation,
 )
 from .views import PrincipalView, StudentContextView, TutorContextView
 
@@ -72,9 +76,11 @@ __all__ = [
     "check_authorization",
     "claim_jobs",
     "commit_student_activation",
+    "commit_student_deactivation",
     "commit_student_pop",
     "commit_student_stash",
     "commit_tutor_activation",
+    "commit_tutor_deactivation",
     "complete_job",
     "deactivate_discord_account",
     "delete_command_env",
@@ -87,9 +93,11 @@ __all__ = [
     "list_dead_lettered_jobs",
     "load_party_for_discord_id",
     "prepare_student_activation",
+    "prepare_student_deactivation",
     "prepare_student_pop",
     "prepare_student_stash",
     "prepare_tutor_activation",
+    "prepare_tutor_deactivation",
     "reap_expired_jobs",
     "remove_user_from_group",
     "requeue_job",
