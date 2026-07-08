@@ -44,6 +44,26 @@ async def _run_on_server(server_url: str, statement: str) -> None:
         await conn.close()
 
 
+async def _enum_labels(url: str, schema: str, enum_name: str) -> list[str]:
+    conn = await asyncpg.connect(_asyncpg_dsn(url))
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT e.enumlabel
+            FROM pg_enum e
+            JOIN pg_type t ON t.oid = e.enumtypid
+            JOIN pg_namespace n ON n.oid = t.typnamespace
+            WHERE t.typname = $1 AND n.nspname = $2
+            ORDER BY e.enumsortorder
+            """,
+            enum_name,
+            schema,
+        )
+        return [row["enumlabel"] for row in rows]
+    finally:
+        await conn.close()
+
+
 @pytest.fixture
 def migration_db_url(db_url: str):
     """A freshly created, empty database so migrations run from a clean slate."""
@@ -76,3 +96,28 @@ def test_migrations_apply_match_models_and_reverse(migration_db_url: str) -> Non
     # 3. The chain is reversible and can be rebuilt from scratch.
     _alembic(migration_db_url, "downgrade", "base")
     _alembic(migration_db_url, "upgrade", "head")
+
+
+_OPERATION_KINDS_WITH_OFF_BOARDING = [
+    "tutor_activate",
+    "student_activate",
+    "student_stash",
+    "student_pop",
+    "student_deactivate",
+    "tutor_deactivate",
+]
+_OPERATION_KINDS_WITHOUT_OFF_BOARDING = _OPERATION_KINDS_WITH_OFF_BOARDING[:4]
+
+
+def test_off_boarding_operation_kinds_migration_is_reversible(migration_db_url: str) -> None:
+    # `alembic check` is blind to enum-label drift, so assert the actual DB labels the
+    # migration path produces - forward adds the off-boarding kinds, downgrade removes them
+    # (exercising the enum-recreate recast), re-upgrade adds them back.
+    _alembic(migration_db_url, "upgrade", "head")
+    assert asyncio.run(_enum_labels(migration_db_url, "bot", "operation_kind")) == _OPERATION_KINDS_WITH_OFF_BOARDING
+
+    _alembic(migration_db_url, "downgrade", "0006_worker_heartbeat")
+    assert asyncio.run(_enum_labels(migration_db_url, "bot", "operation_kind")) == _OPERATION_KINDS_WITHOUT_OFF_BOARDING
+
+    _alembic(migration_db_url, "upgrade", "head")
+    assert asyncio.run(_enum_labels(migration_db_url, "bot", "operation_kind")) == _OPERATION_KINDS_WITH_OFF_BOARDING

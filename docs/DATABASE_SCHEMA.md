@@ -191,7 +191,7 @@ bot.command_env_kind       = ('admin_cmd', 'tutor_cmd')
 bot.permission_subject_type = ('role', 'group', 'user')
 bot.permission_grant_effect = ('allow', 'deny')
 bot.job_status             = ('pending', 'claimed', 'completed', 'failed')
-bot.operation_kind         = ('tutor_activate', 'student_activate', 'student_stash', 'student_pop')
+bot.operation_kind         = ('tutor_activate', 'student_activate', 'student_stash', 'student_pop', 'student_deactivate', 'tutor_deactivate')
 bot.operation_status       = ('prepared', 'committed', 'expired', 'failed')
 ```
 

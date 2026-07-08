@@ -8,9 +8,11 @@ from app.core.db.dependencies import get_db_session
 from app.services.bot import (
     BotServiceError,
     commit_student_activation,
+    commit_student_deactivation,
     commit_student_pop,
     commit_student_stash,
     prepare_student_activation,
+    prepare_student_deactivation,
     prepare_student_pop,
     prepare_student_stash,
 )
@@ -145,6 +147,50 @@ async def commit_student_pop_endpoint(
 ) -> TransitionCommitResponse:
     try:
         operation = await commit_student_pop(session, operation_id=operation_id)
+    except BotServiceError as exc:
+        raise transition_http_exception(exc) from exc
+
+    return TransitionCommitResponse.from_model(operation)
+
+
+# --- deactivate -------------------------------------------------------------
+
+
+@router.post(
+    "/{guild_id}/{student_discord_id}/deactivate/prepare",
+    response_model=TransitionPrepareResponse,
+    responses=PREPARE_RESPONSES,
+)
+async def prepare_student_deactivation_endpoint(
+    guild_id: GuildId,
+    student_discord_id: StudentDiscordId,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _: BotWrite,
+) -> TransitionPrepareResponse:
+    try:
+        operation = await prepare_student_deactivation(
+            session, guild_id=guild_id, student_discord_id=student_discord_id
+        )
+    except BotServiceError as exc:
+        raise transition_http_exception(exc) from exc
+
+    return TransitionPrepareResponse.from_model(operation)
+
+
+@router.post(
+    "/{guild_id}/{student_discord_id}/deactivate/{operation_id}/commit",
+    response_model=TransitionCommitResponse,
+    responses=COMMIT_RESPONSES,
+)
+async def commit_student_deactivation_endpoint(
+    guild_id: GuildId,
+    student_discord_id: StudentDiscordId,
+    operation_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _: BotWrite,
+) -> TransitionCommitResponse:
+    try:
+        operation = await commit_student_deactivation(session, operation_id=operation_id)
     except BotServiceError as exc:
         raise transition_http_exception(exc) from exc
 

@@ -244,6 +244,81 @@ async def commit_student_pop(session: AsyncSession, *, operation_id: uuid.UUID) 
     return await _mark_committed(session, operation)
 
 
+# --- deactivation / off-boarding --------------------------------------------
+
+
+async def prepare_student_deactivation(session: AsyncSession, *, guild_id: int, student_discord_id: int) -> Operation:
+    # Deactivation works from either channel state; only the workspace's existence is required.
+    workspace = await _require_student_workspace(session, guild_id, student_discord_id)
+    plan = {"action": "delete_student_channel", "guild_id": guild_id, "channel_id": workspace.channel_id}
+    return await _create_operation(
+        session,
+        kind=OperationKind.STUDENT_DEACTIVATE,
+        guild_id=guild_id,
+        subject_discord_id=student_discord_id,
+        tutor_discord_id=workspace.tutor_discord_id,
+        plan=plan,
+    )
+
+
+async def commit_student_deactivation(session: AsyncSession, *, operation_id: uuid.UUID) -> Operation:
+    operation = await _load_prepared_operation(session, operation_id, OperationKind.STUDENT_DEACTIVATE)
+    workspace = await session.get(
+        StudentWorkspace, {"guild_id": operation.guild_id, "student_discord_id": operation.subject_discord_id}
+    )
+    if workspace is None:
+        raise TransitionConflictError("Student workspace no longer exists")
+
+    channel_id = workspace.channel_id
+    await session.delete(workspace)
+    await session.flush()
+    await _delete_channel(session, channel_id)
+    await _deactivate_user(session, operation.subject_discord_id)
+    return await _mark_committed(session, operation)
+
+
+async def prepare_tutor_deactivation(session: AsyncSession, *, guild_id: int, tutor_discord_id: int) -> Operation:
+    tutor_workspace = await _lock_tutor_workspace(session, guild_id, tutor_discord_id)
+    if tutor_workspace is None:
+        raise TransitionValidationError("Tutor has no workspace in this guild")
+    await _assert_tutor_has_no_students(session, guild_id, tutor_discord_id)
+
+    plan = {
+        "action": "delete_tutor_workspace",
+        "guild_id": guild_id,
+        "category_channel_id": tutor_workspace.category_channel_id,
+        "command_channel_id": tutor_workspace.command_channel_id,
+    }
+    return await _create_operation(
+        session,
+        kind=OperationKind.TUTOR_DEACTIVATE,
+        guild_id=guild_id,
+        subject_discord_id=tutor_discord_id,
+        plan=plan,
+    )
+
+
+async def commit_tutor_deactivation(session: AsyncSession, *, operation_id: uuid.UUID) -> Operation:
+    operation = await _load_prepared_operation(session, operation_id, OperationKind.TUTOR_DEACTIVATE)
+    # Lock the workspace FOR UPDATE (as every prepare path does) so the re-check below serializes
+    # against a concurrent student_activate/pop prepare and the prepare->commit race is closed.
+    tutor_workspace = await _lock_tutor_workspace(session, operation.guild_id, operation.subject_discord_id)
+    if tutor_workspace is None:
+        raise TransitionConflictError("Tutor workspace no longer exists")
+    # A student (or an inbound reservation) may have appeared between prepare and commit.
+    await _assert_tutor_has_no_students(session, operation.guild_id, operation.subject_discord_id)
+
+    category_channel_id = tutor_workspace.category_channel_id
+    command_channel_id = tutor_workspace.command_channel_id
+    await session.delete(tutor_workspace)
+    await session.flush()
+    # Delete the command channel (child) before its category (parent).
+    await _delete_channel(session, command_channel_id)
+    await _delete_channel(session, category_channel_id)
+    await _deactivate_user(session, operation.subject_discord_id)
+    return await _mark_committed(session, operation)
+
+
 # --- helpers ----------------------------------------------------------------
 
 
@@ -318,6 +393,35 @@ async def _assert_tutor_capacity(session: AsyncSession, tutor_workspace: TutorWo
         raise TransitionConflictError("Tutor student capacity reached")
 
 
+async def _assert_tutor_has_no_students(session: AsyncSession, guild_id: int, tutor_discord_id: int) -> None:
+    """Refuse a tutor teardown while it is still occupied: any student workspace referencing the
+    tutor (in *either* channel state) or any outstanding inbound reservation blocks the teardown."""
+    students = await session.scalar(
+        select(func.count())
+        .select_from(StudentWorkspace)
+        .where(
+            StudentWorkspace.guild_id == guild_id,
+            StudentWorkspace.tutor_discord_id == tutor_discord_id,
+        )
+    )
+    if students:
+        raise TransitionConflictError("Tutor still has student workspaces")
+
+    reserved = await session.scalar(
+        select(func.count())
+        .select_from(Operation)
+        .where(
+            Operation.status == OperationStatus.PREPARED,
+            Operation.kind.in_(_TUTOR_CATEGORY_INBOUND_KINDS),
+            Operation.guild_id == guild_id,
+            Operation.tutor_discord_id == tutor_discord_id,
+            Operation.expires_at > datetime.now(UTC),
+        )
+    )
+    if reserved:
+        raise TransitionConflictError("Tutor has outstanding inbound reservations")
+
+
 async def _reserve_archive_slot(session: AsyncSession, guild_id: int) -> ArchiveCategory:
     categories = (
         (
@@ -382,6 +486,26 @@ async def _ensure_channel(
         )
     )
     await session.flush()
+
+
+async def _delete_channel(session: AsyncSession, channel_id: int | None) -> None:
+    """Remove a Discord channel row the bot has confirmed it deleted. Idempotent - the symmetric
+    inverse of ``_ensure_channel`` (activation adds the row on commit, deactivation removes it)."""
+    if channel_id is None:
+        return
+    channel = await session.get(DiscordChannel, channel_id)
+    if channel is None:
+        return
+    await session.delete(channel)
+    await session.flush()
+
+
+async def _deactivate_user(session: AsyncSession, discord_id: int) -> None:
+    """Flip the subject's identity off. Party/CRM data is never touched - only the ``active`` flag."""
+    user = await session.get(DiscordUser, discord_id)
+    if user is not None:
+        user.active = False
+        await session.flush()
 
 
 async def _create_operation(

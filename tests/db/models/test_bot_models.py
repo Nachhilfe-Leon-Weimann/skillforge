@@ -41,6 +41,8 @@ def test_bot_model_contracts():
         "student_activate",
         "student_stash",
         "student_pop",
+        "student_deactivate",
+        "tutor_deactivate",
     ]
     assert [item.value for item in OperationStatus] == ["prepared", "committed", "expired", "failed"]
 
