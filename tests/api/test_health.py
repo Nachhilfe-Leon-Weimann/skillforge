@@ -3,13 +3,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from typing import cast
 
-import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.core.db import Database
-from app.core.db.dependencies import get_database, get_disposable_database
+from app.core.db.dependencies import get_database
 from app.core.db.models import WorkerCycleStatus, WorkerHeartbeat
 from app.main import app
 from app.services.system import HealthStatus, WorkerHealthCheckResponse
@@ -37,7 +34,8 @@ async def test_dependency_database_healthy():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "dependency_name": "database"}
-    assert database.disposed is True
+    # Health shares the app-lifespan engine and must never dispose it (#57).
+    assert database.disposed is False
 
 
 async def test_dependency_database_unhealthy():
@@ -149,19 +147,6 @@ def test_worker_status_unhealthy_when_heartbeat_expired():
     assert _worker_status_from_heartbeat(heartbeat, now) is HealthStatus.UNHEALTHY
 
 
-async def test_disposable_database_disposes_engine():
-    database = _FakeDatabase()
-    generator = get_disposable_database(cast(Database, database))
-
-    yielded = await anext(generator)
-    assert yielded is database
-    assert database.disposed is False
-
-    with pytest.raises(StopAsyncIteration):
-        await anext(generator)
-    assert database.disposed is True
-
-
 # --- helpers ----------------------------------------------------------------
 
 
@@ -178,8 +163,8 @@ def _heartbeat(expires_at: datetime, last_status: WorkerCycleStatus) -> WorkerHe
 
 @asynccontextmanager
 async def _client(database: _FakeDatabase) -> AsyncIterator[AsyncClient]:
-    # Override the engine factory so the real `get_disposable_database` still runs
-    # and disposes the fake — exercising the leak fix end to end.
+    # Stand in for the shared app-lifespan engine so the real health wiring runs
+    # against our fake and we can assert it is never disposed per request (#57).
     app.dependency_overrides[get_database] = lambda: database
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:

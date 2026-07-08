@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Response, status
 
 from app.core.db import Database
-from app.core.db.dependencies import get_disposable_database
+from app.core.db.dependencies import get_database
 from app.services.system import (
     DependenciesHealthCheckResponse,
     DependencyHealthCheckResponse,
@@ -23,7 +23,7 @@ from app.services.system import (
 
 router = APIRouter(prefix="/health")
 
-DatabaseDep = Annotated[Database, Depends(get_disposable_database)]
+DatabaseDep = Annotated[Database, Depends(get_database)]
 
 
 def _http_status_for(health: HealthStatus) -> int:
