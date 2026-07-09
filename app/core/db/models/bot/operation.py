@@ -82,4 +82,16 @@ class Operation(TimestampMixin, BotBase):
             "reserved_archive_category_channel_id",
             postgresql_where=(status == OperationStatus.PREPARED) & (reserved_archive_category_channel_id.is_not(None)),
         ),
+        # At most one open (PREPARED) reservation per (guild, subject, kind): the DB backstop that
+        # makes ``prepare`` idempotent under concurrency. The predicate can only be
+        # ``status='prepared'`` (``now()`` is not IMMUTABLE, so ``expires_at`` cannot be indexed);
+        # an expired-but-unswept row still holds the slot and is reclaimed in-app on collision.
+        Index(
+            "uq_operation_prepared_subject_kind",
+            "guild_id",
+            "subject_discord_id",
+            "kind",
+            unique=True,
+            postgresql_where=(status == OperationStatus.PREPARED),
+        ),
     )
