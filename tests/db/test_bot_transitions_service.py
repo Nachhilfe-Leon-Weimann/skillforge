@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 
 from app.core.db.models import (
     ArchiveCategory,
@@ -433,29 +433,34 @@ async def test_tutor_deactivation_is_scoped_to_the_target_tutor(session):
 
 @pytest.mark.db
 async def test_student_deactivation_commit_conflicts_when_workspace_already_gone(session):
-    # Two PREPARED deactivations race; the second commit must find the workspace gone and refuse
-    # (a TransitionConflictError, distinct from the double-commit OperationNotPendingError).
+    # The workspace disappears between prepare and commit (e.g. a concurrent teardown); the commit
+    # must find it gone and refuse with a TransitionConflictError, distinct from the double-commit
+    # OperationNotPendingError. (A repeated prepare is now idempotent, so it cannot mint the second
+    # racing operation this once did - the workspace is removed directly instead.)
     await _setup_guild_with_tutor(session)
     await _add_student_workspace(session, student_id=20, channel_id=300)
-    first = await prepare_student_deactivation(session, guild_id=1, student_discord_id=20)
-    second = await prepare_student_deactivation(session, guild_id=1, student_discord_id=20)
+    operation = await prepare_student_deactivation(session, guild_id=1, student_discord_id=20)
 
-    await commit_student_deactivation(session, operation_id=first.operation_id)
+    workspace = await session.get(StudentWorkspace, {"guild_id": 1, "student_discord_id": 20})
+    await session.delete(workspace)
+    await session.flush()
 
     with pytest.raises(TransitionConflictError):
-        await commit_student_deactivation(session, operation_id=second.operation_id)
+        await commit_student_deactivation(session, operation_id=operation.operation_id)
 
 
 @pytest.mark.db
 async def test_tutor_deactivation_commit_conflicts_when_workspace_already_gone(session):
+    # As above, but for the tutor teardown: the workspace vanishes between prepare and commit.
     await _setup_guild_with_tutor(session)
-    first = await prepare_tutor_deactivation(session, guild_id=1, tutor_discord_id=10)
-    second = await prepare_tutor_deactivation(session, guild_id=1, tutor_discord_id=10)
+    operation = await prepare_tutor_deactivation(session, guild_id=1, tutor_discord_id=10)
 
-    await commit_tutor_deactivation(session, operation_id=first.operation_id)
+    tutor_workspace = await session.get(TutorWorkspace, {"guild_id": 1, "tutor_discord_id": 10})
+    await session.delete(tutor_workspace)
+    await session.flush()
 
     with pytest.raises(TransitionConflictError):
-        await commit_tutor_deactivation(session, operation_id=second.operation_id)
+        await commit_tutor_deactivation(session, operation_id=operation.operation_id)
 
 
 @pytest.mark.db
@@ -521,7 +526,350 @@ async def test_tutor_deactivation_commit_serializes_against_concurrent_reservati
             await cleanup.execute(delete(DiscordGuild))
 
 
+# --- idempotent prepare -----------------------------------------------------
+
+
+@pytest.mark.db
+async def test_repeated_tutor_activation_prepare_returns_same_operation(session):
+    await _add_guild(session, 1)
+    await _add_user(session, 10, MemberRole.TUTOR, "Tutor")
+
+    first = await prepare_tutor_activation(session, guild_id=1, tutor_discord_id=10)
+    second = await prepare_tutor_activation(session, guild_id=1, tutor_discord_id=10)
+
+    assert second.operation_id == first.operation_id
+    assert second.status is OperationStatus.PREPARED
+    assert await _count_prepared(session, subject_discord_id=10, kind=OperationKind.TUTOR_ACTIVATE) == 1
+
+
+@pytest.mark.db
+async def test_repeated_student_activation_prepare_returns_same_operation(session):
+    await _setup_guild_with_tutor(session)
+    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+
+    first = await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+    second = await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+
+    assert second.operation_id == first.operation_id
+    assert await _count_prepared(session, subject_discord_id=20, kind=OperationKind.STUDENT_ACTIVATE) == 1
+
+
+@pytest.mark.db
+async def test_repeated_stash_prepare_returns_same_operation(session):
+    await _setup_guild_with_tutor(session)
+    await _add_student_workspace(session, student_id=20, channel_id=300)
+    await _add_archive_category(session, archive_no=1, category_channel_id=200, capacity=50)
+
+    first = await prepare_student_stash(session, guild_id=1, student_discord_id=20)
+    second = await prepare_student_stash(session, guild_id=1, student_discord_id=20)
+
+    assert second.operation_id == first.operation_id
+    # The reserved archive slot must be stable on replay so the bot can commit the same plan.
+    assert second.reserved_archive_category_channel_id == first.reserved_archive_category_channel_id
+    assert await _count_prepared(session, subject_discord_id=20, kind=OperationKind.STUDENT_STASH) == 1
+
+
+@pytest.mark.db
+async def test_repeated_pop_prepare_returns_same_operation(session):
+    await _setup_guild_with_tutor(session)
+    await _add_student_workspace(session, student_id=20, channel_id=300)
+    await _add_archive_category(session, archive_no=1, category_channel_id=200, capacity=50)
+    await _stash_student_workspace(session, student_id=20, archive_category_channel_id=200)
+
+    first = await prepare_student_pop(session, guild_id=1, student_discord_id=20)
+    second = await prepare_student_pop(session, guild_id=1, student_discord_id=20)
+
+    assert second.operation_id == first.operation_id
+    assert await _count_prepared(session, subject_discord_id=20, kind=OperationKind.STUDENT_POP) == 1
+
+
+@pytest.mark.db
+async def test_repeated_student_deactivation_prepare_returns_same_operation(session):
+    await _setup_guild_with_tutor(session)
+    await _add_student_workspace(session, student_id=20, channel_id=300)
+
+    first = await prepare_student_deactivation(session, guild_id=1, student_discord_id=20)
+    second = await prepare_student_deactivation(session, guild_id=1, student_discord_id=20)
+
+    assert second.operation_id == first.operation_id
+    assert await _count_prepared(session, subject_discord_id=20, kind=OperationKind.STUDENT_DEACTIVATE) == 1
+
+
+@pytest.mark.db
+async def test_repeated_tutor_deactivation_prepare_returns_same_operation(session):
+    await _setup_guild_with_tutor(session)
+
+    first = await prepare_tutor_deactivation(session, guild_id=1, tutor_discord_id=10)
+    second = await prepare_tutor_deactivation(session, guild_id=1, tutor_discord_id=10)
+
+    assert second.operation_id == first.operation_id
+    assert await _count_prepared(session, subject_discord_id=10, kind=OperationKind.TUTOR_DEACTIVATE) == 1
+
+
+@pytest.mark.db
+async def test_student_activation_prepare_conflicts_on_different_tutor(session):
+    # A second prepare naming a DIFFERENT tutor for the same student is a conflicting intent, not a
+    # retry: the student has one workspace. It must not silently replay the first tutor's reservation.
+    await _setup_guild_with_tutor(session, tutor_id=10, category_id=100, command_id=101)
+    await _add_user(session, 11, MemberRole.TUTOR, "Tutor B")
+    await _add_channel(session, 110, DiscordChannelType.CATEGORY)
+    await _add_channel(session, 111, DiscordChannelType.TEXT, parent_channel_id=110)
+    session.add(TutorWorkspace(guild_id=1, tutor_discord_id=11, category_channel_id=110, command_channel_id=111))
+    await session.flush()
+    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+
+    await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+
+    with pytest.raises(TransitionConflictError):
+        await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=11)
+
+
+@pytest.mark.db
+async def test_prepare_after_expiry_creates_new_operation(session):
+    # An expired reservation is not a live one: its slot is already free, so a fresh prepare must
+    # mint a new operation rather than replay the dead one.
+    await _add_guild(session, 1)
+    await _add_user(session, 10, MemberRole.TUTOR, "Tutor")
+
+    first = await prepare_tutor_activation(session, guild_id=1, tutor_discord_id=10)
+    first.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    await session.flush()
+
+    second = await prepare_tutor_activation(session, guild_id=1, tutor_discord_id=10)
+    assert second.operation_id != first.operation_id
+    assert second.status is OperationStatus.PREPARED
+
+
+@pytest.mark.db
+async def test_retried_activation_near_capacity_replays_without_capacity_error(session):
+    # Capacity 1: `first` reserves the single slot. A retry of the SAME student must replay `first`
+    # instead of counting first's own reservation and spuriously tripping "capacity reached".
+    await _setup_guild_with_tutor(session, capacity=1)
+    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+
+    first = await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+    second = await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+
+    assert second.operation_id == first.operation_id
+
+
+@pytest.mark.db
+async def test_retried_stash_when_archive_full_replays_without_conflict(session):
+    # The only archive slot (capacity 1) is reserved by `first`; a retry of the same student must
+    # replay it, not report "all archive categories are full".
+    await _setup_guild_with_tutor(session)
+    await _add_student_workspace(session, student_id=20, channel_id=300)
+    await _add_archive_category(session, archive_no=1, category_channel_id=200, capacity=1)
+
+    first = await prepare_student_stash(session, guild_id=1, student_discord_id=20)
+    second = await prepare_student_stash(session, guild_id=1, student_discord_id=20)
+
+    assert second.operation_id == first.operation_id
+
+
+@pytest.mark.db
+async def test_prepare_reclaims_expired_row_holding_the_slot(session):
+    # An expired-but-unswept PREPARED row still occupies the unique (guild, subject, kind) slot
+    # (the index predicate can only be `status='prepared'`). A fresh prepare must reclaim it (flip
+    # to EXPIRED) and create a new reservation - not fail on the unique index, not leave two
+    # PREPARED rows behind.
+    await _add_guild(session, 1)
+    await _add_user(session, 10, MemberRole.TUTOR, "Tutor")
+
+    stale = await prepare_tutor_activation(session, guild_id=1, tutor_discord_id=10)
+    stale_id = stale.operation_id
+    stale.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    await session.flush()
+
+    fresh = await prepare_tutor_activation(session, guild_id=1, tutor_discord_id=10)
+
+    assert fresh.operation_id != stale_id
+    assert fresh.status is OperationStatus.PREPARED
+    assert await _count_prepared(session, subject_discord_id=10, kind=OperationKind.TUTOR_ACTIVATE) == 1
+    reclaimed = await session.get(Operation, stale_id)
+    assert reclaimed.status is OperationStatus.EXPIRED
+
+
+@pytest.mark.db
+async def test_concurrent_prepare_dedupes_to_a_single_operation(db):
+    # Under real concurrency the early look-up cannot see another transaction's uncommitted insert
+    # (READ COMMITTED), so the partial unique index is the backstop. Session A holds a PREPARED row
+    # uncommitted; B's look-up sees nothing, its insert blocks on the unique index until A commits,
+    # then hits the violation and replays A's winning reservation. Exactly one row must survive.
+    async with db.session() as setup:
+        await _add_guild(setup, 1)
+        await _add_user(setup, 10, MemberRole.TUTOR, "Tutor")
+
+    a_prepared = asyncio.Event()
+    release_a = asyncio.Event()
+
+    async def session_a():
+        async with db.session() as sess:
+            operation = await prepare_tutor_activation(sess, guild_id=1, tutor_discord_id=10)
+            a_prepared.set()
+            # Hold the transaction open (its PREPARED row is invisible to B) until signalled.
+            await release_a.wait()
+            return operation.operation_id
+
+    async def session_b():
+        await a_prepared.wait()
+        async with db.session() as sess:
+            insert = asyncio.create_task(prepare_tutor_activation(sess, guild_id=1, tutor_discord_id=10))
+            # Let B reach its insert and block on the unique index behind A's uncommitted row.
+            await asyncio.sleep(0.5)
+            release_a.set()  # A commits, unblocking B's insert into a unique violation.
+            operation = await insert
+            return operation.operation_id
+
+    try:
+        a_id, b_id = await asyncio.gather(session_a(), session_b())
+
+        assert b_id == a_id  # B replayed A's winning reservation rather than double-booking.
+        async with db.session() as check:
+            assert await _count_prepared(check, subject_discord_id=10, kind=OperationKind.TUTOR_ACTIVATE) == 1
+    finally:
+        release_a.set()
+        async with db.session() as cleanup:
+            await cleanup.execute(delete(Operation))
+            await cleanup.execute(delete(DiscordUser))
+            await cleanup.execute(delete(DiscordGuild))
+
+
+@pytest.mark.db
+async def test_concurrent_activation_under_different_tutor_conflicts(db):
+    # Two truly-concurrent activations of the SAME student under DIFFERENT tutors lock different
+    # tutor-workspace rows, so they do not serialize; B's early look-up cannot see A's uncommitted
+    # row. B's insert blocks on the unique index, and when A commits B hits the violation and finds
+    # A's winning reservation - which belongs to a different tutor. That is a conflicting intent,
+    # not a replay, so B must get a 409 rather than silently receiving A's tutor-10 operation.
+    async with db.session() as setup:
+        await _setup_guild_with_tutor(setup, tutor_id=10, category_id=100, command_id=101)
+        await _add_user(setup, 11, MemberRole.TUTOR, "Tutor B")
+        await _add_channel(setup, 110, DiscordChannelType.CATEGORY)
+        await _add_channel(setup, 111, DiscordChannelType.TEXT, parent_channel_id=110)
+        setup.add(TutorWorkspace(guild_id=1, tutor_discord_id=11, category_channel_id=110, command_channel_id=111))
+        await setup.flush()
+        await _add_user(setup, 20, MemberRole.STUDENT, "Student")
+
+    a_prepared = asyncio.Event()
+    release_a = asyncio.Event()
+
+    async def session_a():
+        async with db.session() as sess:
+            operation = await prepare_student_activation(sess, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+            a_prepared.set()
+            await release_a.wait()
+            return operation.operation_id
+
+    async def session_b():
+        await a_prepared.wait()
+        async with db.session() as sess:
+            insert = asyncio.create_task(
+                prepare_student_activation(sess, guild_id=1, student_discord_id=20, tutor_discord_id=11)
+            )
+            await asyncio.sleep(0.5)
+            release_a.set()
+            return await insert
+
+    try:
+        with pytest.raises(TransitionConflictError):
+            await asyncio.gather(session_a(), session_b())
+    finally:
+        release_a.set()
+        async with db.session() as cleanup:
+            await cleanup.execute(delete(Operation))
+            await cleanup.execute(delete(StudentWorkspace))
+            await cleanup.execute(delete(TutorWorkspace))
+            await cleanup.execute(delete(DiscordChannel))
+            await cleanup.execute(delete(DiscordUser))
+            await cleanup.execute(delete(DiscordGuild))
+
+
+@pytest.mark.db
+async def test_concurrent_stash_same_student_replays_without_capacity_error(db):
+    # The stash look-up runs before the archive-slot lock, so under concurrency B cannot see A's
+    # uncommitted reservation and would otherwise re-reserve. With capacity 1, B must still replay
+    # A's reservation rather than count A's slot against capacity and raise "archive full".
+    async with db.session() as setup:
+        await _setup_guild_with_tutor(setup)
+        await _add_student_workspace(setup, student_id=20, channel_id=300)
+        await _add_archive_category(setup, archive_no=1, category_channel_id=200, capacity=1)
+
+    a_prepared = asyncio.Event()
+    release_a = asyncio.Event()
+
+    async def session_a():
+        async with db.session() as sess:
+            operation = await prepare_student_stash(sess, guild_id=1, student_discord_id=20)
+            a_prepared.set()
+            await release_a.wait()
+            return operation.operation_id
+
+    async def session_b():
+        await a_prepared.wait()
+        async with db.session() as sess:
+            stash = asyncio.create_task(prepare_student_stash(sess, guild_id=1, student_discord_id=20))
+            await asyncio.sleep(0.5)
+            release_a.set()
+            operation = await stash
+            return operation.operation_id
+
+    try:
+        a_id, b_id = await asyncio.gather(session_a(), session_b())
+        assert b_id == a_id  # B replayed A's reservation rather than tripping "archive full".
+        async with db.session() as check:
+            assert await _count_prepared(check, subject_discord_id=20, kind=OperationKind.STUDENT_STASH) == 1
+    finally:
+        release_a.set()
+        async with db.session() as cleanup:
+            await cleanup.execute(delete(Operation))
+            await cleanup.execute(delete(StudentWorkspace))
+            await cleanup.execute(delete(ArchiveCategory))
+            await cleanup.execute(delete(TutorWorkspace))
+            await cleanup.execute(delete(DiscordChannel))
+            await cleanup.execute(delete(DiscordUser))
+            await cleanup.execute(delete(DiscordGuild))
+
+
+@pytest.mark.db
+async def test_retried_pop_near_capacity_replays_without_capacity_error(session):
+    # Capacity 1: `first` pop reserves the single slot. A retry of the same student must replay it
+    # instead of counting first's own reservation and tripping "capacity reached".
+    await _setup_guild_with_tutor(session, capacity=1)
+    await _add_student_workspace(session, student_id=20, channel_id=300)
+    await _add_archive_category(session, archive_no=1, category_channel_id=200, capacity=50)
+    await _stash_student_workspace(session, student_id=20, archive_category_channel_id=200)
+
+    first = await prepare_student_pop(session, guild_id=1, student_discord_id=20)
+    second = await prepare_student_pop(session, guild_id=1, student_discord_id=20)
+
+    assert second.operation_id == first.operation_id
+
+
 # --- seed helpers -----------------------------------------------------------
+
+
+async def _count_prepared(session, *, subject_discord_id: int, kind: OperationKind, guild_id: int = 1) -> int:
+    count = await session.scalar(
+        select(func.count())
+        .select_from(Operation)
+        .where(
+            Operation.guild_id == guild_id,
+            Operation.subject_discord_id == subject_discord_id,
+            Operation.kind == kind,
+            Operation.status == OperationStatus.PREPARED,
+        )
+    )
+    return count or 0
+
+
+async def _stash_student_workspace(session, *, student_id: int, archive_category_channel_id: int) -> None:
+    """Flip an existing student workspace into the archived state (for pop tests)."""
+    workspace = await session.get(StudentWorkspace, {"guild_id": 1, "student_discord_id": student_id})
+    workspace.channel_state = StudentChannelState.ARCHIVE_CATEGORY
+    workspace.archive_category_channel_id = archive_category_channel_id
+    workspace.current_parent_channel_id = archive_category_channel_id
+    await session.flush()
 
 
 async def _add_guild(session, guild_id: int) -> None:

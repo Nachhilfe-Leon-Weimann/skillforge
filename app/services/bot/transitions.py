@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.models import (
@@ -40,6 +41,11 @@ from .errors import (
 # How long a prepared operation stays valid before it is treated as expired.
 OPERATION_TTL = timedelta(minutes=10)
 
+# Insert attempts for a new operation. One collision is expected at most (a concurrent winner or a
+# stale row holding the unique slot); the reclaim + retry then succeeds. The extra attempt is a
+# guard, not an expectation.
+_CREATE_MAX_ATTEMPTS = 3
+
 # Operation kinds that add a channel to a tutor's category (count against tutor capacity).
 _TUTOR_CATEGORY_INBOUND_KINDS = (OperationKind.STUDENT_ACTIVATE, OperationKind.STUDENT_POP)
 
@@ -52,6 +58,10 @@ async def prepare_tutor_activation(session: AsyncSession, *, guild_id: int, tuto
     tutor = await _require_active_user(session, tutor_discord_id, MemberRole.TUTOR, "tutor")
     if await session.get(TutorWorkspace, {"guild_id": guild_id, "tutor_discord_id": tutor.discord_id}) is not None:
         raise TransitionConflictError("Tutor workspace already exists")
+
+    existing = await _find_open_operation(session, guild_id, tutor_discord_id, OperationKind.TUTOR_ACTIVATE)
+    if existing is not None:
+        return existing
 
     plan = {"action": "create_tutor_workspace", "guild_id": guild_id, "tutor_discord_id": tutor_discord_id}
     return await _create_operation(
@@ -109,6 +119,11 @@ async def prepare_student_activation(
     tutor_workspace = await _lock_tutor_workspace(session, guild_id, tutor_discord_id)
     if tutor_workspace is None:
         raise TransitionValidationError("Tutor has no workspace in this guild")
+
+    existing = await _find_open_operation(session, guild_id, student_discord_id, OperationKind.STUDENT_ACTIVATE)
+    if existing is not None:
+        return _replayed_or_conflict(existing, tutor_discord_id)
+
     if (
         await session.get(StudentWorkspace, {"guild_id": guild_id, "student_discord_id": student_discord_id})
         is not None
@@ -167,9 +182,13 @@ async def commit_student_activation(
 
 
 async def prepare_student_stash(session: AsyncSession, *, guild_id: int, student_discord_id: int) -> Operation:
-    workspace = await _require_student_workspace(session, guild_id, student_discord_id)
+    workspace = await _require_student_workspace(session, guild_id, student_discord_id, for_update=True)
     if workspace.channel_state is not StudentChannelState.TUTOR_CATEGORY:
         raise TransitionConflictError("Student is not currently in the tutor category")
+
+    existing = await _find_open_operation(session, guild_id, student_discord_id, OperationKind.STUDENT_STASH)
+    if existing is not None:
+        return existing
 
     archive_category = await _reserve_archive_slot(session, guild_id)
     plan = {
@@ -209,6 +228,11 @@ async def prepare_student_pop(session: AsyncSession, *, guild_id: int, student_d
     tutor_workspace = await _lock_tutor_workspace(session, guild_id, workspace.tutor_discord_id)
     if tutor_workspace is None:
         raise TransitionValidationError("Tutor has no workspace in this guild")
+
+    existing = await _find_open_operation(session, guild_id, student_discord_id, OperationKind.STUDENT_POP)
+    if existing is not None:
+        return existing
+
     await _assert_tutor_capacity(session, tutor_workspace)
 
     plan = {
@@ -250,6 +274,11 @@ async def commit_student_pop(session: AsyncSession, *, operation_id: uuid.UUID) 
 async def prepare_student_deactivation(session: AsyncSession, *, guild_id: int, student_discord_id: int) -> Operation:
     # Deactivation works from either channel state; only the workspace's existence is required.
     workspace = await _require_student_workspace(session, guild_id, student_discord_id)
+
+    existing = await _find_open_operation(session, guild_id, student_discord_id, OperationKind.STUDENT_DEACTIVATE)
+    if existing is not None:
+        return existing
+
     plan = {"action": "delete_student_channel", "guild_id": guild_id, "channel_id": workspace.channel_id}
     return await _create_operation(
         session,
@@ -281,6 +310,11 @@ async def prepare_tutor_deactivation(session: AsyncSession, *, guild_id: int, tu
     tutor_workspace = await _lock_tutor_workspace(session, guild_id, tutor_discord_id)
     if tutor_workspace is None:
         raise TransitionValidationError("Tutor has no workspace in this guild")
+
+    existing = await _find_open_operation(session, guild_id, tutor_discord_id, OperationKind.TUTOR_DEACTIVATE)
+    if existing is not None:
+        return existing
+
     await _assert_tutor_has_no_students(session, guild_id, tutor_discord_id)
 
     plan = {
@@ -347,8 +381,27 @@ async def _require_student_workspace(
     session: AsyncSession,
     guild_id: int,
     student_discord_id: int,
+    *,
+    for_update: bool = False,
 ) -> StudentWorkspace:
-    workspace = await session.get(StudentWorkspace, {"guild_id": guild_id, "student_discord_id": student_discord_id})
+    if for_update:
+        # Row-lock the workspace so concurrent same-student prepares serialize here. stash needs
+        # this because its only other lock (the archive categories) is taken inside
+        # ``_reserve_archive_slot`` - after the idempotency look-up - so without it a retry would
+        # count the winner's own reservation against capacity and wrongly report "archive full".
+        result = await session.execute(
+            select(StudentWorkspace)
+            .where(
+                StudentWorkspace.guild_id == guild_id,
+                StudentWorkspace.student_discord_id == student_discord_id,
+            )
+            .with_for_update()
+        )
+        workspace = result.scalar_one_or_none()
+    else:
+        workspace = await session.get(
+            StudentWorkspace, {"guild_id": guild_id, "student_discord_id": student_discord_id}
+        )
     if workspace is None:
         raise TransitionValidationError("Student workspace not found")
     return workspace
@@ -508,6 +561,70 @@ async def _deactivate_user(session: AsyncSession, discord_id: int) -> None:
         await session.flush()
 
 
+async def _find_open_operation(
+    session: AsyncSession,
+    guild_id: int,
+    subject_discord_id: int,
+    kind: OperationKind,
+) -> Operation | None:
+    """Return the outstanding (PREPARED, not yet expired) operation for this natural key, if any.
+
+    A retried ``prepare`` must resolve to the same reservation rather than book a second one, so
+    ``(guild_id, subject_discord_id, kind)`` is the identity of a logical prepare. Expired rows are
+    ignored - their capacity slot is already free (the capacity counts filter ``expires_at > now``)."""
+    result = await session.execute(
+        select(Operation)
+        .where(
+            Operation.guild_id == guild_id,
+            Operation.subject_discord_id == subject_discord_id,
+            Operation.kind == kind,
+            Operation.status == OperationStatus.PREPARED,
+            Operation.expires_at > datetime.now(UTC),
+        )
+        .limit(1)
+    )
+    return result.scalars().first()
+
+
+def _replayed_or_conflict(operation: Operation, tutor_discord_id: int | None) -> Operation:
+    """Return an existing reservation for an idempotent retry, unless it belongs to a different
+    tutor than requested.
+
+    For ``student_activate`` - the only kind with a caller-supplied tutor - a mismatch is a
+    conflicting intent (the student has exactly one workspace), not a replay, so we must not
+    silently hand back the other tutor's reservation. For every other kind ``tutor_discord_id`` is
+    either ``None`` or derived from the subject's single workspace, so this never false-positives."""
+    if operation.tutor_discord_id != tutor_discord_id:
+        raise TransitionConflictError("Subject already has an operation prepared under a different tutor")
+    return operation
+
+
+async def _expire_stale_prepared(
+    session: AsyncSession,
+    guild_id: int,
+    subject_discord_id: int,
+    kind: OperationKind,
+) -> None:
+    """Materialize expired-but-unswept PREPARED rows for this natural key to EXPIRED.
+
+    The partial unique index only filters ``status='prepared'`` (``now()`` is not IMMUTABLE), so an
+    expired reservation still holds the slot until the sweeper clears it. When a fresh prepare
+    collides with such a row we reclaim it here - the same transition the sweeper would apply -
+    instead of over-blocking for up to a reaper interval."""
+    result = await session.execute(
+        select(Operation).where(
+            Operation.guild_id == guild_id,
+            Operation.subject_discord_id == subject_discord_id,
+            Operation.kind == kind,
+            Operation.status == OperationStatus.PREPARED,
+            Operation.expires_at <= datetime.now(UTC),
+        )
+    )
+    for stale in result.scalars():
+        stale.status = OperationStatus.EXPIRED
+    await session.flush()
+
+
 async def _create_operation(
     session: AsyncSession,
     *,
@@ -518,19 +635,43 @@ async def _create_operation(
     reserved_archive_category_channel_id: int | None = None,
     plan: dict,
 ) -> Operation:
-    operation = Operation(
-        kind=kind,
-        status=OperationStatus.PREPARED,
-        guild_id=guild_id,
-        subject_discord_id=subject_discord_id,
-        tutor_discord_id=tutor_discord_id,
-        reserved_archive_category_channel_id=reserved_archive_category_channel_id,
-        plan=plan,
-        expires_at=datetime.now(UTC) + OPERATION_TTL,
-    )
-    session.add(operation)
-    await session.flush()
-    return operation
+    # The early look-up in each prepare path already replayed any live reservation, so normally this
+    # just inserts. The loop only matters under concurrency: the partial unique index
+    # (guild, subject, kind) WHERE status='prepared' can still reject the insert if a concurrent
+    # prepare won the race, or if an expired-but-unswept row still holds the slot.
+    for _attempt in range(_CREATE_MAX_ATTEMPTS):
+        operation = Operation(
+            kind=kind,
+            status=OperationStatus.PREPARED,
+            guild_id=guild_id,
+            subject_discord_id=subject_discord_id,
+            tutor_discord_id=tutor_discord_id,
+            reserved_archive_category_channel_id=reserved_archive_category_channel_id,
+            plan=plan,
+            expires_at=datetime.now(UTC) + OPERATION_TTL,
+        )
+        try:
+            # Add + flush *inside* the SAVEPOINT so a unique violation rolls back only this insert
+            # (and drops the pending row) while leaving the surrounding transaction usable.
+            async with session.begin_nested():
+                session.add(operation)
+                await session.flush()
+            return operation
+        except IntegrityError:
+            # The failed insert was rolled back with the savepoint, so `operation` is no longer in
+            # the session. A live winner means a concurrent prepare already reserved this slot -
+            # replay it (rejecting a different-tutor intent, exactly as the early look-up does).
+            winner = await _find_open_operation(session, guild_id, subject_discord_id, kind)
+            if winner is not None:
+                return _replayed_or_conflict(winner, tutor_discord_id)
+            # Otherwise the collider is a stale (expired) row: reclaim it and retry the insert.
+            await _expire_stale_prepared(session, guild_id, subject_discord_id, kind)
+
+    # Retries exhausted (practically unreachable): surface a live winner or fail loudly.
+    winner = await _find_open_operation(session, guild_id, subject_discord_id, kind)
+    if winner is not None:
+        return _replayed_or_conflict(winner, tutor_discord_id)
+    raise TransitionConflictError("Could not reserve an operation slot")
 
 
 async def _load_prepared_operation(

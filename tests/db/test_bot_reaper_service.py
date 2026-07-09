@@ -23,14 +23,16 @@ async def _stale_claimed_job(session, *, max_attempts: int = 5, lease_age: timed
     return job
 
 
-def _prepared_operation(*, status: OperationStatus = OperationStatus.PREPARED, expired: bool = True) -> Operation:
+def _prepared_operation(
+    *, status: OperationStatus = OperationStatus.PREPARED, expired: bool = True, subject_discord_id: int = 10
+) -> Operation:
     offset = timedelta(seconds=1)
     expires_at = datetime.now(UTC) - offset if expired else datetime.now(UTC) + timedelta(minutes=10)
     return Operation(
         kind=OperationKind.TUTOR_ACTIVATE,
         status=status,
         guild_id=1,
-        subject_discord_id=10,
+        subject_discord_id=subject_discord_id,
         plan={},
         expires_at=expires_at,
     )
@@ -182,10 +184,12 @@ async def test_sweep_never_touches_terminal_operations(session, status):
 
 @pytest.mark.db
 async def test_sweep_expires_only_past_prepared_in_bulk(session):
-    for _ in range(3):
-        session.add(_prepared_operation(expired=True))
-    for _ in range(2):
-        session.add(_prepared_operation(expired=False))
+    # Distinct subjects: the partial unique index allows only one open PREPARED row per
+    # (guild, subject, kind), so the bulk fixtures must differ in subject_discord_id.
+    for subject in range(10, 13):
+        session.add(_prepared_operation(expired=True, subject_discord_id=subject))
+    for subject in range(20, 22):
+        session.add(_prepared_operation(expired=False, subject_discord_id=subject))
     await session.flush()
 
     expired = await sweep_expired_operations(session)
