@@ -43,7 +43,9 @@ from app.services.bot import (
     get_principal_view,
     get_principal_views,
     get_student_context_view,
+    get_student_context_views,
     get_tutor_context_view,
+    get_tutor_context_views,
     resolve_command_env,
     upsert_command_env,
 )
@@ -206,6 +208,56 @@ async def test_get_student_context_view_includes_party_id(session):
 async def test_get_student_context_view_unknown_raises(session):
     with pytest.raises(StudentContextNotFoundError):
         await get_student_context_view(session, guild_id=1, student_discord_id=20)
+
+
+@pytest.mark.db
+async def test_get_tutor_context_views_batch_omits_missing_workspace(session):
+    await _add_guild(session, 1)
+    await _add_user(session, 10, MemberRole.TUTOR, "Tutor A")
+    await _add_user(session, 11, MemberRole.TUTOR, "Tutor B")
+    await _add_channel(session, 1, 100, DiscordChannelType.CATEGORY)
+    await _add_channel(session, 1, 101, DiscordChannelType.TEXT, parent_id=100)
+    session.add(TutorWorkspace(guild_id=1, tutor_discord_id=10, category_channel_id=100, command_channel_id=101))
+    await session.flush()
+
+    views = await get_tutor_context_views(session, guild_id=1, tutor_discord_ids=[10, 11])
+
+    assert [view.workspace.tutor_discord_id for view in views] == [10]  # 11 has no workspace
+    assert views[0].principal.user.discord_id == 10
+
+
+@pytest.mark.db
+async def test_get_student_context_views_batch_includes_party_id(session):
+    await _add_guild(session, 1)
+    await _add_user(session, 10, MemberRole.TUTOR, "Tutor")
+    await _add_user(session, 20, MemberRole.STUDENT, "Student A")
+    await _add_user(session, 21, MemberRole.STUDENT, "Student B")
+    await _add_channel(session, 1, 100, DiscordChannelType.CATEGORY)
+    await _add_channel(session, 1, 300, DiscordChannelType.TEXT, parent_id=100)
+    await _add_channel(session, 1, 301, DiscordChannelType.TEXT, parent_id=100)
+
+    party = Party(type=PartyType.PERSON)
+    session.add(party)
+    await session.flush()
+    session.add(DiscordAccount(discord_id=20, party_id=party.id))
+    session.add(
+        StudentWorkspace(
+            guild_id=1, student_discord_id=20, tutor_discord_id=10, channel_id=300, current_parent_channel_id=100
+        )
+    )
+    session.add(
+        StudentWorkspace(
+            guild_id=1, student_discord_id=21, tutor_discord_id=10, channel_id=301, current_parent_channel_id=100
+        )
+    )
+    await session.flush()
+
+    views = await get_student_context_views(session, guild_id=1, student_discord_ids=[20, 21, 99])
+
+    assert [view.workspace.student_discord_id for view in views] == [20, 21]  # 99 absent
+    by_id = {view.workspace.student_discord_id: view for view in views}
+    assert by_id[20].party_id == party.id
+    assert by_id[21].party_id is None  # student 21 has no linked party
 
 
 # --- command env resolve ----------------------------------------------------

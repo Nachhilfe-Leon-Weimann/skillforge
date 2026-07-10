@@ -1,6 +1,11 @@
 from .authz import check_authorization
 from .command_envs import delete_command_env, resolve_command_env, upsert_command_env
-from .contexts import get_student_context_view, get_tutor_context_view
+from .contexts import (
+    get_student_context_view,
+    get_student_context_views,
+    get_tutor_context_view,
+    get_tutor_context_views,
+)
 from .errors import (
     AccountLinkConflictError,
     BotServiceError,
@@ -113,7 +118,9 @@ __all__ = [
     "get_principal_view",
     "get_principal_views",
     "get_student_context_view",
+    "get_student_context_views",
     "get_tutor_context_view",
+    "get_tutor_context_views",
     "link_discord_account",
     "list_dead_lettered_jobs",
     "list_jobs",
