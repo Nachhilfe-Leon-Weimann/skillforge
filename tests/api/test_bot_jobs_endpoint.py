@@ -13,7 +13,12 @@ from app.core.auth.dependencies import get_auth_settings
 from app.core.db.dependencies import get_db_session
 from app.core.db.models import Job, JobStatus
 from app.main import app
-from app.services.bot import JobNotClaimedError, JobNotFoundError
+from app.services.bot import (
+    JobKindCountsView,
+    JobNotClaimedError,
+    JobNotFoundError,
+    JobQueueSummaryView,
+)
 
 _NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -122,6 +127,159 @@ async def test_fail_job_returns_409_when_not_claimed(monkeypatch):
     assert response.status_code == 409
 
 
+# --- read plane: get by id / list / summary ---------------------------------
+
+
+async def test_read_job_returns_detail(monkeypatch):
+    job = _job(
+        kind="activate_tutor",
+        status=JobStatus.CLAIMED,
+        attempt=1,
+        payload={"tutor_discord_id": 7},
+        claimed_by="shard-1",
+    )
+    _patch(monkeypatch, "get_job", _returns(job))
+
+    async with _client() as client:
+        response = await client.get(f"/api/v1/bot/jobs/{job.job_id}", headers=_auth_headers(Scope.BOT_READ))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["job_id"] == str(job.job_id)
+    assert body["kind"] == "activate_tutor"
+    assert body["status"] == "claimed"
+    assert body["payload"] == {"tutor_discord_id": 7}
+    assert body["max_attempts"] == 5
+    assert body["claimed_by"] == "shard-1"
+
+
+async def test_read_job_returns_404(monkeypatch):
+    _patch(monkeypatch, "get_job", _raises(JobNotFoundError()))
+
+    async with _client() as client:
+        response = await client.get(f"/api/v1/bot/jobs/{uuid4()}", headers=_auth_headers(Scope.BOT_READ))
+
+    assert response.status_code == 404
+    assert "detail" in response.json()
+
+
+async def test_read_job_requires_bot_read_scope():
+    async with _client() as client:
+        response = await client.get(f"/api/v1/bot/jobs/{uuid4()}", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 403
+
+
+async def test_list_jobs_returns_page(monkeypatch):
+    job = _job(kind="activate_tutor", status=JobStatus.FAILED, attempt=2, payload={"x": 1}, last_error="boom")
+    captured: dict[str, object] = {}
+
+    async def fake_list(session, **kwargs):
+        captured.update(kwargs)
+        return [job], 1
+
+    _patch(monkeypatch, "list_jobs", fake_list)
+
+    async with _client() as client:
+        response = await client.get(
+            "/api/v1/bot/jobs",
+            params={"status": "failed", "kind": "activate_tutor", "limit": 10, "offset": 5},
+            headers=_auth_headers(Scope.BOT_READ),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["limit"] == 10
+    assert body["offset"] == 5
+    assert len(body["items"]) == 1
+    assert body["items"][0]["job_id"] == str(job.job_id)
+    assert body["items"][0]["status"] == "failed"
+    # The list item is a status view; the payload is only on the by-id detail.
+    assert "payload" not in body["items"][0]
+    assert captured == {"status": JobStatus.FAILED, "kind": "activate_tutor", "limit": 10, "offset": 5}
+
+
+async def test_list_jobs_defaults_to_no_filters(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fake_list(session, **kwargs):
+        captured.update(kwargs)
+        return [], 0
+
+    _patch(monkeypatch, "list_jobs", fake_list)
+
+    async with _client() as client:
+        response = await client.get("/api/v1/bot/jobs", headers=_auth_headers(Scope.BOT_READ))
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0, "limit": 50, "offset": 0}
+    assert captured == {"status": None, "kind": None, "limit": 50, "offset": 0}
+
+
+async def test_list_jobs_requires_bot_read_scope():
+    async with _client() as client:
+        response = await client.get("/api/v1/bot/jobs", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 403
+
+
+async def test_job_summary_returns_funnel(monkeypatch):
+    view = JobQueueSummaryView(
+        total=4,
+        by_status={
+            JobStatus.PENDING: 2,
+            JobStatus.CLAIMED: 0,
+            JobStatus.COMPLETED: 1,
+            JobStatus.FAILED: 1,
+        },
+        by_kind=[
+            JobKindCountsView(
+                kind="activate_tutor",
+                counts={
+                    JobStatus.PENDING: 2,
+                    JobStatus.CLAIMED: 0,
+                    JobStatus.COMPLETED: 1,
+                    JobStatus.FAILED: 0,
+                },
+            )
+        ],
+    )
+    _patch(monkeypatch, "get_job_queue_summary", _returns(view))
+
+    async with _client() as client:
+        response = await client.get("/api/v1/bot/jobs/summary", headers=_auth_headers(Scope.BOT_READ))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 4
+    assert body["by_status"] == {"pending": 2, "claimed": 0, "completed": 1, "failed": 1}
+    assert body["by_kind"] == [
+        {"kind": "activate_tutor", "counts": {"pending": 2, "claimed": 0, "completed": 1, "failed": 0}}
+    ]
+
+
+async def test_job_summary_requires_bot_read_scope():
+    async with _client() as client:
+        response = await client.get("/api/v1/bot/jobs/summary", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 403
+
+
+async def test_read_endpoints_require_authentication():
+    async with _client() as client:
+        for path in (f"/api/v1/bot/jobs/{uuid4()}", "/api/v1/bot/jobs/summary", "/api/v1/bot/jobs"):
+            response = await client.get(path)
+            assert response.status_code == 401, path
+
+
+async def test_list_jobs_rejects_out_of_range_params():
+    async with _client() as client:
+        for params in ({"limit": 0}, {"limit": 101}, {"offset": -1}):
+            response = await client.get("/api/v1/bot/jobs", params=params, headers=_auth_headers(Scope.BOT_READ))
+            assert response.status_code == 422, params
+
+
 # --- helpers ----------------------------------------------------------------
 
 
@@ -178,6 +336,7 @@ def _job(
     status: JobStatus,
     attempt: int,
     payload: dict | None = None,
+    claimed_by: str | None = None,
     completed_at: datetime | None = None,
     failed_at: datetime | None = None,
     last_error: str | None = None,
@@ -191,7 +350,10 @@ def _job(
         max_attempts=5,
         available_at=_NOW,
         claimed_at=_NOW,
+        claimed_by=claimed_by,
         completed_at=completed_at,
         failed_at=failed_at,
         last_error=last_error,
+        created_at=_NOW,
+        updated_at=_NOW,
     )

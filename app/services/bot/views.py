@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from app.core.db.models import DiscordUser, Party, StudentWorkspace, TutorWorkspace
+from app.core.db.models import DiscordUser, JobStatus, Party, StudentWorkspace, TutorWorkspace
 
 
 @dataclass(frozen=True)
@@ -27,3 +27,20 @@ class StudentContextView:
     workspace: StudentWorkspace
     principal: PrincipalView
     party_id: UUID | None
+
+
+@dataclass(frozen=True)
+class JobKindCountsView:
+    """Per-``kind`` job counts, zero-filled across every :class:`JobStatus`."""
+
+    kind: str
+    counts: dict[JobStatus, int]
+
+
+@dataclass(frozen=True)
+class JobQueueSummaryView:
+    """Funnel over the job queue: overall counts by status plus a per-kind breakdown."""
+
+    total: int
+    by_status: dict[JobStatus, int]
+    by_kind: list[JobKindCountsView]

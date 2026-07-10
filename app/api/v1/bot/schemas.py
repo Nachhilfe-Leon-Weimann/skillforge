@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         StudentWorkspace,
         TutorWorkspace,
     )
+    from app.services.bot.views import JobQueueSummaryView
 
 
 # --- Operational profile ----------------------------------------------------
@@ -348,6 +349,90 @@ class JobResponse(BaseModel):
         return cls.model_validate(job)
 
 
+# --- Jobs (read plane) ------------------------------------------------------
+
+
+class JobListItem(BaseModel):
+    """List view of a job. Omits the ``payload`` -- fetch a single job by id for that."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    job_id: UUID
+    kind: str
+    status: JobStatus
+    attempt: int
+    max_attempts: int
+    available_at: datetime
+    claimed_at: datetime | None
+    claimed_by: str | None
+    completed_at: datetime | None
+    failed_at: datetime | None
+    last_error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_model(cls, job: Job) -> JobListItem:
+        return cls.model_validate(job)
+
+
+class JobDetail(BaseModel):
+    """Full read view of a single job, including its ``payload``."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    job_id: UUID
+    kind: str
+    payload: dict[str, Any]
+    status: JobStatus
+    attempt: int
+    max_attempts: int
+    available_at: datetime
+    claimed_at: datetime | None
+    claimed_by: str | None
+    completed_at: datetime | None
+    failed_at: datetime | None
+    last_error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_model(cls, job: Job) -> JobDetail:
+        return cls.model_validate(job)
+
+
+class JobPage(BaseModel):
+    """A page of jobs plus the total match count, for offset pagination."""
+
+    items: list[JobListItem]
+    total: int
+    limit: int
+    offset: int
+
+
+class JobKindCounts(BaseModel):
+    """Per-``kind`` job counts, zero-filled across every :class:`JobStatus`."""
+
+    kind: str
+    counts: dict[JobStatus, int]
+
+
+class JobQueueSummary(BaseModel):
+    """Funnel over the job queue: overall counts by status plus a per-kind breakdown."""
+
+    total: int
+    by_status: dict[JobStatus, int]
+    by_kind: list[JobKindCounts]
+
+    @classmethod
+    def from_view(cls, view: JobQueueSummaryView) -> JobQueueSummary:
+        return cls(
+            total=view.total,
+            by_status=view.by_status,
+            by_kind=[JobKindCounts(kind=item.kind, counts=item.counts) for item in view.by_kind],
+        )
+
+
 # --- Transitions (prepare/commit) -------------------------------------------
 
 
@@ -395,3 +480,64 @@ class StudentActivationPrepareRequest(BaseModel):
 
 class StudentActivationCommitRequest(BaseModel):
     channel_id: int
+
+
+# --- Operations (read plane) ------------------------------------------------
+
+
+class OperationSummary(BaseModel):
+    """List view of an operation. Omits the heavy ``plan`` -- fetch a single operation by id for that."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    operation_id: UUID
+    kind: OperationKind
+    status: OperationStatus
+    guild_id: int
+    subject_discord_id: int
+    tutor_discord_id: int | None
+    reserved_archive_category_channel_id: int | None
+    expires_at: datetime
+    committed_at: datetime | None
+    failed_at: datetime | None
+    last_error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_model(cls, operation: Operation) -> OperationSummary:
+        return cls.model_validate(operation)
+
+
+class OperationResponse(BaseModel):
+    """Full read view of a single operation, including the two-phase ``plan``."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    operation_id: UUID
+    kind: OperationKind
+    status: OperationStatus
+    guild_id: int
+    subject_discord_id: int
+    tutor_discord_id: int | None
+    reserved_archive_category_channel_id: int | None
+    plan: dict[str, Any]
+    expires_at: datetime
+    committed_at: datetime | None
+    failed_at: datetime | None
+    last_error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_model(cls, operation: Operation) -> OperationResponse:
+        return cls.model_validate(operation)
+
+
+class OperationPage(BaseModel):
+    """A page of operations plus the total match count, for offset pagination."""
+
+    items: list[OperationSummary]
+    total: int
+    limit: int
+    offset: int

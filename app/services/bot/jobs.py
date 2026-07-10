@@ -9,15 +9,17 @@ re-delivered job must not trigger a duplicate side effect (e.g. a second Discord
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.models import Job, JobStatus
 
 from .errors import JobNotClaimedError, JobNotFailedError, JobNotFoundError
+from .views import JobKindCountsView, JobQueueSummaryView
 
 # Delay before a failed-but-retryable job becomes claimable again.
 RETRY_BACKOFF = timedelta(seconds=60)
@@ -131,6 +133,68 @@ async def list_dead_lettered_jobs(session: AsyncSession) -> list[Job]:
     """
     statement = select(Job).where(Job.status == JobStatus.FAILED).order_by(Job.failed_at.desc())
     return list((await session.execute(statement)).scalars().all())
+
+
+async def get_job(session: AsyncSession, *, job_id: uuid.UUID) -> Job:
+    """Return a single job by id, including its ``payload``.
+
+    Read-plane counterpart to the claim/complete/fail write path. Raises :class:`JobNotFoundError`
+    if no job has that id.
+    """
+    job = await session.get(Job, job_id)
+    if job is None:
+        raise JobNotFoundError(f"No job with id {job_id}")
+    return job
+
+
+async def list_jobs(
+    session: AsyncSession,
+    *,
+    status: JobStatus | None = None,
+    kind: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[Sequence[Job], int]:
+    """List jobs matching the given filters, newest first, with the total match count.
+
+    All filters are optional and AND-combined. Returns ``(page, total)`` where ``page`` is at most
+    ``limit`` jobs starting at ``offset`` and ``total`` is the number of jobs matching the filters
+    regardless of pagination.
+    """
+    filters = []
+    if status is not None:
+        filters.append(Job.status == status)
+    if kind is not None:
+        filters.append(Job.kind == kind)
+
+    total = (await session.execute(select(func.count()).select_from(Job).where(*filters))).scalar_one()
+
+    statement = (
+        select(Job).where(*filters).order_by(Job.created_at.desc(), Job.job_id.desc()).limit(limit).offset(offset)
+    )
+    jobs = (await session.execute(statement)).scalars().all()
+    return jobs, total
+
+
+async def get_job_queue_summary(session: AsyncSession) -> JobQueueSummaryView:
+    """Summarize the job queue as a funnel: overall counts by status plus a per-kind breakdown.
+
+    Both the overall ``by_status`` map and each kind's counts are zero-filled across every
+    :class:`JobStatus`, so a status that no job currently occupies still reports ``0`` (no silent
+    gaps). ``by_kind`` is sorted by kind. One ``GROUP BY (kind, status)`` query, aggregated in Python.
+    """
+    rows = (await session.execute(select(Job.kind, Job.status, func.count()).group_by(Job.kind, Job.status))).all()
+
+    by_status = {status: 0 for status in JobStatus}
+    per_kind: dict[str, dict[JobStatus, int]] = {}
+    total = 0
+    for kind, status, count in rows:
+        total += count
+        by_status[status] += count
+        per_kind.setdefault(kind, {member: 0 for member in JobStatus})[status] += count
+
+    by_kind = [JobKindCountsView(kind=kind, counts=counts) for kind, counts in sorted(per_kind.items())]
+    return JobQueueSummaryView(total=total, by_status=by_status, by_kind=by_kind)
 
 
 async def _get_claimed_job(session: AsyncSession, job_id: uuid.UUID) -> Job:

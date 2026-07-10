@@ -22,7 +22,18 @@ from .errors import (
     TransitionValidationError,
     TutorContextNotFoundError,
 )
-from .jobs import claim_jobs, complete_job, enqueue_job, fail_job, list_dead_lettered_jobs, requeue_job
+from .jobs import (
+    claim_jobs,
+    complete_job,
+    enqueue_job,
+    fail_job,
+    get_job,
+    get_job_queue_summary,
+    list_dead_lettered_jobs,
+    list_jobs,
+    requeue_job,
+)
+from .operations import get_operation, list_operations
 from .principals import get_principal_view
 from .profile import load_party_for_discord_id
 from .provisioning import (
@@ -47,7 +58,13 @@ from .transitions import (
     prepare_tutor_activation,
     prepare_tutor_deactivation,
 )
-from .views import PrincipalView, StudentContextView, TutorContextView
+from .views import (
+    JobKindCountsView,
+    JobQueueSummaryView,
+    PrincipalView,
+    StudentContextView,
+    TutorContextView,
+)
 
 __all__ = [
     "AccountLinkConflictError",
@@ -57,9 +74,11 @@ __all__ = [
     "CommandEnvValidationError",
     "DiscordAccountNotFoundError",
     "GroupMembershipNotFoundError",
+    "JobKindCountsView",
     "JobNotClaimedError",
     "JobNotFailedError",
     "JobNotFoundError",
+    "JobQueueSummaryView",
     "OperationNotFoundError",
     "OperationNotPendingError",
     "PartyNotFoundError",
@@ -86,11 +105,16 @@ __all__ = [
     "delete_command_env",
     "enqueue_job",
     "fail_job",
+    "get_job",
+    "get_job_queue_summary",
+    "get_operation",
     "get_principal_view",
     "get_student_context_view",
     "get_tutor_context_view",
     "link_discord_account",
     "list_dead_lettered_jobs",
+    "list_jobs",
+    "list_operations",
     "load_party_for_discord_id",
     "prepare_student_activation",
     "prepare_student_deactivation",
