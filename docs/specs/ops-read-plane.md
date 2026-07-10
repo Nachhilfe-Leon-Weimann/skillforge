@@ -1,7 +1,8 @@
 # Spec: Ops read plane (jobs & operations)
 
-> Status: Accepted | First delivered slice of **Arc 2 (ops plane)** in
-> [`lifecycle-guardian.md`](lifecycle-guardian.md). Closes issue #49.
+> Status: Implemented
+> Tracking: [#49](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/49)
+> First delivered slice of **Arc 2 (ops plane)** in [`lifecycle-guardian.md`](lifecycle-guardian.md).
 
 ## Problem statement
 
@@ -22,6 +23,13 @@ is the read/observability seed of Arc 2.
 3. **Bounded reads.** List endpoints paginate, so a growing table never returns an unbounded payload.
 4. **No new trust surface.** All read endpoints reuse the existing `BotRead` scope; no new scope,
    client grant, error type, or migration.
+
+## Acceptance criteria
+
+- [x] `GET` an operation by id, plus a filtered list (by subject / status / kind) for restart reconciliation.
+- [x] `GET` job status by id, plus a queue summary view (depth + status funnel, global and per kind).
+- [x] Read scope (`BotRead`) enforced on every read endpoint.
+- [x] Pagination (`limit` / `offset` + `total`) on the list endpoints.
 
 ## Non-goals
 
