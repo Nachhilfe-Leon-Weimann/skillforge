@@ -34,7 +34,7 @@ from .jobs import (
     requeue_job,
 )
 from .operations import get_operation, list_operations
-from .principals import get_principal_view
+from .principals import get_principal_view, get_principal_views
 from .profile import load_party_for_discord_id
 from .provisioning import (
     add_user_to_group,
@@ -111,6 +111,7 @@ __all__ = [
     "get_job_queue_summary",
     "get_operation",
     "get_principal_view",
+    "get_principal_views",
     "get_student_context_view",
     "get_tutor_context_view",
     "link_discord_account",

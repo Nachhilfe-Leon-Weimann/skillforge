@@ -41,6 +41,7 @@ from app.services.bot import (
     TutorContextNotFoundError,
     delete_command_env,
     get_principal_view,
+    get_principal_views,
     get_student_context_view,
     get_tutor_context_view,
     resolve_command_env,
@@ -102,6 +103,46 @@ async def test_get_principal_view_without_party_has_no_profile(session):
 async def test_get_principal_view_unknown_raises(session):
     with pytest.raises(PrincipalNotFoundError):
         await get_principal_view(session, 999)
+
+
+@pytest.mark.db
+async def test_get_principal_views_resolves_multiple_and_omits_unknown(session):
+    await _seed_rich_principal(session)  # DISCORD_ID: groups ["support"], permissions ["y", "z"]
+    await _add_user(session, 10, MemberRole.TUTOR, "Tutor")  # no groups, no grants, no party
+
+    views = await get_principal_views(session, [DISCORD_ID, 10, 999])
+
+    assert [view.user.discord_id for view in views] == [DISCORD_ID, 10]  # request order, 999 absent
+    rich, plain = views
+    assert rich.group_keys == ["support"]
+    assert rich.permission_keys == ["y", "z"]
+    assert rich.party is not None
+    assert plain.group_keys == []
+    assert plain.permission_keys == []
+    assert plain.party is None
+
+
+@pytest.mark.db
+async def test_get_principal_views_dedups_and_returns_empty_for_all_unknown(session):
+    await _add_user(session, 10, MemberRole.TUTOR, "Tutor")
+
+    assert await get_principal_views(session, [777, 888]) == []
+
+    deduped = await get_principal_views(session, [10, 10])
+    assert [view.user.discord_id for view in deduped] == [10]
+
+
+@pytest.mark.db
+async def test_get_principal_views_matches_single_id_for_rich_principal(session):
+    await _seed_rich_principal(session)
+
+    (batched,) = await get_principal_views(session, [DISCORD_ID])
+    single = await get_principal_view(session, DISCORD_ID)
+
+    assert batched.group_keys == single.group_keys
+    assert batched.permission_keys == single.permission_keys
+    assert batched.party is not None and single.party is not None
+    assert batched.party.id == single.party.id
 
 
 # --- tutor / student contexts ----------------------------------------------
