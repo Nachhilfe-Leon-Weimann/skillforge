@@ -23,25 +23,31 @@ Postgres reachable via `DB__URL`.
 
 ```
 app/
-  main.py            FastAPI entry point (/, /health)
-  api/v1/            endpoints: auth/ (token, clients), bot/ (runtime, jobs, students, tutors,
-                     command_envs, users, authz)
-  services/bot/      business logic: transitions, jobs, principals, provisioning, authz,
-                     command_envs, contexts, profile, reaper, views, errors
+  main.py            FastAPI entry point (root route + app wiring)
+  api/system/        health.py (/health + /health/live, /health/dependencies[/{name}], /health/workers[/{name}])
+  api/v1/            endpoints: auth/ (token, clients), bot/ (runtime, jobs, operations,
+                     command_envs, students, tutors, users, authz)
+  services/bot/      business logic: transitions, operations, jobs, principals, provisioning,
+                     authz, command_envs, contexts, profile, reaper, views, errors
+  services/system/   health aggregation + worker heartbeats (backs /health)
   workers/           reaper.py (lifecycle guardian: job reaper + operation sweeper)
   cli/               deadletters.py (dead-letter list/requeue operator commands)
   core/              auth/ (OAuth2, JWT, scopes), db/ (engine, models/<schema>/), logging/, config.py
 migrations/          Alembic (env.py creates schemas; baseline = explicit DDL)
-tests/               api/, auth/, db/  (DB tests via @pytest.mark.db)
-scripts/             dump_openapi.py, version.py
+tests/               api/, auth/, db/, workers/  (DB tests via @pytest.mark.db)
+scripts/             coverage_summary.py, dump_openapi.py, version.py
 ```
 
-DB schemas: `core`, `geo`, `ext`, `bot`, `auth` - see
+DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
 [`docs/DATABASE_SCHEMA.md`](docs/DATABASE_SCHEMA.md).
 
 ## Conventions
 
 - **Write everything in English** - docs, comments, specs, configs. The codebase is not German.
+- **Reference code by symbol, not line number** - in Markdown docs, link to the file and name the
+  function, class, or constant (e.g. `OPERATION_TTL` in `transitions.py`), never a bare
+  `file.py:<line>` anchor. Line anchors rot on the next edit. `just docs-check` (part of
+  `just check`) fails on any such anchor or dead relative file link in the docs.
 - **`openapi.json` is generated** - never edit it by hand. After API changes, run `just openapi`
   and commit ([ADR 0001](docs/decisions/0001-openapi-as-contract.md)).
 - **Migrations** use the direct DB URL (`DB__MIGRATION_URL`), the app uses the pooled one

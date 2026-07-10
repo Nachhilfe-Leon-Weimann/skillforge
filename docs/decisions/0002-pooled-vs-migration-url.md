@@ -22,8 +22,12 @@ Two connections, split by purpose:
 - **`DB__MIGRATION_URL`** - direct (unpooled) connection, used exclusively by Alembic. Falls back
   to `DB__URL` when unset (local/tests, where no pooler sits in between).
 
-Accompanying: Alembic always uses `NullPool`; the asyncpg prepared-statement cache is disabled
-(`prepared_statement_cache_size=0`) when a pooled connection is detected.
+Accompanying: `prepared_statement_cache_size=0` is set for **every** `asyncpg` connection (app and
+Alembic alike) - asyncpg's statement cache doesn't survive a transaction-mode pooler. Alembic always
+uses `NullPool`; the app engine additionally switches to `NullPool` and pins a constant
+prepared-statement name (`prepared_statement_name_func` returning `""`) when the `DB__URL` host is
+detected as a pooler (host contains `pooler` or `pgbouncer`). Against a direct host it keeps
+SQLAlchemy's normal pool.
 
 See `app/core/db/config.py`, `app/core/db/database.py`, `migrations/env.py`.
 

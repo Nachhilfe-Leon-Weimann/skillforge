@@ -9,7 +9,7 @@ performs the Discord actions.
 HTTP -> app/api/v1        endpoints, schemas, scope checks
         app/services/bot  business logic (transitions, jobs, permissions)
         app/core          auth, db, logging, config
-                          `-> Postgres  (core, geo, ext, bot, auth)
+                          `-> Postgres  (core, geo, ext, bot, auth, system)
 ```
 
 ## Tech stack
@@ -47,7 +47,9 @@ just bootstrap-skillbot       # seed the initial auth state
 just dev                      # start the API on http://localhost:8000
 ```
 
-Health check: `GET /health` (checks DB connectivity). Interactive API docs at `/docs`.
+Health check: `GET /health` aggregates the health of all dependencies and background workers
+(sub-routes: `/health/live`, `/health/dependencies[/{name}]`, `/health/workers[/{name}]`).
+Interactive API docs at `/docs`.
 
 ## Common commands
 

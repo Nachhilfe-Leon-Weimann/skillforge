@@ -28,7 +28,8 @@ stack small. No exactly-once.
 
 - No extra infrastructure; queue, workspaces, and operations share one transaction/DB.
 - Consumers carry the idempotency obligation - the contract is documented explicitly.
-- A worker that dies between `claim` and `complete`/`fail` leaves the job stuck in `CLAIMED`.
-  Actively making it deliverable again (lease reclaim) is the subject of the
-  [lifecycle guardian spec](../specs/lifecycle-guardian.md) - this ADR justifies the queue, the
-  spec makes it self-healing.
+- A worker that dies between `claim` and `complete`/`fail` leaves the job stuck in `CLAIMED`. The
+  lifecycle-guardian reaper (`app/workers/reaper.py`) now reclaims such jobs once their lease
+  (`JOB_LEASE`) expires - requeuing with backoff, or dead-lettering to `FAILED` once attempts are
+  exhausted. This ADR justifies the queue; the [lifecycle guardian spec](../specs/lifecycle-guardian.md)
+  made it self-healing.
