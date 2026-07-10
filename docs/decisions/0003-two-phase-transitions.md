@@ -33,7 +33,8 @@ parallel prepares can't overbook.
 - Forge stays decoupled from the Discord API; a bot crash between `prepare` and `commit` only
   leaves an expiring reservation, not a half-changed state.
 - Concurrency is serialized via DB row locks - no app-level mutexes.
-- Expired `PREPARED` operations need cleanup. Today this is lazy on the next `commit` attempt;
-  actively materializing them to `EXPIRED` is the subject of the
+- Expired `PREPARED` operations need cleanup, which now happens two ways: lazily on the next
+  `commit` attempt, and actively via the lifecycle-guardian reaper worker (`app/workers/reaper.py`),
+  which sweeps expired reservations to `EXPIRED` on `REAPER_INTERVAL` - see the
   [lifecycle guardian spec](../specs/lifecycle-guardian.md).
 - Terminal operation rows are retained and serve as event/sync substrate later (arc 3/4).

@@ -18,14 +18,19 @@ Forge **never touches the Discord API itself** - only SkillBot does.
 ## Layers
 
 ```
-HTTP -> app/api/v1        endpoints, request/response schemas, scope checks
+HTTP -> app/api/system    liveness + health probes (dependencies, workers)
+        app/api/v1        endpoints, request/response schemas, scope checks
         app/services/bot  business logic (transitions, jobs, permissions, views)
+        app/services/system  health aggregation + worker heartbeats
         app/core          cross-cutting: auth, db, logging, config
-                          `-> Postgres (schemas: core/geo/ext/bot/auth)
+                          `-> Postgres (schemas: core/geo/ext/bot/auth/system)
 ```
 
-- **`app/main.py`** - FastAPI entry point. Mounts the v1 router, registers request logging, and
-  exposes `GET /` (welcome) and `GET /health` (checks DB connectivity, `503` on failure).
+- **`app/main.py`** - FastAPI entry point. Mounts the top-level `app.api` router (which aggregates
+  the `system` and `v1` routers), registers request logging, and exposes `GET /` (welcome).
+- **`app/api/system/`** - `health.py`: `GET /health` (aggregate over all dependencies **and**
+  workers; `200` healthy / `503` unhealthy / `500` on error), plus `/health/live`,
+  `/health/dependencies[/{name}]`, and `/health/workers[/{name}]`.
 - **`app/api/v1/`** - `router.py` with prefix `/api/v1` aggregates two areas:
   - `auth/` - `token.py` (OAuth2 token endpoint), `clients.py` (client management).
   - `bot/` - `runtime.py` (read: principals, contexts, command envs), `operations.py` (operation
@@ -38,6 +43,8 @@ HTTP -> app/api/v1        endpoints, request/response schemas, scope checks
   `operations.py` (operation reads), `jobs.py`, `principals.py`, `provisioning.py`, `authz.py`,
   `command_envs.py`, `contexts.py`, `profile.py`, `reaper.py`, `views.py` (immutable view models for
   responses), `errors.py` (service error hierarchy).
+- **`app/services/system/`** - health aggregation (`health_service.py`) and worker liveness
+  (`heartbeat_service.py`), backing the `/health` tree.
 - **`app/core/`** - `auth/` (OAuth2, JWT, scopes, bootstrap), `db/` (async engine, sessions,
   models), `logging/` (structured logging via `skillcore`), `config.py` (settings).
 
@@ -48,10 +55,9 @@ HTTP -> app/api/v1        endpoints, request/response schemas, scope checks
 Discord state changes go through `bot.operation` and are deliberately decoupled: Forge plans and
 reserves, SkillBot executes, Forge confirms.
 
-- **`prepare`** ([`transitions.py:50`](../app/services/bot/transitions.py)) validates, locks the
-  affected rows with `FOR UPDATE` ([`transitions.py:357`](../app/services/bot/transitions.py)),
-  reserves capacity, and writes a `PREPARED` operation with a `plan` and `expires_at`
-  (TTL **10 min**, `OPERATION_TTL`, [`transitions.py:41`](../app/services/bot/transitions.py)).
+- **`prepare`** (the `prepare_*` functions in [`transitions.py`](../app/services/bot/transitions.py))
+  validates, locks the affected rows with `FOR UPDATE` (`.with_for_update()`), reserves capacity,
+  and writes a `PREPARED` operation with a `plan` and `expires_at` (TTL **10 min**, `OPERATION_TTL`).
   Forge hands SkillBot an executable plan in return.
 - **`commit`** persists the Discord results confirmed by the bot and marks the operation
   `COMMITTED`.
@@ -101,7 +107,7 @@ Dead-lettered (`FAILED`) jobs have an operator path: `just dead-jobs` lists them
 
 ## Database
 
-One Postgres DB, five schemas by domain - details in
+One Postgres DB, six schemas by domain - details in
 [`DATABASE_SCHEMA.md`](DATABASE_SCHEMA.md):
 
 | Schema | Contents |
@@ -111,6 +117,7 @@ One Postgres DB, five schemas by domain - details in
 | `ext`  | Links from external system ids (Discord, sevDesk, Clockodo, Microsoft) to a `core.party` |
 | `bot`  | SkillBot operational state: Discord topology, workspaces, permissions, job queue, operations |
 | `auth` | OAuth2 clients, secrets, scopes, audit |
+| `system` | Runtime/operational state: background-worker liveness heartbeats |
 
 - **Async SQLAlchemy 2** over `asyncpg`; models under `app/core/db/models/<schema>/`, one
   `*Base` class per schema with `{"schema": ...}`.

@@ -11,7 +11,7 @@ format-check:
 typecheck:
     uv run ty check
 
-static-checks: lint format-check typecheck openapi-check
+static-checks: lint format-check typecheck openapi-check docs-check
 
 check: static-checks test-without-db
 
@@ -32,6 +32,12 @@ openapi-check: openapi
         printf '\033[1;31mopenapi.json is stale: run `just openapi` and commit.\033[0m\n' >&2
         exit 1
     fi
+
+# --- Docs ---
+
+# Fail on any Markdown line-number anchor into source or dead relative link (drift guard).
+docs-check:
+    uv run python scripts/check_docs.py
 
 # --- FastAPI ---
 

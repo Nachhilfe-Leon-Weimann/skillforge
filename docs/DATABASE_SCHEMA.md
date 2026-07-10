@@ -11,6 +11,7 @@ under `app/core/db/models/` - keep it in sync when models change.
 - `ext` - links from external system identifiers to a `core.party`
 - `bot` - SkillBot operational state (Discord guilds/channels/users, workspaces, permissions, job queue, two-phase operations)
 - `auth` - OAuth2 application clients, secrets, scopes, and the auth audit trail
+- `system` - internal runtime state (background-worker liveness heartbeats)
 
 ## Shared Columns
 
@@ -366,6 +367,8 @@ INDEX (status, expires_at)
 INDEX (guild_id, subject_discord_id, status)
 -- partial: counts outstanding stash reservations per archive category
 INDEX (guild_id, reserved_archive_category_channel_id) WHERE status='prepared' AND reserved_archive_category_channel_id IS NOT NULL  -- ix_operation_reservation
+-- partial UNIQUE: at most one open reservation per (guild, subject, kind); DB backstop making prepare idempotent under concurrency
+UNIQUE INDEX (guild_id, subject_discord_id, kind) WHERE status='prepared'  -- uq_operation_prepared_subject_kind
 
 -- bot.app_command_audit_log  (per-command permission decision + error trail)
 id UUID PRIMARY KEY DEFAULT uuid4
@@ -424,5 +427,23 @@ success BOOLEAN NOT NULL
 detail TEXT NULL
 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 INDEX (created_at), INDEX (principal_type, principal_id, created_at)
+```
+
+## System Schema
+
+Internal runtime state for background workers - not a business domain. Currently just worker
+liveness, consumed by the `/health/workers` endpoints (see the lifecycle guardian in
+`app/workers/reaper.py`).
+
+```sql
+system.worker_cycle_status = ('ok', 'degraded')
+
+-- system.worker_heartbeat  (one row per worker, upserted at the end of every cycle; current state, not history)
+worker_name TEXT PRIMARY KEY
+last_beat_at TIMESTAMPTZ NOT NULL
+expires_at TIMESTAMPTZ NOT NULL           -- beat carries its own freshness window; now() >= expires_at => stale
+last_status worker_cycle_status NOT NULL  -- clean cycle vs. degraded
+detail JSONB NULL                         -- optional per-cycle context (counters, last error)
+created_at/updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 ```
 

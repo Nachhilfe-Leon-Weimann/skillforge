@@ -1,6 +1,6 @@
 # Spec: Lifecycle Guardian (self-healing for jobs & operations)
 
-> Status: Draft | Arc 1 of the platform capability roadmap
+> Status: Implemented | Arc 1 of the platform capability roadmap
 > Prerequisite for Arc 3 (outbox/eventing) and Arc 4 (integration sync), which build on the same job/operation substrate.
 
 ## Capability arcs (roadmap context)
@@ -14,9 +14,9 @@
 
 SkillForge orchestrates SkillBot through a job queue (`bot.job`) and two-phase transitions (`bot.operation`).
 Neither state machine can **clean up after itself** today: if the worker dies between `claim` and
-`complete`/`fail`, the job stays in `CLAIMED` forever ([`jobs.py:64`](../../app/services/bot/jobs.py)); if the bot crashes after
+`complete`/`fail`, the job stays in `CLAIMED` forever (`claim_jobs` in [`jobs.py`](../../app/services/bot/jobs.py)); if the bot crashes after
 `prepare`, the operation stays in `PREPARED` forever - `EXPIRED` is only set lazily on the commit attempt
-([`transitions.py:423`](../../app/services/bot/transitions.py)). Every deploy, OOM, or network drop can thus silently
+(`_load_prepared_operation` in [`transitions.py`](../../app/services/bot/transitions.py)). Every deploy, OOM, or network drop can thus silently
 strand work that nobody sees. With every planned integration (arc 3/4) this risk multiplies.
 
 ## Goals
@@ -75,7 +75,7 @@ strand work that nobody sees. With every planned integration (arc 3/4) this risk
 
 **P0-1 - Job reaper.** A periodic run finds jobs with `status = CLAIMED AND claimed_at < now() - JOB_LEASE` and
 applies the existing `fail_job` reclaim transition.
-- *Technique:* Reuse of the existing logic ([`jobs.py:80`](../../app/services/bot/jobs.py)) - status -> `PENDING`,
+- *Technique:* Reuse of the existing logic (`fail_job` in [`jobs.py`](../../app/services/bot/jobs.py)) - status -> `PENDING`,
   `available_at = now() + RETRY_BACKOFF`, `claimed_at`/`claimed_by` cleared; on exhausted attempts -> `FAILED`,
   `error = "lease expired"`.
 - *Acceptance criteria:*
@@ -94,7 +94,7 @@ applies the existing `fail_job` reclaim transition.
   - [x] Given an operation is `PREPARED` with `expires_at` in the past, when the sweeper runs, then it is
         `EXPIRED`.
   - [x] A `COMMITTED`/`FAILED`/`EXPIRED` operation is not touched by the sweeper.
-  - [x] The lazy path in `commit` ([`transitions.py:423`](../../app/services/bot/transitions.py)) stays correct and
+  - [x] The lazy path in `commit` (`_load_prepared_operation` in [`transitions.py`](../../app/services/bot/transitions.py)) stays correct and
         does not collide with the sweeper (idempotent marking).
 
 **P0-3 - Dedicated worker service.** A new service in `compose.yml` runs reaper + sweeper in a loop
