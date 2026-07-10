@@ -720,6 +720,26 @@
         "title": "DiscordAccountProfile",
         "type": "object"
       },
+      "DiscordIdBatchRequest": {
+        "description": "A bounded batch of discord ids to resolve. De-duplicated at the service boundary.",
+        "properties": {
+          "discord_ids": {
+            "items": {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Discord Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "discord_ids"
+        ],
+        "title": "DiscordIdBatchRequest",
+        "type": "object"
+      },
       "DiscordUserResponse": {
         "properties": {
           "active": {
@@ -1819,6 +1839,31 @@
         "title": "PersonProfile",
         "type": "object"
       },
+      "PrincipalBatch": {
+        "description": "Partial-result envelope: resolved principals plus the requested ids that did not resolve.",
+        "properties": {
+          "found": {
+            "items": {
+              "$ref": "#/components/schemas/BotPrincipal"
+            },
+            "title": "Found",
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Missing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "found",
+          "missing"
+        ],
+        "title": "PrincipalBatch",
+        "type": "object"
+      },
       "RelationProfile": {
         "properties": {
           "counterparty_party_id": {
@@ -1946,6 +1991,30 @@
           "current_parent_channel_id"
         ],
         "title": "StudentContext",
+        "type": "object"
+      },
+      "StudentContextBatch": {
+        "properties": {
+          "found": {
+            "items": {
+              "$ref": "#/components/schemas/StudentContext"
+            },
+            "title": "Found",
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Missing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "found",
+          "missing"
+        ],
+        "title": "StudentContextBatch",
         "type": "object"
       },
       "SystemHealthCheckResponse": {
@@ -2099,6 +2168,30 @@
           "student_channel_capacity"
         ],
         "title": "TutorContext",
+        "type": "object"
+      },
+      "TutorContextBatch": {
+        "properties": {
+          "found": {
+            "items": {
+              "$ref": "#/components/schemas/TutorContext"
+            },
+            "title": "Found",
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Missing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "found",
+          "missing"
+        ],
+        "title": "TutorContextBatch",
         "type": "object"
       },
       "ValidationError": {
@@ -4131,6 +4224,90 @@
         ]
       }
     },
+    "/api/v1/bot/runtime/principals/batch": {
+      "post": {
+        "description": "Resolve many principals in one request. Unresolved ids are returned in `missing`, never 404.",
+        "operationId": "read_principals_batch_api_v1_bot_runtime_principals_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscordIdBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Not enough permissions"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "bot:read"
+            ]
+          }
+        ],
+        "summary": "Read Principals Batch",
+        "tags": [
+          "bot"
+        ]
+      }
+    },
     "/api/v1/bot/runtime/principals/{discord_id}": {
       "get": {
         "operationId": "read_principal_api_v1_bot_runtime_principals__discord_id__get",
@@ -4224,6 +4401,102 @@
           }
         ],
         "summary": "Read Principal",
+        "tags": [
+          "bot"
+        ]
+      }
+    },
+    "/api/v1/bot/runtime/students/{guild_id}/batch": {
+      "post": {
+        "description": "Resolve many student contexts within one guild. Ids without a workspace are returned in `missing`.",
+        "operationId": "read_student_contexts_batch_api_v1_bot_runtime_students__guild_id__batch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "guild_id",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Guild Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscordIdBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentContextBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Not enough permissions"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "bot:read"
+            ]
+          }
+        ],
+        "summary": "Read Student Contexts Batch",
         "tags": [
           "bot"
         ]
@@ -4332,6 +4605,102 @@
           }
         ],
         "summary": "Read Student Context",
+        "tags": [
+          "bot"
+        ]
+      }
+    },
+    "/api/v1/bot/runtime/tutors/{guild_id}/batch": {
+      "post": {
+        "description": "Resolve many tutor contexts within one guild. Ids without a workspace are returned in `missing`.",
+        "operationId": "read_tutor_contexts_batch_api_v1_bot_runtime_tutors__guild_id__batch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "guild_id",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Guild Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscordIdBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutorContextBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Not enough permissions"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "bot:read"
+            ]
+          }
+        ],
+        "summary": "Read Tutor Contexts Batch",
         "tags": [
           "bot"
         ]

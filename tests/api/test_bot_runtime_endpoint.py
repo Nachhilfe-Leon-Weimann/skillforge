@@ -240,6 +240,182 @@ async def test_resolve_command_env_returns_404(monkeypatch):
     assert response.status_code == 404
 
 
+# --- batch lookups ----------------------------------------------------------
+
+
+async def test_read_principals_batch_returns_found_and_missing(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fake_views(session, discord_ids):
+        captured["discord_ids"] = discord_ids
+        return [
+            PrincipalView(
+                user=_discord_user(discord_id=10, role=MemberRole.TUTOR, nick_name="Tutor"),
+                group_keys=[],
+                permission_keys=[],
+                party=None,
+            ),
+            PrincipalView(
+                user=_discord_user(discord_id=20, role=MemberRole.STUDENT, nick_name="Student"),
+                group_keys=[],
+                permission_keys=[],
+                party=None,
+            ),
+        ]
+
+    _patch(monkeypatch, "get_principal_views", fake_views)
+
+    async with _client() as client:
+        response = await client.post(
+            "/api/v1/bot/runtime/principals/batch",
+            json={"discord_ids": [10, 20, 30]},
+            headers=_auth_headers(Scope.BOT_READ),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["discord_id"] for item in body["found"]] == [10, 20]
+    assert body["missing"] == [30]
+    assert captured["discord_ids"] == [10, 20, 30]  # raw list passed through; service de-dups
+
+
+async def test_read_principals_batch_dedups_requested_ids(monkeypatch):
+    async def fake_views(session, discord_ids):
+        return [
+            PrincipalView(
+                user=_discord_user(discord_id=10, role=MemberRole.TUTOR, nick_name="Tutor"),
+                group_keys=[],
+                permission_keys=[],
+                party=None,
+            )
+        ]
+
+    _patch(monkeypatch, "get_principal_views", fake_views)
+
+    async with _client() as client:
+        response = await client.post(
+            "/api/v1/bot/runtime/principals/batch",
+            json={"discord_ids": [10, 10, 20]},
+            headers=_auth_headers(Scope.BOT_READ),
+        )
+
+    body = response.json()
+    assert [item["discord_id"] for item in body["found"]] == [10]
+    assert body["missing"] == [20]  # de-duplicated, request order
+
+
+async def test_read_principals_batch_over_limit_returns_422():
+    async with _client() as client:
+        response = await client.post(
+            "/api/v1/bot/runtime/principals/batch",
+            json={"discord_ids": list(range(101))},
+            headers=_auth_headers(Scope.BOT_READ),
+        )
+    assert response.status_code == 422
+
+
+async def test_read_principals_batch_empty_returns_422():
+    async with _client() as client:
+        response = await client.post(
+            "/api/v1/bot/runtime/principals/batch",
+            json={"discord_ids": []},
+            headers=_auth_headers(Scope.BOT_READ),
+        )
+    assert response.status_code == 422
+
+
+async def test_read_principals_batch_requires_bot_read_scope():
+    async with _client() as client:
+        response = await client.post(
+            "/api/v1/bot/runtime/principals/batch",
+            json={"discord_ids": [10]},
+            headers=_auth_headers(Scope.BOT_WRITE),
+        )
+    assert response.status_code == 403
+
+
+async def test_batch_requires_authentication():
+    async with _client() as client:
+        response = await client.post("/api/v1/bot/runtime/principals/batch", json={"discord_ids": [10]})
+    assert response.status_code == 401
+
+
+async def test_read_tutor_contexts_batch_returns_found_and_missing(monkeypatch):
+    async def fake_views(session, *, guild_id, tutor_discord_ids):
+        return [
+            TutorContextView(
+                workspace=TutorWorkspace(
+                    guild_id=guild_id,
+                    tutor_discord_id=10,
+                    category_channel_id=100,
+                    command_channel_id=101,
+                    student_channel_capacity=49,
+                ),
+                principal=PrincipalView(
+                    user=_discord_user(discord_id=10, role=MemberRole.TUTOR, nick_name="Tutor"),
+                    group_keys=[],
+                    permission_keys=[],
+                    party=None,
+                ),
+            )
+        ]
+
+    _patch(monkeypatch, "get_tutor_context_views", fake_views)
+
+    async with _client() as client:
+        response = await client.post(
+            "/api/v1/bot/runtime/tutors/1/batch",
+            json={"discord_ids": [10, 11]},
+            headers=_auth_headers(Scope.BOT_READ),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["principal"]["discord_id"] for item in body["found"]] == [10]
+    assert body["found"][0]["guild_id"] == 1
+    assert body["missing"] == [11]
+
+
+async def test_read_student_contexts_batch_returns_found_and_missing(monkeypatch):
+    party_id = uuid4()
+
+    async def fake_views(session, *, guild_id, student_discord_ids):
+        return [
+            StudentContextView(
+                workspace=StudentWorkspace(
+                    guild_id=guild_id,
+                    student_discord_id=20,
+                    tutor_discord_id=10,
+                    channel_id=300,
+                    channel_state=StudentChannelState.TUTOR_CATEGORY,
+                    current_parent_channel_id=100,
+                ),
+                principal=PrincipalView(
+                    user=_discord_user(discord_id=20, role=MemberRole.STUDENT, nick_name="Student"),
+                    group_keys=[],
+                    permission_keys=[],
+                    party=None,
+                ),
+                party_id=party_id,
+            )
+        ]
+
+    _patch(monkeypatch, "get_student_context_views", fake_views)
+
+    async with _client() as client:
+        response = await client.post(
+            "/api/v1/bot/runtime/students/1/batch",
+            json={"discord_ids": [20, 21]},
+            headers=_auth_headers(Scope.BOT_READ),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["principal"]["discord_id"] for item in body["found"]] == [20]
+    assert body["found"][0]["party_id"] == str(party_id)
+    assert body["missing"] == [21]
+
+
 # --- helpers ----------------------------------------------------------------
 
 

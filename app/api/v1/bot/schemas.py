@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -212,6 +212,32 @@ class StudentContext(BaseModel):
             channel_state=workspace.channel_state,
             current_parent_channel_id=workspace.current_parent_channel_id,
         )
+
+
+BATCH_LOOKUP_LIMIT = 100
+
+
+class DiscordIdBatchRequest(BaseModel):
+    """A bounded batch of discord ids to resolve. De-duplicated at the service boundary."""
+
+    discord_ids: list[Annotated[int, Field(ge=0)]] = Field(min_length=1, max_length=BATCH_LOOKUP_LIMIT)
+
+
+class PrincipalBatch(BaseModel):
+    """Partial-result envelope: resolved principals plus the requested ids that did not resolve."""
+
+    found: list[BotPrincipal]
+    missing: list[int]
+
+
+class TutorContextBatch(BaseModel):
+    found: list[TutorContext]
+    missing: list[int]
+
+
+class StudentContextBatch(BaseModel):
+    found: list[StudentContext]
+    missing: list[int]
 
 
 class CommandEnvChannelResponse(BaseModel):
