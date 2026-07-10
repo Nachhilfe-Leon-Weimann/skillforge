@@ -1563,7 +1563,8 @@
           "prepared",
           "committed",
           "expired",
-          "failed"
+          "failed",
+          "cancelled"
         ],
         "title": "OperationStatus",
         "type": "string"

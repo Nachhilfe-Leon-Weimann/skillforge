@@ -121,3 +121,23 @@ def test_off_boarding_operation_kinds_migration_is_reversible(migration_db_url: 
 
     _alembic(migration_db_url, "upgrade", "head")
     assert asyncio.run(_enum_labels(migration_db_url, "bot", "operation_kind")) == _OPERATION_KINDS_WITH_OFF_BOARDING
+
+
+_OPERATION_STATUSES_WITH_CANCELLED = ["prepared", "committed", "expired", "failed", "cancelled"]
+_OPERATION_STATUSES_WITHOUT_CANCELLED = _OPERATION_STATUSES_WITH_CANCELLED[:4]
+
+
+def test_cancelled_operation_status_migration_is_reversible(migration_db_url: str) -> None:
+    # `alembic check` is blind to enum-label drift, so assert the actual labels the migration
+    # path produces: forward adds `cancelled`, downgrade recreates the type without it
+    # (exercising the enum-recreate recast under a server_default), re-upgrade adds it back.
+    _alembic(migration_db_url, "upgrade", "head")
+    assert asyncio.run(_enum_labels(migration_db_url, "bot", "operation_status")) == _OPERATION_STATUSES_WITH_CANCELLED
+
+    _alembic(migration_db_url, "downgrade", "0008_idempotent_prepare")
+    assert (
+        asyncio.run(_enum_labels(migration_db_url, "bot", "operation_status")) == _OPERATION_STATUSES_WITHOUT_CANCELLED
+    )
+
+    _alembic(migration_db_url, "upgrade", "head")
+    assert asyncio.run(_enum_labels(migration_db_url, "bot", "operation_status")) == _OPERATION_STATUSES_WITH_CANCELLED

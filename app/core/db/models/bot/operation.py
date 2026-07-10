@@ -25,6 +25,7 @@ class OperationStatus(StrEnum):
     COMMITTED = "committed"
     EXPIRED = "expired"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class Operation(TimestampMixin, BotBase):
@@ -69,6 +70,7 @@ class Operation(TimestampMixin, BotBase):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 

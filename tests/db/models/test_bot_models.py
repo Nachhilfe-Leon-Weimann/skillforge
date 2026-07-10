@@ -44,7 +44,7 @@ def test_bot_model_contracts():
         "student_deactivate",
         "tutor_deactivate",
     ]
-    assert [item.value for item in OperationStatus] == ["prepared", "committed", "expired", "failed"]
+    assert [item.value for item in OperationStatus] == ["prepared", "committed", "expired", "failed", "cancelled"]
 
 
 @pytest.mark.db
