@@ -1,6 +1,6 @@
 # Spec: Batch principal & context lookups
 
-> Status: Draft
+> Status: Implemented
 > Tracking: [#52](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/52)
 > Performance slice — collapses N single-id round-trips into one batched call.
 
@@ -24,10 +24,10 @@ optimisation, not a correctness or functional gap.
 
 ## Acceptance criteria (issue #52)
 
-- [ ] Batch endpoint accepting multiple discord ids, returning the resolved principals (plus tutor &
+- [x] Batch endpoint accepting multiple discord ids, returning the resolved principals (plus tutor &
   student contexts — the title's "context lookups").
-- [ ] Bounded batch size.
-- [ ] Read scope (`BotRead`) enforced.
+- [x] Bounded batch size.
+- [x] Read scope (`BotRead`) enforced.
 
 ## API
 
