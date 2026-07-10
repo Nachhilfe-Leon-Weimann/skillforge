@@ -1043,26 +1043,29 @@
         "type": "object"
       },
       "JobKindCounts": {
-        "description": "Per-``kind`` job counts, zero-filled across every :class:`JobStatus`.",
+        "description": "Queue funnel for a single job kind: depth (``total``/``open``) and the status breakdown.",
         "properties": {
-          "counts": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "propertyNames": {
-              "$ref": "#/components/schemas/JobStatus"
-            },
-            "title": "Counts",
-            "type": "object"
-          },
           "kind": {
             "title": "Kind",
             "type": "string"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "statuses": {
+            "$ref": "#/components/schemas/JobStatusCounts"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
           "kind",
-          "counts"
+          "total",
+          "open",
+          "statuses"
         ],
         "title": "JobKindCounts",
         "type": "object"
@@ -1215,7 +1218,7 @@
         "type": "object"
       },
       "JobQueueSummary": {
-        "description": "Funnel over the job queue: overall counts by status plus a per-kind breakdown.",
+        "description": "Queue funnel: global depth (``total``/``open``) and status counts, plus a per-kind breakdown.\n\n``open`` is outstanding work -- ``pending`` (including jobs delayed by retry backoff) plus\n``claimed``. Terminal counts are historical totals (rows are retained). ``by_kind`` is sorted by\nkind and scoped to whatever ``kind`` filter the summary was fetched with.",
         "properties": {
           "by_kind": {
             "items": {
@@ -1224,15 +1227,12 @@
             "title": "By Kind",
             "type": "array"
           },
-          "by_status": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "propertyNames": {
-              "$ref": "#/components/schemas/JobStatus"
-            },
-            "title": "By Status",
-            "type": "object"
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "statuses": {
+            "$ref": "#/components/schemas/JobStatusCounts"
           },
           "total": {
             "title": "Total",
@@ -1241,7 +1241,8 @@
         },
         "required": [
           "total",
-          "by_status",
+          "open",
+          "statuses",
           "by_kind"
         ],
         "title": "JobQueueSummary",
@@ -1342,6 +1343,35 @@
         ],
         "title": "JobStatus",
         "type": "string"
+      },
+      "JobStatusCounts": {
+        "description": "Job counts for every status in the queue funnel, zero-filled (no silent gaps).",
+        "properties": {
+          "claimed": {
+            "title": "Claimed",
+            "type": "integer"
+          },
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending",
+          "claimed",
+          "completed",
+          "failed"
+        ],
+        "title": "JobStatusCounts",
+        "type": "object"
       },
       "MemberRole": {
         "enum": [
@@ -3107,8 +3137,27 @@
     },
     "/api/v1/bot/jobs/summary": {
       "get": {
-        "description": "Queue funnel: overall counts by status plus a per-kind breakdown, for operator observability.",
+        "description": "Queue funnel (depth + status counts, globally and per kind) for operator observability.\n\nPassing `kind` scopes the whole summary -- top-level totals and the `by_kind` list -- to that\nexact job kind.",
         "operationId": "job_queue_summary_endpoint_api_v1_bot_jobs_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3154,6 +3203,16 @@
               }
             },
             "description": "Missing required scope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [

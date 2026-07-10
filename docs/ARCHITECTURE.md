@@ -28,15 +28,16 @@ HTTP -> app/api/v1        endpoints, request/response schemas, scope checks
   exposes `GET /` (welcome) and `GET /health` (checks DB connectivity, `503` on failure).
 - **`app/api/v1/`** - `router.py` with prefix `/api/v1` aggregates two areas:
   - `auth/` - `token.py` (OAuth2 token endpoint), `clients.py` (client management).
-  - `bot/` - `runtime.py` (read: principals, contexts, command envs), `jobs.py`
-    (claim/complete/fail), `students.py` & `tutors.py` (state transitions), `command_envs.py`,
+  - `bot/` - `runtime.py` (read: principals, contexts, command envs), `operations.py` (operation
+    reads: by id + filtered list), `jobs.py` (queue reads - by id, filtered list, queue summary -
+    plus claim/complete/fail), `students.py` & `tutors.py` (state transitions), `command_envs.py`,
     `users.py` (provisioning: register users, link/deactivate accounts, group membership),
     `authz.py` (delegated authorization check). `_transitions.py` maps service errors to HTTP
     codes, `dependencies.py` wires the scope gates.
 - **`app/services/bot/`** - the actual logic, free of HTTP concerns: `transitions.py`,
-  `jobs.py`, `principals.py`, `provisioning.py`, `authz.py`, `command_envs.py`, `contexts.py`,
-  `profile.py`, `reaper.py`, `views.py` (immutable view models for responses), `errors.py`
-  (service error hierarchy).
+  `operations.py` (operation reads), `jobs.py`, `principals.py`, `provisioning.py`, `authz.py`,
+  `command_envs.py`, `contexts.py`, `profile.py`, `reaper.py`, `views.py` (immutable view models for
+  responses), `errors.py` (service error hierarchy).
 - **`app/core/`** - `auth/` (OAuth2, JWT, scopes, bootstrap), `db/` (async engine, sessions,
   models), `logging/` (structured logging via `skillcore`), `config.py` (settings).
 
@@ -143,7 +144,8 @@ The platform grows along four arcs that build on each other (details in the
 [lifecycle guardian spec](specs/lifecycle-guardian.md)):
 
 1. **Guardian** - self-healing for jobs & operations *(shipped)*.
-2. **Ops plane** - read/observability layer (queue depth, funnel views, audit search) *(next)*.
+2. **Ops plane** - read/observability layer (queue depth, funnel views, audit search)
+   *(first slice shipped: jobs & operations read plane; audit search next)*.
 3. **Eventing** - outbox + webhooks, idempotency keys on the service API.
 4. **Integration sync** - generic job/worker pattern for Clockodo/sevDesk/Microsoft.
 

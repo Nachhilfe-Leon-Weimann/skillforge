@@ -176,25 +176,27 @@ async def list_jobs(
     return jobs, total
 
 
-async def get_job_queue_summary(session: AsyncSession) -> JobQueueSummaryView:
+async def get_job_queue_summary(session: AsyncSession, *, kind: str | None = None) -> JobQueueSummaryView:
     """Summarize the job queue as a funnel: overall counts by status plus a per-kind breakdown.
 
     Both the overall ``by_status`` map and each kind's counts are zero-filled across every
     :class:`JobStatus`, so a status that no job currently occupies still reports ``0`` (no silent
-    gaps). ``by_kind`` is sorted by kind. One ``GROUP BY (kind, status)`` query, aggregated in Python.
+    gaps). ``by_kind`` is sorted by kind. Passing ``kind`` scopes the whole funnel to that exact job
+    kind. One ``GROUP BY (kind, status)`` query, aggregated in Python.
     """
-    rows = (await session.execute(select(Job.kind, Job.status, func.count()).group_by(Job.kind, Job.status))).all()
+    statement = select(Job.kind, Job.status, func.count()).group_by(Job.kind, Job.status)
+    if kind is not None:
+        statement = statement.where(Job.kind == kind)
+    rows = (await session.execute(statement)).all()
 
     by_status = {status: 0 for status in JobStatus}
     per_kind: dict[str, dict[JobStatus, int]] = {}
-    total = 0
-    for kind, status, count in rows:
-        total += count
+    for row_kind, status, count in rows:
         by_status[status] += count
-        per_kind.setdefault(kind, {member: 0 for member in JobStatus})[status] += count
+        per_kind.setdefault(row_kind, {member: 0 for member in JobStatus})[status] += count
 
-    by_kind = [JobKindCountsView(kind=kind, counts=counts) for kind, counts in sorted(per_kind.items())]
-    return JobQueueSummaryView(total=total, by_status=by_status, by_kind=by_kind)
+    by_kind = [JobKindCountsView(kind=row_kind, counts=counts) for row_kind, counts in sorted(per_kind.items())]
+    return JobQueueSummaryView(by_status=by_status, by_kind=by_kind)
 
 
 async def _get_claimed_job(session: AsyncSession, job_id: uuid.UUID) -> Job:

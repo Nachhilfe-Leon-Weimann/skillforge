@@ -39,8 +39,11 @@ class JobKindCountsView:
 
 @dataclass(frozen=True)
 class JobQueueSummaryView:
-    """Funnel over the job queue: overall counts by status plus a per-kind breakdown."""
+    """Funnel over the job queue: overall counts by status plus a per-kind breakdown.
 
-    total: int
+    ``by_status`` and each kind's counts are zero-filled across every :class:`JobStatus`; derived
+    figures (``total``, ``open = pending + claimed``) are computed at the API boundary.
+    """
+
     by_status: dict[JobStatus, int]
     by_kind: list[JobKindCountsView]

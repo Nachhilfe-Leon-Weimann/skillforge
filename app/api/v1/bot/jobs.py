@@ -130,9 +130,14 @@ async def list_jobs_endpoint(
 async def job_queue_summary_endpoint(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     _: BotRead,
+    kind: Annotated[str | None, Query(min_length=1)] = None,
 ) -> JobQueueSummary:
-    """Queue funnel: overall counts by status plus a per-kind breakdown, for operator observability."""
-    summary = await get_job_queue_summary(session)
+    """Queue funnel (depth + status counts, globally and per kind) for operator observability.
+
+    Passing `kind` scopes the whole summary -- top-level totals and the `by_kind` list -- to that
+    exact job kind.
+    """
+    summary = await get_job_queue_summary(session, kind=kind)
     return JobQueueSummary.from_view(summary)
 
 

@@ -226,11 +226,10 @@ async def test_list_jobs_requires_bot_read_scope():
 
 async def test_job_summary_returns_funnel(monkeypatch):
     view = JobQueueSummaryView(
-        total=4,
         by_status={
             JobStatus.PENDING: 2,
-            JobStatus.CLAIMED: 0,
-            JobStatus.COMPLETED: 1,
+            JobStatus.CLAIMED: 1,
+            JobStatus.COMPLETED: 3,
             JobStatus.FAILED: 1,
         },
         by_kind=[
@@ -238,25 +237,64 @@ async def test_job_summary_returns_funnel(monkeypatch):
                 kind="activate_tutor",
                 counts={
                     JobStatus.PENDING: 2,
-                    JobStatus.CLAIMED: 0,
-                    JobStatus.COMPLETED: 1,
+                    JobStatus.CLAIMED: 1,
+                    JobStatus.COMPLETED: 0,
                     JobStatus.FAILED: 0,
                 },
             )
         ],
     )
-    _patch(monkeypatch, "get_job_queue_summary", _returns(view))
+    captured: dict[str, object] = {}
+
+    async def fake_summary(session, **kwargs):
+        captured.update(kwargs)
+        return view
+
+    _patch(monkeypatch, "get_job_queue_summary", fake_summary)
 
     async with _client() as client:
         response = await client.get("/api/v1/bot/jobs/summary", headers=_auth_headers(Scope.BOT_READ))
 
     assert response.status_code == 200
     body = response.json()
-    assert body["total"] == 4
-    assert body["by_status"] == {"pending": 2, "claimed": 0, "completed": 1, "failed": 1}
+    assert body["total"] == 7
+    assert body["open"] == 3  # pending + claimed
+    assert body["statuses"] == {"pending": 2, "claimed": 1, "completed": 3, "failed": 1}
     assert body["by_kind"] == [
-        {"kind": "activate_tutor", "counts": {"pending": 2, "claimed": 0, "completed": 1, "failed": 0}}
+        {
+            "kind": "activate_tutor",
+            "total": 3,
+            "open": 3,
+            "statuses": {"pending": 2, "claimed": 1, "completed": 0, "failed": 0},
+        }
     ]
+    assert captured == {"kind": None}
+
+
+async def test_job_summary_forwards_kind(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fake_summary(session, **kwargs):
+        captured.update(kwargs)
+        return JobQueueSummaryView(
+            by_status={
+                JobStatus.PENDING: 0,
+                JobStatus.CLAIMED: 0,
+                JobStatus.COMPLETED: 0,
+                JobStatus.FAILED: 0,
+            },
+            by_kind=[],
+        )
+
+    _patch(monkeypatch, "get_job_queue_summary", fake_summary)
+
+    async with _client() as client:
+        response = await client.get(
+            "/api/v1/bot/jobs/summary", params={"kind": "activate_tutor"}, headers=_auth_headers(Scope.BOT_READ)
+        )
+
+    assert response.status_code == 200
+    assert captured == {"kind": "activate_tutor"}
 
 
 async def test_job_summary_requires_bot_read_scope():

@@ -55,24 +55,33 @@ The heavy `plan` JSONB is returned only on the by-id detail, keeping list pages 
 
 | Method & path | Response | Notes |
 |---|---|---|
-| `GET /jobs/summary` | `JobQueueSummary` | Declared **before** `/{job_id}` to avoid path capture |
+| `GET /jobs/summary` | `JobQueueSummary` | Optional `kind` filter; declared **before** `/{job_id}` to avoid path capture |
 | `GET /jobs/{job_id}` | `JobDetail` (full, **incl. `payload`**) | 404 → `JobNotFoundError` |
 | `GET /jobs` | `JobPage` of `JobListItem` (**no `payload`**) | Filters (optional, AND): `status`, `kind` |
 
-`JobQueueSummary` is a funnel with a per-kind breakdown:
+`JobQueueSummary` is a queue-depth funnel with a per-kind breakdown:
 
 ```json
 {
   "total": 42,
-  "by_status": { "pending": 5, "claimed": 2, "completed": 33, "failed": 2 },
+  "open": 7,
+  "statuses": { "pending": 5, "claimed": 2, "completed": 33, "failed": 2 },
   "by_kind": [
-    { "kind": "student_activate", "counts": { "pending": 3, "claimed": 1, "completed": 20, "failed": 1 } }
+    {
+      "kind": "student_activate",
+      "total": 25,
+      "open": 4,
+      "statuses": { "pending": 3, "claimed": 1, "completed": 20, "failed": 1 }
+    }
   ]
 }
 ```
 
-`by_status` and each `by_kind[].counts` are zero-filled across all four `JobStatus` values; `by_kind`
-is sorted by kind. It is a single `GROUP BY (status, kind)` query, aggregated in Python.
+`open` is outstanding work — `pending` (including jobs delayed by retry backoff) plus `claimed`;
+terminal counts are historical totals (rows are retained). `statuses` is zero-filled across all four
+`JobStatus` values (a typed object, not an open map, so consumer codegen gets named fields); `by_kind`
+is sorted by kind. `GET /jobs/summary?kind=<k>` scopes the top-level totals **and** the `by_kind`
+list to that exact kind. It is a single `GROUP BY (kind, status)` query, aggregated in Python.
 
 ## Decisions
 
@@ -81,7 +90,7 @@ is sorted by kind. It is a single `GROUP BY (status, kind)` query, aggregated in
 | Scope | Reuse `BotRead` | Already defined, seeded, and granted to `skillbot`; read plane needs no new trust. |
 | Pagination | Offset/limit + `{items, total, limit, offset}` envelope | No existing convention; simplest for current sizes. Cursor deferred (non-goal). |
 | List vs detail | List items omit heavy fields (`plan` / `payload`); detail-by-id returns them | Keeps pages light and paginatable; idiomatic list/detail split. |
-| Summary shape | Overall funnel **plus** per-kind funnel | Serves queue-depth, funnel, and dead-letter-rate-per-kind signals in one query. |
+| Summary shape | Global depth (`total`/`open`) + typed `statuses` object + per-kind funnel, optional `kind` filter | Directly models queue depth; a typed `statuses` object gives consumer codegen named fields over an opaque map; one query serves the funnel and dead-letter-rate-per-kind signals. |
 | Read module layout | Operation reads in a new `services/bot/operations.py`; job reads extend `services/bot/jobs.py` | Mirrors the read/write split (`contexts.py`/`principals.py` read vs `transitions.py` write); `jobs.py` already holds both job reads and writes. |
 | Errors | Reuse `JobNotFoundError` / `OperationNotFoundError` → 404 | Both already exist and are exported. |
 | Migration | None | Purely additive endpoints over existing tables/indexes. |

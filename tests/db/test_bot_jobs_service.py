@@ -265,7 +265,7 @@ async def test_get_job_queue_summary_aggregates_by_status_and_kind(session):
 
     summary = await get_job_queue_summary(session)
 
-    assert summary.total == 4
+    assert sum(summary.by_status.values()) == 4
     assert summary.by_status == {
         JobStatus.PENDING: 2,
         JobStatus.CLAIMED: 0,
@@ -290,10 +290,29 @@ async def test_get_job_queue_summary_aggregates_by_status_and_kind(session):
 
 
 @pytest.mark.db
+async def test_get_job_queue_summary_filters_by_kind(session):
+    session.add_all([
+        _job(kind="a", status=JobStatus.PENDING),
+        _job(kind="a", status=JobStatus.COMPLETED),
+        _job(kind="b", status=JobStatus.FAILED),
+    ])
+    await session.flush()
+
+    summary = await get_job_queue_summary(session, kind="a")
+
+    assert summary.by_status == {
+        JobStatus.PENDING: 1,
+        JobStatus.CLAIMED: 0,
+        JobStatus.COMPLETED: 1,
+        JobStatus.FAILED: 0,
+    }
+    assert [counts.kind for counts in summary.by_kind] == ["a"]
+
+
+@pytest.mark.db
 async def test_get_job_queue_summary_empty_is_zero_filled(session):
     summary = await get_job_queue_summary(session)
 
-    assert summary.total == 0
     assert summary.by_status == {
         JobStatus.PENDING: 0,
         JobStatus.CLAIMED: 0,

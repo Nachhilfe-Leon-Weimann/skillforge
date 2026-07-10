@@ -410,26 +410,62 @@ class JobPage(BaseModel):
     offset: int
 
 
+class JobStatusCounts(BaseModel):
+    """Job counts for every status in the queue funnel, zero-filled (no silent gaps)."""
+
+    pending: int
+    claimed: int
+    completed: int
+    failed: int
+
+    @classmethod
+    def from_counts(cls, counts: dict[JobStatus, int]) -> JobStatusCounts:
+        return cls(
+            pending=counts[JobStatus.PENDING],
+            claimed=counts[JobStatus.CLAIMED],
+            completed=counts[JobStatus.COMPLETED],
+            failed=counts[JobStatus.FAILED],
+        )
+
+
 class JobKindCounts(BaseModel):
-    """Per-``kind`` job counts, zero-filled across every :class:`JobStatus`."""
+    """Queue funnel for a single job kind: depth (``total``/``open``) and the status breakdown."""
 
     kind: str
-    counts: dict[JobStatus, int]
+    total: int
+    open: int
+    statuses: JobStatusCounts
+
+    @classmethod
+    def from_counts(cls, kind: str, counts: dict[JobStatus, int]) -> JobKindCounts:
+        return cls(
+            kind=kind,
+            total=sum(counts.values()),
+            open=counts[JobStatus.PENDING] + counts[JobStatus.CLAIMED],
+            statuses=JobStatusCounts.from_counts(counts),
+        )
 
 
 class JobQueueSummary(BaseModel):
-    """Funnel over the job queue: overall counts by status plus a per-kind breakdown."""
+    """Queue funnel: global depth (``total``/``open``) and status counts, plus a per-kind breakdown.
+
+    ``open`` is outstanding work -- ``pending`` (including jobs delayed by retry backoff) plus
+    ``claimed``. Terminal counts are historical totals (rows are retained). ``by_kind`` is sorted by
+    kind and scoped to whatever ``kind`` filter the summary was fetched with.
+    """
 
     total: int
-    by_status: dict[JobStatus, int]
+    open: int
+    statuses: JobStatusCounts
     by_kind: list[JobKindCounts]
 
     @classmethod
     def from_view(cls, view: JobQueueSummaryView) -> JobQueueSummary:
         return cls(
-            total=view.total,
-            by_status=view.by_status,
-            by_kind=[JobKindCounts(kind=item.kind, counts=item.counts) for item in view.by_kind],
+            total=sum(view.by_status.values()),
+            open=view.by_status[JobStatus.PENDING] + view.by_status[JobStatus.CLAIMED],
+            statuses=JobStatusCounts.from_counts(view.by_status),
+            by_kind=[JobKindCounts.from_counts(item.kind, item.counts) for item in view.by_kind],
         )
 
 
