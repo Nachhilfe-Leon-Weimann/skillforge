@@ -45,6 +45,7 @@ from .provisioning import (
 )
 from .reaper import reap_expired_jobs, sweep_expired_operations
 from .transitions import (
+    cancel_operation,
     commit_student_activation,
     commit_student_deactivation,
     commit_student_pop,
@@ -92,6 +93,7 @@ __all__ = [
     "TutorContextNotFoundError",
     "TutorContextView",
     "add_user_to_group",
+    "cancel_operation",
     "check_authorization",
     "claim_jobs",
     "commit_student_activation",

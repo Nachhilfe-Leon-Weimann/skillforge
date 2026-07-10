@@ -696,3 +696,39 @@ async def _mark_committed(session: AsyncSession, operation: Operation) -> Operat
     operation.committed_at = datetime.now(UTC)
     await session.flush()
     return operation
+
+
+async def _mark_cancelled(session: AsyncSession, operation: Operation) -> Operation:
+    operation.status = OperationStatus.CANCELLED
+    operation.cancelled_at = datetime.now(UTC)
+    await session.flush()
+    return operation
+
+
+async def cancel_operation(session: AsyncSession, *, operation_id: uuid.UUID) -> Operation:
+    """Explicitly release a PREPARED reservation without committing it (e.g. the user aborted).
+
+    Kind-agnostic: an operation is identified purely by id. Flips PREPARED -> CANCELLED, which
+    frees the capacity slot (capacity counts only non-expired PREPARED rows) and the
+    ``uq_operation_prepared_subject_kind`` reservation, so a fresh ``prepare`` for the same
+    ``(guild, subject, kind)`` can proceed at once.
+
+    Idempotent on an already-CANCELLED operation (returns it unchanged). Otherwise mirrors
+    ``commit``'s precondition handling: a PREPARED row past its TTL is lazily materialized to
+    EXPIRED, and any other non-PREPARED state (COMMITTED / EXPIRED / FAILED) is rejected.
+
+    Raises :class:`OperationNotFoundError` (unknown id) or :class:`OperationNotPendingError`
+    (not cancellable).
+    """
+    operation = await session.get(Operation, operation_id)
+    if operation is None:
+        raise OperationNotFoundError("Operation not found")
+    if operation.status is OperationStatus.CANCELLED:
+        return operation
+    if operation.status is not OperationStatus.PREPARED:
+        raise OperationNotPendingError("Operation is not in a prepared state")
+    if operation.expires_at <= datetime.now(UTC):
+        operation.status = OperationStatus.EXPIRED
+        await session.flush()
+        raise OperationNotPendingError("Operation has expired")
+    return await _mark_cancelled(session, operation)

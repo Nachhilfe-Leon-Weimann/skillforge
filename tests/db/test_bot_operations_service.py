@@ -6,6 +6,8 @@ import pytest
 from app.core.db.models import Operation, OperationKind, OperationStatus
 from app.services.bot import (
     OperationNotFoundError,
+    OperationNotPendingError,
+    cancel_operation,
     get_operation,
     list_operations,
 )
@@ -211,3 +213,77 @@ async def test_list_operations_offset_beyond_total_is_empty(session):
 
     assert total == 2
     assert items == []
+
+
+# --- cancel -----------------------------------------------------------------
+
+
+@pytest.mark.db
+async def test_cancel_operation_marks_cancelled(session):
+    op = await _add(session, _operation(subject_discord_id=100))
+
+    cancelled = await cancel_operation(session, operation_id=op.operation_id)
+
+    assert cancelled.operation_id == op.operation_id
+    assert cancelled.status is OperationStatus.CANCELLED
+    assert cancelled.cancelled_at is not None
+
+
+@pytest.mark.db
+async def test_cancel_operation_frees_reservation_slot(session):
+    # The partial unique index uq_operation_prepared_subject_kind allows only one open PREPARED
+    # row per (guild, subject, kind). Cancelling releases it, so a fresh prepare can reserve again.
+    first = await _add(session, _operation(subject_discord_id=100, kind=OperationKind.STUDENT_STASH))
+    await cancel_operation(session, operation_id=first.operation_id)
+
+    # A second PREPARED row for the same natural key must now insert without a unique violation.
+    second = await _add(session, _operation(subject_discord_id=100, kind=OperationKind.STUDENT_STASH))
+
+    assert second.status is OperationStatus.PREPARED
+    assert second.operation_id != first.operation_id
+
+
+@pytest.mark.db
+async def test_cancel_operation_is_idempotent_on_cancelled(session):
+    op = await _add(session, _operation(subject_discord_id=100, status=OperationStatus.CANCELLED))
+
+    result = await cancel_operation(session, operation_id=op.operation_id)
+
+    assert result.status is OperationStatus.CANCELLED
+
+
+@pytest.mark.db
+async def test_cancel_operation_rejects_committed(session):
+    op = await _add(session, _operation(subject_discord_id=100, status=OperationStatus.COMMITTED))
+
+    with pytest.raises(OperationNotPendingError):
+        await cancel_operation(session, operation_id=op.operation_id)
+
+
+@pytest.mark.db
+async def test_cancel_operation_rejects_expired(session):
+    op = await _add(session, _operation(subject_discord_id=100, status=OperationStatus.EXPIRED))
+
+    with pytest.raises(OperationNotPendingError):
+        await cancel_operation(session, operation_id=op.operation_id)
+
+
+@pytest.mark.db
+async def test_cancel_operation_expires_stale_prepared(session):
+    # PREPARED but past its TTL: cancel materializes it to EXPIRED (never CANCELLED) and rejects,
+    # mirroring commit's lazy-expiry precondition.
+    past = datetime.now(UTC) - timedelta(minutes=1)
+    op = await _add(session, _operation(subject_discord_id=100, expires_at=past))
+
+    with pytest.raises(OperationNotPendingError):
+        await cancel_operation(session, operation_id=op.operation_id)
+
+    await session.refresh(op)
+    assert op.status is OperationStatus.EXPIRED
+    assert op.cancelled_at is None
+
+
+@pytest.mark.db
+async def test_cancel_operation_unknown_raises(session):
+    with pytest.raises(OperationNotFoundError):
+        await cancel_operation(session, operation_id=uuid.uuid4())
