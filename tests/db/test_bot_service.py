@@ -260,6 +260,45 @@ async def test_get_student_context_views_batch_includes_party_id(session):
     assert by_id[21].party_id is None  # student 21 has no linked party
 
 
+@pytest.mark.db
+async def test_get_tutor_context_views_scope_to_requested_guild(session):
+    # Same tutor id, workspace only in guild 2: a guild-1 batch must not leak it (tenant isolation).
+    await _add_guild(session, 1)
+    await _add_guild(session, 2)
+    await _add_user(session, 10, MemberRole.TUTOR, "Tutor")
+    await _add_channel(session, 2, 200, DiscordChannelType.CATEGORY)
+    await _add_channel(session, 2, 201, DiscordChannelType.TEXT, parent_id=200)
+    session.add(TutorWorkspace(guild_id=2, tutor_discord_id=10, category_channel_id=200, command_channel_id=201))
+    await session.flush()
+
+    assert await get_tutor_context_views(session, guild_id=1, tutor_discord_ids=[10]) == []
+
+    scoped = await get_tutor_context_views(session, guild_id=2, tutor_discord_ids=[10])
+    assert [view.workspace.guild_id for view in scoped] == [2]
+
+
+@pytest.mark.db
+async def test_get_student_context_views_scope_to_requested_guild(session):
+    # Same student id, workspace only in guild 2: a guild-1 batch must not leak it (tenant isolation).
+    await _add_guild(session, 1)
+    await _add_guild(session, 2)
+    await _add_user(session, 10, MemberRole.TUTOR, "Tutor")
+    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    await _add_channel(session, 2, 200, DiscordChannelType.CATEGORY)
+    await _add_channel(session, 2, 300, DiscordChannelType.TEXT, parent_id=200)
+    session.add(
+        StudentWorkspace(
+            guild_id=2, student_discord_id=20, tutor_discord_id=10, channel_id=300, current_parent_channel_id=200
+        )
+    )
+    await session.flush()
+
+    assert await get_student_context_views(session, guild_id=1, student_discord_ids=[20]) == []
+
+    scoped = await get_student_context_views(session, guild_id=2, student_discord_ids=[20])
+    assert [view.workspace.guild_id for view in scoped] == [2]
+
+
 # --- command env resolve ----------------------------------------------------
 
 
