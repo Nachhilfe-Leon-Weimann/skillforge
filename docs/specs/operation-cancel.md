@@ -1,6 +1,6 @@
 # Spec: Cancel a prepared operation
 
-> Status: Accepted (not yet implemented)
+> Status: Implemented
 > Tracking: [#50](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/50)
 > Write counterpart to [`ops-read-plane.md`](ops-read-plane.md); continues **Arc 2 (ops plane)**
 > from [`lifecycle-guardian.md`](lifecycle-guardian.md).
@@ -32,12 +32,12 @@ immediately -- and is semantically distinct from a timeout.
 
 ## Acceptance criteria
 
-- [ ] `POST /api/v1/bot/operations/{operation_id}/cancel` moves a `PREPARED` operation to terminal
+- [x] `POST /api/v1/bot/operations/{operation_id}/cancel` moves a `PREPARED` operation to terminal
       `CANCELLED`.
-- [ ] Frees the capacity slot and the reservation immediately (a subsequent `prepare` for the same
+- [x] Frees the capacity slot and the reservation immediately (a subsequent `prepare` for the same
       natural key succeeds).
-- [ ] Idempotent on an already-`CANCELLED` operation; safe (clean `409`) on any other terminal state.
-- [ ] Only `PREPARED` operations are actively cancellable.
+- [x] Idempotent on an already-`CANCELLED` operation; safe (clean `409`) on any other terminal state.
+- [x] Only `PREPARED` operations are actively cancellable.
 
 ## API
 
