@@ -269,6 +269,14 @@ async def test_cancel_operation_rejects_expired(session):
 
 
 @pytest.mark.db
+async def test_cancel_operation_rejects_failed(session):
+    op = await _add(session, _operation(subject_discord_id=100, status=OperationStatus.FAILED))
+
+    with pytest.raises(OperationNotPendingError):
+        await cancel_operation(session, operation_id=op.operation_id)
+
+
+@pytest.mark.db
 async def test_cancel_operation_expires_stale_prepared(session):
     # PREPARED but past its TTL: cancel materializes it to EXPIRED (never CANCELLED) and rejects,
     # mirroring commit's lazy-expiry precondition.

@@ -15,13 +15,11 @@ from app.services.bot import (
     list_operations,
 )
 
-from ._transitions import CANCEL_RESPONSES, transition_http_exception
+from ._transitions import CANCEL_RESPONSES, OPERATION_NOT_FOUND, transition_http_exception
 from .dependencies import BotRead, BotWrite
 from .schemas import OperationCancelResponse, OperationPage, OperationResponse, OperationSummary
 
 router = APIRouter(prefix="/operations")
-
-OPERATION_NOT_FOUND = "Operation not found"
 
 
 @router.get("", response_model=OperationPage)

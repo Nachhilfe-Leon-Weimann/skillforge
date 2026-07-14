@@ -115,6 +115,7 @@ sweeper would.
 | Endpoint shape | One generic `POST /{operation_id}/cancel` | Cancel is kind-agnostic -- no payload, no workspace mutation -- unlike per-kind `commit`. |
 | Scope / errors | Reuse `BotWrite`, `OperationNotFoundError`, `OperationNotPendingError` | No new trust surface or error type. |
 | Response model | New lean `OperationCancelResponse` | Mirrors `TransitionCommitResponse`; avoids returning the heavy `plan`. |
+| commit↔cancel concurrency | Not row-locked (accepted) | Both `commit` and `cancel` read via `session.get` and flush an unguarded UPDATE, so a concurrent commit and cancel of the *same* operation id can lose the terminal-label write (the row may end `CANCELLED` though the workspace was created, or vice-versa). Capacity is unaffected -- it counts `StudentWorkspace` rows plus `PREPARED` operations, both robust to the divergence -- so only the audit label diverges. Cancel deliberately mirrors the existing unlocked `commit` path; hardening both with row locks is deferred. |
 
 ## Testing
 
