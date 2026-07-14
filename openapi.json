@@ -1395,6 +1395,41 @@
         "title": "MicrosoftAccountProfile",
         "type": "object"
       },
+      "OperationCancelResponse": {
+        "properties": {
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OperationKind"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OperationStatus"
+          }
+        },
+        "required": [
+          "operation_id",
+          "kind",
+          "status",
+          "cancelled_at"
+        ],
+        "title": "OperationCancelResponse",
+        "type": "object"
+      },
       "OperationKind": {
         "enum": [
           "tutor_activate",
@@ -1442,6 +1477,18 @@
       "OperationResponse": {
         "description": "Full read view of a single operation, including the two-phase ``plan``.",
         "properties": {
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
           "committed_at": {
             "anyOf": [
               {
@@ -1550,6 +1597,7 @@
           "plan",
           "expires_at",
           "committed_at",
+          "cancelled_at",
           "failed_at",
           "last_error",
           "created_at",
@@ -1572,6 +1620,18 @@
       "OperationSummary": {
         "description": "List view of an operation. Omits the heavy ``plan`` -- fetch a single operation by id for that.",
         "properties": {
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
           "committed_at": {
             "anyOf": [
               {
@@ -1674,6 +1734,7 @@
           "reserved_archive_category_channel_id",
           "expires_at",
           "committed_at",
+          "cancelled_at",
           "failed_at",
           "last_error",
           "created_at",
@@ -3820,6 +3881,118 @@
           }
         ],
         "summary": "Read Operation",
+        "tags": [
+          "bot"
+        ]
+      }
+    },
+    "/api/v1/bot/operations/{operation_id}/cancel": {
+      "post": {
+        "description": "Explicitly cancel a PREPARED operation, releasing its reservation immediately.\n\nIdempotent on an already-cancelled operation; a non-cancellable state (committed, expired,\nfailed) returns 409 and an unknown id returns 404.",
+        "operationId": "cancel_operation_endpoint_api_v1_bot_operations__operation_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationCancelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Not enough permissions"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Operation not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Operation not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Operation is not in a prepared state (already committed, failed, or expired)"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Operation is not in a prepared state (already committed, failed, or expired)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "bot:write"
+            ]
+          }
+        ],
+        "summary": "Cancel Operation Endpoint",
         "tags": [
           "bot"
         ]

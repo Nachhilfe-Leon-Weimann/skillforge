@@ -7,10 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.common import error_response
 from app.core.db.dependencies import get_db_session
 from app.core.db.models import OperationKind, OperationStatus
-from app.services.bot import OperationNotFoundError, get_operation, list_operations
+from app.services.bot import (
+    BotServiceError,
+    OperationNotFoundError,
+    cancel_operation,
+    get_operation,
+    list_operations,
+)
 
-from .dependencies import BotRead
-from .schemas import OperationPage, OperationResponse, OperationSummary
+from ._transitions import CANCEL_RESPONSES, transition_http_exception
+from .dependencies import BotRead, BotWrite
+from .schemas import OperationCancelResponse, OperationPage, OperationResponse, OperationSummary
 
 router = APIRouter(prefix="/operations")
 
@@ -68,3 +75,26 @@ async def read_operation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=OPERATION_NOT_FOUND) from exc
 
     return OperationResponse.from_model(operation)
+
+
+@router.post(
+    "/{operation_id}/cancel",
+    response_model=OperationCancelResponse,
+    responses=CANCEL_RESPONSES,
+)
+async def cancel_operation_endpoint(
+    operation_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _: BotWrite,
+) -> OperationCancelResponse:
+    """Explicitly cancel a PREPARED operation, releasing its reservation immediately.
+
+    Idempotent on an already-cancelled operation; a non-cancellable state (committed, expired,
+    failed) returns 409 and an unknown id returns 404.
+    """
+    try:
+        operation = await cancel_operation(session, operation_id=operation_id)
+    except BotServiceError as exc:
+        raise transition_http_exception(exc) from exc
+
+    return OperationCancelResponse.from_model(operation)

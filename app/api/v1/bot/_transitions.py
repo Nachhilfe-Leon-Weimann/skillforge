@@ -22,6 +22,10 @@ COMMIT_RESPONSES: OpenAPIResponses = {
     404: error_response(OPERATION_NOT_FOUND),
     409: error_response("Transition conflict"),
 }
+CANCEL_RESPONSES: OpenAPIResponses = {
+    404: error_response(OPERATION_NOT_FOUND),
+    409: error_response(OPERATION_NOT_PENDING),
+}
 
 
 def transition_http_exception(exc: Exception) -> HTTPException:

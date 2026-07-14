@@ -13,7 +13,7 @@ from app.core.auth.dependencies import get_auth_settings
 from app.core.db.dependencies import get_db_session
 from app.core.db.models import Operation, OperationKind, OperationStatus
 from app.main import app
-from app.services.bot import OperationNotFoundError
+from app.services.bot import OperationNotFoundError, OperationNotPendingError
 
 # --- get by id --------------------------------------------------------------
 
@@ -34,6 +34,7 @@ async def test_get_operation_returns_full_operation(monkeypatch):
     assert body["subject_discord_id"] == 100
     assert body["plan"] == {"step": "reserve"}
     assert "expires_at" in body
+    assert "cancelled_at" in body
 
 
 async def test_get_operation_returns_404(monkeypatch):
@@ -151,6 +152,59 @@ async def test_list_operations_rejects_out_of_range_params():
             assert response.status_code == 422, params
 
 
+# --- cancel -----------------------------------------------------------------
+
+
+async def test_cancel_operation_returns_cancelled(monkeypatch):
+    op = _operation(status=OperationStatus.CANCELLED, cancelled_at=datetime(2026, 1, 2, tzinfo=UTC))
+    _patch(monkeypatch, "cancel_operation", _returns(op))
+
+    async with _client() as client:
+        response = await client.post(
+            f"/api/v1/bot/operations/{op.operation_id}/cancel", headers=_auth_headers(Scope.BOT_WRITE)
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["operation_id"] == str(op.operation_id)
+    assert body["status"] == "cancelled"
+    assert body["cancelled_at"] is not None
+    # The lean cancel response omits the heavy plan.
+    assert "plan" not in body
+
+
+async def test_cancel_operation_maps_not_found_to_404(monkeypatch):
+    _patch(monkeypatch, "cancel_operation", _raises(OperationNotFoundError()))
+
+    async with _client() as client:
+        response = await client.post(f"/api/v1/bot/operations/{uuid4()}/cancel", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 404
+
+
+async def test_cancel_operation_maps_not_pending_to_409(monkeypatch):
+    _patch(monkeypatch, "cancel_operation", _raises(OperationNotPendingError("Operation is not in a prepared state")))
+
+    async with _client() as client:
+        response = await client.post(f"/api/v1/bot/operations/{uuid4()}/cancel", headers=_auth_headers(Scope.BOT_WRITE))
+
+    assert response.status_code == 409
+
+
+async def test_cancel_operation_requires_bot_write_scope():
+    async with _client() as client:
+        response = await client.post(f"/api/v1/bot/operations/{uuid4()}/cancel", headers=_auth_headers(Scope.BOT_READ))
+
+    assert response.status_code == 403
+
+
+async def test_cancel_operation_requires_authentication():
+    async with _client() as client:
+        response = await client.post(f"/api/v1/bot/operations/{uuid4()}/cancel")
+
+    assert response.status_code == 401
+
+
 # --- helpers ----------------------------------------------------------------
 
 
@@ -167,6 +221,7 @@ def _operation(**overrides) -> Operation:
         "plan": {"step": "reserve"},
         "expires_at": now,
         "committed_at": None,
+        "cancelled_at": None,
         "failed_at": None,
         "last_error": None,
         "created_at": now,

@@ -498,6 +498,19 @@ class TransitionCommitResponse(BaseModel):
         return cls.model_validate(operation)
 
 
+class OperationCancelResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    operation_id: UUID
+    kind: OperationKind
+    status: OperationStatus
+    cancelled_at: datetime | None
+
+    @classmethod
+    def from_model(cls, operation: Operation) -> OperationCancelResponse:
+        return cls.model_validate(operation)
+
+
 class TutorActivationPrepareRequest(BaseModel):
     guild_id: int
     tutor_discord_id: int
@@ -535,6 +548,7 @@ class OperationSummary(BaseModel):
     reserved_archive_category_channel_id: int | None
     expires_at: datetime
     committed_at: datetime | None
+    cancelled_at: datetime | None
     failed_at: datetime | None
     last_error: str | None
     created_at: datetime
@@ -560,6 +574,7 @@ class OperationResponse(BaseModel):
     plan: dict[str, Any]
     expires_at: datetime
     committed_at: datetime | None
+    cancelled_at: datetime | None
     failed_at: datetime | None
     last_error: str | None
     created_at: datetime
