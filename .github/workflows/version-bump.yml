@@ -97,7 +97,7 @@ jobs:
             fi
           else
             git checkout -b "$BRANCH_NAME"
-            git add pyproject.toml uv.lock
+            git add pyproject.toml uv.lock openapi.json
             git commit -m "chore: bump version to ${NEXT_VERSION}"
             git push --set-upstream origin "$BRANCH_NAME"
           fi

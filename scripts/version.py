@@ -52,31 +52,6 @@ def compute_next_version(current_version: str, bump: str, explicit_version: str)
     return next_version
 
 
-def replace_project_version(next_version: str) -> None:
-    validate_explicit_version(next_version)
-
-    lines = PYPROJECT.read_text().splitlines(keepends=True)
-    in_project = False
-
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-
-        if stripped == "[project]":
-            in_project = True
-            continue
-
-        if in_project and stripped.startswith("[") and stripped.endswith("]"):
-            break
-
-        if in_project and line.startswith("version = "):
-            newline = "\n" if line.endswith("\n") else ""
-            lines[index] = f'version = "{next_version}"{newline}'
-            PYPROJECT.write_text("".join(lines))
-            return
-
-    sys.exit("Could not find project.version in pyproject.toml")
-
-
 def print_version_info(args: argparse.Namespace) -> None:
     current_version = read_project_version()
     next_version = compute_next_version(current_version, args.bump, args.version.strip())
@@ -91,10 +66,6 @@ def print_release_version(_args: argparse.Namespace) -> None:
     print(f"version={version}")
 
 
-def bump_version(args: argparse.Namespace) -> None:
-    replace_project_version(args.version.strip())
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -106,10 +77,6 @@ def parse_args() -> argparse.Namespace:
 
     release_parser = subparsers.add_parser("release")
     release_parser.set_defaults(func=print_release_version)
-
-    bump_parser = subparsers.add_parser("bump")
-    bump_parser.add_argument("version")
-    bump_parser.set_defaults(func=bump_version)
 
     return parser.parse_args()
 

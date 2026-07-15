@@ -117,8 +117,8 @@ release-version:
     @python scripts/version.py release
 
 bump-version version:
-    @python scripts/version.py bump "{{ version }}"
-    @uv lock
+    @uv version "{{ version }}"
+    @just openapi
 
 # --- Local Postgres ---
 
