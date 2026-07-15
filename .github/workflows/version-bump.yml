@@ -100,14 +100,17 @@ jobs:
             base_oid="$(git rev-parse HEAD)"
             git push origin "HEAD:refs/heads/${BRANCH_NAME}"
 
+            # Read file contents with --rawfile and base64-encode inside jq. Passing the encoded
+            # blobs as --arg values would exceed ARG_MAX (uv.lock/openapi.json are ~190 KB each);
+            # piping the built payload over stdin has no such limit.
             jq -n \
               --arg repo "$GITHUB_REPOSITORY" \
               --arg branch "$BRANCH_NAME" \
               --arg oid "$base_oid" \
               --arg msg "chore: bump version to ${NEXT_VERSION}" \
-              --arg pyproject "$(base64 -w0 pyproject.toml)" \
-              --arg lock "$(base64 -w0 uv.lock)" \
-              --arg openapi "$(base64 -w0 openapi.json)" \
+              --rawfile pyproject pyproject.toml \
+              --rawfile lock uv.lock \
+              --rawfile openapi openapi.json \
               '{
                 query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
                 variables: { input: {
@@ -115,9 +118,9 @@ jobs:
                   message: { headline: $msg },
                   expectedHeadOid: $oid,
                   fileChanges: { additions: [
-                    { path: "pyproject.toml", contents: $pyproject },
-                    { path: "uv.lock", contents: $lock },
-                    { path: "openapi.json", contents: $openapi }
+                    { path: "pyproject.toml", contents: ($pyproject | @base64) },
+                    { path: "uv.lock", contents: ($lock | @base64) },
+                    { path: "openapi.json", contents: ($openapi | @base64) }
                   ] }
                 } }
               }' | gh api graphql --input -
