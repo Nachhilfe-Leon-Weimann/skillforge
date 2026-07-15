@@ -79,9 +79,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           if git diff --quiet -- pyproject.toml uv.lock; then
             echo "No version changes detected."
             exit 1
@@ -96,10 +93,34 @@ jobs:
               exit 0
             fi
           else
-            git checkout -b "$BRANCH_NAME"
-            git add pyproject.toml uv.lock openapi.json
-            git commit -m "chore: bump version to ${NEXT_VERSION}"
-            git push --set-upstream origin "$BRANCH_NAME"
+            # Create the branch at the base commit, then add the bumped files as a single commit
+            # via the GraphQL API. Commits created through the API are signed by GitHub ("Verified"),
+            # so they satisfy main's required-signatures ruleset -- a plain `git commit` on the runner
+            # would be unsigned and could never be fast-forwarded onto main.
+            base_oid="$(git rev-parse HEAD)"
+            git push origin "HEAD:refs/heads/${BRANCH_NAME}"
+
+            jq -n \
+              --arg repo "$GITHUB_REPOSITORY" \
+              --arg branch "$BRANCH_NAME" \
+              --arg oid "$base_oid" \
+              --arg msg "chore: bump version to ${NEXT_VERSION}" \
+              --arg pyproject "$(base64 -w0 pyproject.toml)" \
+              --arg lock "$(base64 -w0 uv.lock)" \
+              --arg openapi "$(base64 -w0 openapi.json)" \
+              '{
+                query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+                variables: { input: {
+                  branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                  message: { headline: $msg },
+                  expectedHeadOid: $oid,
+                  fileChanges: { additions: [
+                    { path: "pyproject.toml", contents: $pyproject },
+                    { path: "uv.lock", contents: $lock },
+                    { path: "openapi.json", contents: $openapi }
+                  ] }
+                } }
+              }' | gh api graphql --input -
           fi
 
           if gh pr create \
