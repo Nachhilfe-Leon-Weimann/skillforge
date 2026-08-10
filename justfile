@@ -33,6 +33,33 @@ openapi-check: openapi
         exit 1
     fi
 
+# --- Clients ---
+
+python_client_dir := "build/clients/python/skillforge-client"
+
+# Generate the clients from the openapi.json contract.
+generate-clients: generate-python-client
+
+# Generate only the Python client.
+generate-python-client:
+    @mkdir -p "{{ python_client_dir }}"
+    uvx \
+        --from "openapi-python-client==0.29.0" \
+        --with "ruff==0.16.2" \
+        openapi-python-client generate \
+        --path openapi.json \
+        --meta uv \
+        --fail-on-warning \
+        --overwrite \
+        --output-path "{{ python_client_dir }}"
+
+# Build the clients from the generated source code.
+build-clients: build-python-client
+
+# Build only the Python client.
+build-python-client: generate-python-client
+    uv build "{{ python_client_dir }}" --no-sources --clear --out-dir dist/python
+
 # --- FastAPI ---
 
 skillcore := "../skillcore"
