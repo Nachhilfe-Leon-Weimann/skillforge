@@ -47,11 +47,13 @@ jobs:
       draft: ${{ steps.release-state.outputs.draft }}
       prerelease: ${{ steps.release-state.outputs.prerelease }}
       target_sha: ${{ steps.target.outputs.sha }}
-      should_release: ${{ steps.release-state.outputs.should_release }}
+      should_release: ${{ steps.release-state.outputs.should_release || 'false' }}
 
     steps:
-      - name: Checkout workflow
+      - name: Checkout release context
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Resolve target commit
         id: target
@@ -60,13 +62,28 @@ jobs:
         shell: bash
         run: printf 'sha=%s\n' "${WORKFLOW_RUN_HEAD_SHA:-${GITHUB_SHA}}" >> "${GITHUB_OUTPUT}"
 
-      - name: Checkout release target
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ steps.target.outputs.sha }}
-          fetch-depth: 0
+      - name: Validate release target
+        id: target-validity
+        env:
+          RELEASE_TARGET_SHA: ${{ steps.target.outputs.sha }}
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "Releases must be dispatched from main." >&2
+            exit 1
+          fi
+
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [[ "${checked_out_sha}" != "${RELEASE_TARGET_SHA}" ]]; then
+            echo "Release target ${RELEASE_TARGET_SHA} is no longer the current main commit (${checked_out_sha}); a newer CI run will handle the release."
+            echo "current=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "current=true" >> "${GITHUB_OUTPUT}"
 
       - name: Check existing release
+        if: steps.target-validity.outputs.current == 'true'
         id: release-state
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,11 +93,6 @@ jobs:
         shell: bash
         run: |
           release_version="$(python scripts/version.py release | sed -n 's/^version=//p')"
-
-          if [[ "${GITHUB_REF}" != "refs/heads/main" && "${GITHUB_EVENT_NAME}" != "workflow_run" ]]; then
-            echo "Releases must be dispatched from main." >&2
-            exit 1
-          fi
 
           should_release="true"
           if gh release view "v${release_version}" >/dev/null 2>&1; then
@@ -110,7 +122,7 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       push: true
-      source_ref: ${{ needs.check-release.outputs.target_sha }}
+      source_ref: ${{ github.sha }}
       version: ${{ needs.check-release.outputs.version }}
       tag_latest: ${{ needs.check-release.outputs.draft != 'true' && needs.check-release.outputs.prerelease != 'true' }}
       platforms: "linux/amd64"
@@ -126,11 +138,16 @@ jobs:
     if: >-
       needs.check-release.result == 'success' &&
       needs.check-release.outputs.should_release == 'true' &&
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.full_name == github.repository
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -139,45 +156,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.check-release.outputs.target_sha }}
-
-      - name: Install just
-        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          enable-cache: true
-
-      - name: Build and smoke-test client
-        run: just test-clients
-
-      - name: Upload client distributions
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: python-client-${{ needs.check-release.outputs.version }}
-          path: dist/python/*
-          if-no-files-found: error
-          retention-days: 1
-
-  python-client-build-manual:
-    name: Build Python client (manual release)
-    needs: check-release
-    if: >-
-      needs.check-release.result == 'success' &&
-      needs.check-release.outputs.should_release == 'true' &&
-      github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.check-release.outputs.target_sha }}
 
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
@@ -204,22 +182,11 @@ jobs:
       - check-release
       - image
       - python-client-build
-      - python-client-build-manual
     if: >-
-      always() &&
       needs.check-release.result == 'success' &&
       needs.check-release.outputs.should_release == 'true' &&
       needs.image.result == 'success' &&
-      (
-        (
-          github.event_name == 'workflow_run' &&
-          needs.python-client-build.result == 'success'
-        ) ||
-        (
-          github.event_name == 'workflow_dispatch' &&
-          needs.python-client-build-manual.result == 'success'
-        )
-      )
+      needs.python-client-build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -262,8 +229,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.check-release.outputs.target_sha }}
 
       - name: Create GitHub release
         env:
@@ -343,7 +308,6 @@ jobs:
       - check-release
       - image
       - python-client-build
-      - python-client-build-manual
       - python-client
       - release
       - deploy
@@ -357,7 +321,6 @@ jobs:
           CHECK_RESULT: ${{ needs.check-release.result }}
           IMAGE_RESULT: ${{ needs.image.result }}
           PYTHON_CLIENT_BUILD_RESULT: ${{ needs.python-client-build.result }}
-          PYTHON_CLIENT_MANUAL_BUILD_RESULT: ${{ needs.python-client-build-manual.result }}
           PYTHON_CLIENT_RESULT: ${{ needs.python-client.result }}
           RELEASE_RESULT: ${{ needs.release.result }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
@@ -393,7 +356,6 @@ jobs:
             echo "| Check | ${CHECK_RESULT} |"
             echo "| Image | ${IMAGE_RESULT} |"
             echo "| Python client build | ${PYTHON_CLIENT_BUILD_RESULT} |"
-            echo "| Python client manual build | ${PYTHON_CLIENT_MANUAL_BUILD_RESULT} |"
             echo "| Python client | ${PYTHON_CLIENT_RESULT} |"
             echo "| Release | ${RELEASE_RESULT} |"
             echo "| Deploy | ${DEPLOY_RESULT} |"
