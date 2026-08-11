@@ -112,12 +112,87 @@ jobs:
       contents: read
       packages: write
 
+  python-client-build:
+    name: Build Python client
+    needs: check-release
+    if: >-
+      needs.check-release.result == 'success' &&
+      needs.check-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.check-release.outputs.target_sha }}
+
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Build and smoke-test client
+        run: just test-clients
+
+      - name: Upload client distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-client-${{ needs.check-release.outputs.version }}
+          path: dist/python/*
+          if-no-files-found: error
+          retention-days: 1
+
+  python-client:
+    name: Publish Python client
+    needs:
+      - check-release
+      - image
+      - python-client-build
+    if: >-
+      needs.check-release.result == 'success' &&
+      needs.check-release.outputs.should_release == 'true' &&
+      needs.image.result == 'success' &&
+      needs.python-client-build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download client distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-client-${{ needs.check-release.outputs.version }}
+          path: dist/python
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Publish client to PyPI
+        if: needs.check-release.outputs.draft != 'true'
+        run: uv publish --trusted-publishing always dist/python/*
+
   release:
     name: Create GitHub release
     needs:
       - check-release
       - image
-    if: needs.check-release.result == 'success' && needs.check-release.outputs.should_release == 'true' && needs.image.result == 'success'
+      - python-client
+    if: >-
+      needs.check-release.result == 'success' &&
+      needs.check-release.outputs.should_release == 'true' &&
+      needs.image.result == 'success' &&
+      needs.python-client.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -141,6 +216,10 @@ jobs:
           image="ghcr.io/${GITHUB_REPOSITORY,,}:v${RELEASE_VERSION}"
           notes=$'Container image:\n\n'"${image}"
           flags=()
+
+          if [[ "${RELEASE_DRAFT}" != "true" ]]; then
+            notes+=$'\n\nPython client:\n\n    uv add skillforge-client=='"${RELEASE_VERSION}"
+          fi
 
           if [[ "${RELEASE_DRAFT}" == "true" ]]; then
             flags+=(--draft)
@@ -202,6 +281,8 @@ jobs:
     needs:
       - check-release
       - image
+      - python-client-build
+      - python-client
       - release
       - deploy
     if: always()
@@ -213,6 +294,8 @@ jobs:
         env:
           CHECK_RESULT: ${{ needs.check-release.result }}
           IMAGE_RESULT: ${{ needs.image.result }}
+          PYTHON_CLIENT_BUILD_RESULT: ${{ needs.python-client-build.result }}
+          PYTHON_CLIENT_RESULT: ${{ needs.python-client.result }}
           RELEASE_RESULT: ${{ needs.release.result }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
           RELEASE_VERSION: ${{ needs.check-release.outputs.version }}
@@ -246,6 +329,8 @@ jobs:
             echo "| Should release | ${SHOULD_RELEASE:-n/a} |"
             echo "| Check | ${CHECK_RESULT} |"
             echo "| Image | ${IMAGE_RESULT} |"
+            echo "| Python client build | ${PYTHON_CLIENT_BUILD_RESULT} |"
+            echo "| Python client | ${PYTHON_CLIENT_RESULT} |"
             echo "| Release | ${RELEASE_RESULT} |"
             echo "| Deploy | ${DEPLOY_RESULT} |"
           } >> "${GITHUB_STEP_SUMMARY}"

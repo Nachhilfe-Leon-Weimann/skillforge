@@ -51,6 +51,18 @@ Health check: `GET /health` aggregates the health of all dependencies and backgr
 (sub-routes: `/health/live`, `/health/dependencies[/{name}]`, `/health/workers[/{name}]`).
 Interactive API docs at `/docs`.
 
+## Python client
+
+Each SkillForge release publishes the generated [`skillforge-client`](https://pypi.org/project/skillforge-client/)
+package from the matching `openapi.json` contract:
+
+```bash
+uv add skillforge-client
+```
+
+The generated client source lives only in `build/`; its maintained README and package metadata
+templates live in `clients/python/templates/`.
+
 ## Common commands
 
 | Command | Purpose |
@@ -59,6 +71,7 @@ Interactive API docs at `/docs`.
 | `just check` | Lint + format + typecheck + openapi-check + tests (without DB) |
 | `just test` / `just test-db` | All tests / DB-only tests (`@pytest.mark.db`, via testcontainers) |
 | `just openapi` | Regenerate `openapi.json` (the API contract) |
+| `just test-clients` | Generate, build, and smoke-test the distributable API clients |
 
 Full list in the [`justfile`](justfile).
 
