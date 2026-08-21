@@ -6,11 +6,11 @@ authors = [{ name = "Leon Weimann", email = "coding@leonweimann.de" }]
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "alembic>=1.18.5",
+    "alembic>=1.19.0",
     "asyncpg>=0.31.0",
     "fastapi[standard]>=0.141.1",
     "pwdlib[argon2]>=0.3.0",
-    "pydantic-settings>=2.14.2",
+    "pydantic-settings>=2.15.0",
     "pyjwt>=2.13.0",
     "skillcore>=0.2.0",
     "sqlalchemy[asyncio]>=2.0.51",
@@ -24,9 +24,9 @@ Issues     = "https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues"
 skillcore = { git = "https://github.com/Nachhilfe-Leon-Weimann/skillcore.git", tag = "v0.2.0" }
 
 [dependency-groups]
-dev = [{ include-group = "tests" }, "ruff>=0.16.1"]
+dev = [{ include-group = "tests" }, "ruff>=0.16.2"]
 tests = [
-    "ty>=0.0.65",
+    "ty>=0.0.69",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
