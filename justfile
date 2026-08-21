@@ -36,6 +36,7 @@ openapi-check: openapi
 # --- Clients ---
 
 python_client_dir := "build/clients/python/skillforge-client"
+python_client_templates := "clients/python/templates"
 
 # Generate the clients from the openapi.json contract.
 generate-clients: generate-python-client
@@ -48,6 +49,7 @@ generate-python-client:
         --with "ruff==0.16.2" \
         openapi-python-client generate \
         --path openapi.json \
+        --custom-template-path "{{ python_client_templates }}" \
         --meta uv \
         --fail-on-warning \
         --overwrite \
@@ -59,6 +61,14 @@ build-clients: build-python-client
 # Build only the Python client.
 build-python-client: generate-python-client
     uv build "{{ python_client_dir }}" --no-sources --clear --out-dir dist/python
+
+# Build and smoke-test the generated clients as installable distributions.
+test-clients: test-python-client
+
+# Verify both Python distribution formats can be installed and imported.
+test-python-client: build-python-client
+    uv run --isolated --no-project --with dist/python/*.whl python scripts/smoke_test_python_client.py
+    uv run --isolated --no-project --with dist/python/*.tar.gz python scripts/smoke_test_python_client.py
 
 # --- FastAPI ---
 

@@ -62,6 +62,9 @@ jobs:
       - name: Run static checks
         run: just static-checks
 
+      - name: Build and smoke-test clients
+        run: just test-clients
+
       - name: Run tests with coverage
         env:
           TEST_DB__URL: postgresql+asyncpg://skillforge:skillforge@localhost:5432/skillforge
