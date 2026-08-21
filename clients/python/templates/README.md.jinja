@@ -1,0 +1,63 @@
+# Skillforge Python Client
+
+Official, typed Python client for the Skillforge HTTP API. The package is generated from Skillforge's versioned OpenAPI contract and released with the matching Skillforge version.
+
+## Installation
+
+With [uv](https://docs.astral.sh/uv/):
+
+```console
+uv add {{ project_name }}
+```
+
+Or with pip:
+
+```console
+python -m pip install {{ project_name }}
+```
+
+## Quick start
+
+Use `AuthenticatedClient` for endpoints protected by a Skillforge bearer token:
+
+```python
+import os
+
+from {{ package_name }} import AuthenticatedClient
+
+client = AuthenticatedClient(
+    base_url=os.environ["SKILLFORGE_URL"],
+    token=os.environ["SKILLFORGE_TOKEN"],
+)
+```
+
+Endpoint functions are grouped by their OpenAPI tag. For example, the liveness endpoint can be called synchronously:
+
+```python
+import os
+
+from {{ package_name }} import Client
+from {{ package_name }}.api.system import liveness_check_health_live_get
+
+with Client(base_url=os.environ["SKILLFORGE_URL"]) as client:
+    health = liveness_check_health_live_get.sync(client=client)
+
+if health is not None:
+    print(health.status.value)
+```
+
+Every generated endpoint module provides four variants:
+
+- `sync`: blocking call returning the parsed response or `None`
+- `sync_detailed`: blocking call returning status, headers, content, and the parsed response
+- `asyncio`: asynchronous call returning the parsed response or `None`
+- `asyncio_detailed`: asynchronous call returning the detailed response
+
+Generated request and response models are available from `{{ package_name }}.models`.
+
+## Versioning and source
+
+Client versions follow Skillforge releases. This package was generated from the [`openapi.json`](https://github.com/Nachhilfe-Leon-Weimann/skillforge/blob/v{{ package_version }}/openapi.json) contract for Skillforge v{{ package_version }}; generated source is not maintained by hand.
+
+- [Skillforge repository](https://github.com/Nachhilfe-Leon-Weimann/skillforge)
+- [Issue tracker](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues)

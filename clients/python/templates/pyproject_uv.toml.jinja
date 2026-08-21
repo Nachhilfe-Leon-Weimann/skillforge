@@ -1,0 +1,32 @@
+[project]
+name = "{{ project_name }}"
+version = "{{ package_version }}"
+description = "Official Python client for the Skillforge API."
+authors = [{ name = "Leon Weimann", email = "coding@leonweimann.de" }]
+requires-python = ">=3.11"
+readme = "README.md"
+keywords = ["skillforge", "api", "client", "openapi"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.23.1,<0.29.0",
+    "attrs>=22.2.0",
+]
+
+[project.urls]
+Repository = "https://github.com/Nachhilfe-Leon-Weimann/skillforge"
+Issues = "https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues"
+"OpenAPI contract" = "https://github.com/Nachhilfe-Leon-Weimann/skillforge/blob/v{{ package_version }}/openapi.json"
+
+[tool.uv.build-backend]
+module-name = "{{ package_name }}"
+module-root = ""
+
+[build-system]
+requires = ["uv_build>=0.12.0,<0.13"]
+build-backend = "uv_build"
