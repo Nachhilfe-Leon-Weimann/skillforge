@@ -35,6 +35,12 @@ class WidgetRuleError(DomainValidationError):
     message = "Widget violates a rule"
 
 
+class UncategorizedWidgetError(DomainError):
+    """Derives from no category, so ``STATUS_BY_ERROR`` cannot map it."""
+
+    code = "test_uncategorized_widget"
+
+
 @pytest.mark.parametrize(
     ("error_type", "expected"),
     [
@@ -163,6 +169,26 @@ def test_returned_api_error_has_the_same_shape_as_a_raised_one():
     assert returned.headers["www-authenticate"] == raised.headers["www-authenticate"]
 
 
+def test_unhandled_exception_becomes_a_generic_500_envelope():
+    response = _client().get("/boom")
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error", "code": "internal_error"}
+
+
+def test_unhandled_exception_does_not_leak_its_message():
+    response = _client().get("/boom")
+
+    assert "db password" not in response.text
+
+
+def test_domain_error_outside_every_category_is_a_500_not_a_guess():
+    response = _client().get("/domain/unmapped")
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error", "code": "internal_error"}
+
+
 def test_unknown_route_uses_the_envelope():
     response = _client().get("/missing")
 
@@ -212,6 +238,14 @@ def _client() -> TestClient:
     async def not_modified() -> None:
         raise HTTPException(status_code=304)
 
+    @app.get("/boom")
+    async def boom() -> None:
+        raise RuntimeError("db password is hunter2")
+
+    @app.get("/domain/unmapped")
+    async def unmapped() -> None:
+        raise UncategorizedWidgetError("no category")
+
     @app.get("/api-error/raised")
     async def api_error_raised() -> None:
         raise INVALID_CLIENT.exception()
@@ -220,4 +254,4 @@ def _client() -> TestClient:
     async def api_error_returned() -> Response:
         return INVALID_CLIENT.response()
 
-    return TestClient(app)
+    return TestClient(app, raise_server_exceptions=False)

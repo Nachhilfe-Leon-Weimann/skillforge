@@ -87,6 +87,16 @@ async def test_missing_token_keeps_the_www_authenticate_challenge():
     assert response.headers["www-authenticate"] == 'Bearer scope="bot:read"'
 
 
+async def test_unexpected_exception_is_a_500_envelope_without_internals(monkeypatch):
+    monkeypatch.setattr("app.api.v1.bot.jobs.get_job", _raises(RuntimeError("connection string leaked: 7f3a")))
+
+    async with _client(raise_app_exceptions=False) as client:
+        response = await client.get(f"/api/v1/bot/jobs/{uuid4()}", headers=_auth_headers((Scope.BOT_READ,)))
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error", "code": "internal_error"}
+
+
 @pytest.mark.parametrize("failure", ["missing_token", "invalid_token", "missing_scope"])
 async def test_documented_auth_error_examples_are_the_bodies_the_api_returns(failure: str):
     headers = {
@@ -121,11 +131,12 @@ async def _override_db_session() -> AsyncIterator[object]:
 
 
 @asynccontextmanager
-async def _client() -> AsyncIterator[AsyncClient]:
+async def _client(*, raise_app_exceptions: bool = True) -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_db_session] = _override_db_session
     app.dependency_overrides[get_auth_settings] = lambda: _auth_settings()
+    transport = ASGITransport(app=app, raise_app_exceptions=raise_app_exceptions)
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
             yield client
     finally:
         app.dependency_overrides.clear()

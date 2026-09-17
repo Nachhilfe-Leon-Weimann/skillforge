@@ -7,6 +7,7 @@ from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
+from app.api.v1.common import register_exception_handlers
 from app.core.auth import AuthSettings, Principal, create_application_access_token, require_scopes
 from app.core.auth.dependencies import get_auth_settings
 from app.core.logging import LogFormat, LoggingSettings, LogLevel, configure_logging, register_request_logging
@@ -130,6 +131,31 @@ def test_request_logging_still_errors_on_non_probe_5xx(capsys):
     assert response.status_code == 500
     assert event["event"] == "http_request_failed"
     assert event["level"] == "error"
+
+
+def test_request_logging_keeps_the_traceback_when_the_500_envelope_handles_the_exception(capsys):
+    configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
+    app = FastAPI()
+    register_request_logging(app)
+    register_exception_handlers(app)
+
+    @app.get("/boom")
+    async def boom():
+        raise RuntimeError("kaputt")
+
+    capsys.readouterr()
+
+    response = TestClient(app, raise_server_exceptions=False).get("/boom")
+
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    failed = [event for event in events if event["event"] == "http_request_failed"]
+
+    assert response.json()["code"] == "internal_error"
+    assert len(failed) == 1
+    assert failed[0]["level"] == "error"
+    assert failed[0]["status_code"] == 500
+    assert "RuntimeError" in json.dumps(failed[0])
+    assert "kaputt" in json.dumps(failed[0])
 
 
 def test_configure_logging_disables_uvicorn_access_log():

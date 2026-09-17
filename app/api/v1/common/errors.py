@@ -28,6 +28,8 @@ STATUS_BY_ERROR: dict[type[DomainError], int] = {
 
 VALIDATION_ERROR_CODE = "validation_error"
 VALIDATION_ERROR_DETAIL = "Request validation failed"
+INTERNAL_ERROR_CODE = "internal_error"
+INTERNAL_ERROR_DETAIL = "Internal server error"
 
 _NON_CODE_CHARACTERS = re.compile(r"[^a-z0-9]+")
 
@@ -112,6 +114,13 @@ def register_exception_handlers(app: FastAPI) -> None:
         detail = exc.detail if isinstance(exc.detail, str) else _phrase_for(exc.status_code)
         code = exc.code if isinstance(exc, ApiException) else code_for_status(exc.status_code)
         return _envelope(exc.status_code, ErrorResponse(detail=detail, code=code), headers=exc.headers)
+
+    @app.exception_handler(Exception)
+    async def handle_unexpected_error(request: Request, exc: Exception) -> Response:
+        # Runs in Starlette's outermost ServerErrorMiddleware, which re-raises after responding. The
+        # request-logging middleware sits inside it and has logged the traceback by then, so this
+        # only shapes the body - and never shows the exception's message.
+        return _envelope(500, ErrorResponse(detail=INTERNAL_ERROR_DETAIL, code=INTERNAL_ERROR_CODE))
 
 
 def _phrase_for(status_code: int) -> str:
