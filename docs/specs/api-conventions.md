@@ -323,6 +323,14 @@ PR: unknown query parameters become 422.
 
 **P1-5 - Migrate the `auth` client routes.** Re-parent the `ApplicationClient*` errors; `InvalidClientScopeError`
 keeps a local 400 mapping (non-goal: changing status codes).
+- [x] Done; status and `detail` of every route are pinned by
+      [`test_auth_clients_error_contract.py`](../../tests/api/test_auth_clients_error_contract.py) (these routes had
+      no API tests before). The routes now *document* their 404/409/400, which were undocumented. The local 400 is
+      the shared `INVALID_SCOPE` declaration (`code="invalid_scope"`); it is raised, not returned, so scopes granted
+      before the invalid one roll back.
+- [ ] *Not done, needs a decision:* `GET /auth/clients` still returns a bare JSON array, against goal 5. Moving it to
+      `Page[ApplicationClientResponse]` changes the response shape, which the rules for implementing agents forbid
+      without a requirement saying so.
 
 **P1-6 - Record the conventions.** Add a bullet to `CLAUDE.md` (Conventions) and a short section to
 `docs/ARCHITECTURE.md` pointing here, once P0 is merged.
