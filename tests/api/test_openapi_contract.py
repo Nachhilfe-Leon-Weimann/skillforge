@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from app.api.v1.common import ErrorResponse
 from app.core.auth import Scope
 from app.main import app
 
@@ -111,6 +112,27 @@ def test_every_documented_error_body_is_the_envelope(schema: dict[str, Any]):
             assert response["content"]["application/json"]["schema"] == envelope, f"{method} {path} {status}"
 
     assert checked
+
+
+def test_every_documented_error_example_is_a_valid_envelope(schema: dict[str, Any]):
+    examples = [
+        (f"{method} {path} {status}", example)
+        for method, path, operation in _operations(schema)
+        for status, response in operation["responses"].items()
+        if not status.startswith("2")
+        for example in _examples(response)
+    ]
+
+    assert len(examples) > 100
+    for where, example in examples:
+        envelope = ErrorResponse.model_validate(example)
+        assert envelope.code, where
+
+
+def _examples(response: dict[str, Any]) -> list[dict[str, Any]]:
+    content = response.get("content", {}).get("application/json", {})
+    named = [example["value"] for example in content.get("examples", {}).values()]
+    return [*named, *([content["example"]] if "example" in content else [])]
 
 
 def _refs(node: Any) -> set[str]:

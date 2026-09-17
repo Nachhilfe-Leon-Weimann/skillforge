@@ -6,7 +6,6 @@ from .errors import status_for
 from .schemas import ErrorResponse
 
 OpenAPIResponses = dict[int | str, dict[str, Any]]
-OpenAPIResponse = dict[str, Any]
 
 
 def error_responses(*error_types: type[DomainError]) -> OpenAPIResponses:
@@ -33,17 +32,4 @@ def error_responses(*error_types: type[DomainError]) -> OpenAPIResponses:
             },
         }
         for status, errors in errors_by_status.items()
-    }
-
-
-def error_response(description: str, *, detail: str | None = None) -> OpenAPIResponse:
-    """Legacy per-status helper of the bot domain; goes away with its migration to the taxonomy."""
-    return {
-        "model": ErrorResponse,
-        "description": description,
-        "content": {
-            "application/json": {
-                "example": {"detail": detail or description},
-            },
-        },
     }
