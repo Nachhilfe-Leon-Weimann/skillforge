@@ -3,7 +3,7 @@ import logging
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Response
+from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -11,7 +11,7 @@ from app.core.auth import AuthSettings, Principal, create_application_access_tok
 from app.core.auth.dependencies import get_auth_settings
 from app.core.logging import LogFormat, LoggingSettings, LogLevel, configure_logging, register_request_logging
 
-BotWritePrincipal = Annotated[Principal, Depends(require_scopes("bot:write"))]
+BotWritePrincipal = Annotated[Principal, require_scopes("bot:write")]
 
 
 def test_logging_settings_default_to_skillforge_app_name():

@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import Database
 from app.core.db.dependencies import get_db_session
@@ -95,7 +96,7 @@ async def test_db_session_dependency_reuses_engine_without_per_request_dispose(m
     probe_app = FastAPI()
 
     @probe_app.get("/__probe")
-    async def _probe(session: Annotated[object, Depends(get_db_session)]) -> dict[str, bool]:
+    async def _probe(session: Annotated[AsyncSession, Depends(get_db_session)]) -> dict[str, bool]:
         return {"ok": True}
 
     async with lifespan(probe_app):

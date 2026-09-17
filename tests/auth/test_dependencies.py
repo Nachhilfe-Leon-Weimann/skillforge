@@ -8,7 +8,7 @@ from pydantic import SecretStr
 from app.core.auth import AuthSettings, Principal, create_application_access_token, require_application, require_scopes
 from app.core.auth.dependencies import get_auth_settings, get_current_principal
 
-BotWritePrincipal = Annotated[Principal, Depends(require_scopes("bot:write"))]
+BotWritePrincipal = Annotated[Principal, require_scopes("bot:write")]
 CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
 ApplicationPrincipal = Annotated[Principal, Depends(require_application)]
 
@@ -89,6 +89,27 @@ def test_require_scopes_rejects_token_without_required_scope():
     assert response.status_code == 403
 
 
+def test_require_scopes_guards_a_route_from_the_decorator():
+    settings = _settings()
+    client = TestClient(_app(settings))
+
+    missing_token = client.post("/guarded")
+    wrong_scope = client.post("/guarded", headers=_bearer(settings, scopes=["bot:read"]))
+    granted = client.post("/guarded", headers=_bearer(settings, scopes=["bot:write"]))
+
+    assert missing_token.status_code == 401
+    assert missing_token.headers["www-authenticate"] == 'Bearer scope="bot:write"'
+    assert wrong_scope.status_code == 403
+    assert granted.status_code == 200
+
+
+def test_require_scopes_declares_the_scopes_in_openapi_for_both_positions():
+    paths = _app(_settings()).openapi()["paths"]
+
+    assert paths["/write"]["post"]["security"] == [{"OAuth2ClientCredentialsBearer": ["bot:write"]}]
+    assert paths["/guarded"]["post"]["security"] == [{"OAuth2ClientCredentialsBearer": ["bot:write"]}]
+
+
 def test_require_application_rejects_non_application_principal():
     app = FastAPI()
 
@@ -127,7 +148,16 @@ def _app(settings: AuthSettings) -> FastAPI:
     async def write(principal: BotWritePrincipal):
         return {"client_id": principal.client_id}
 
+    @app.post("/guarded", dependencies=[require_scopes("bot:write")])
+    async def guarded():
+        return {"ok": True}
+
     return app
+
+
+def _bearer(settings: AuthSettings, *, scopes: list[str]) -> dict[str, str]:
+    token = create_application_access_token(settings, principal_id=uuid4(), client_id="skillbot", scopes=scopes)
+    return {"Authorization": f"Bearer {token.access_token}"}
 
 
 def _settings() -> AuthSettings:

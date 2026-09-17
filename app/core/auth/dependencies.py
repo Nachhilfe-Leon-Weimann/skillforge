@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import SecurityScopes
@@ -88,15 +88,14 @@ async def require_application(
     return principal
 
 
-def require_scopes(*required_scopes: Scope | str):
-    scope_values = [str(scope) for scope in required_scopes]
+def require_scopes(*required_scopes: Scope | str) -> Any:
+    """Return the ``Security`` marker that guards a route with the given scopes.
 
-    async def dependency(
-        principal: Annotated[Principal, Security(get_current_principal, scopes=scope_values)],
-    ) -> Principal:
-        return principal
-
-    return dependency
+    Guard only: ``dependencies=[require_scopes(Scope.X)]`` on the route decorator.
+    Principal needed: a parameter typed ``Annotated[Principal, require_scopes(Scope.X)]``.
+    In both positions the scopes land in the operation's OpenAPI ``security`` requirement.
+    """
+    return Security(get_current_principal, scopes=[str(scope) for scope in required_scopes])
 
 
 def _authenticate_header(scopes: Sequence[str]) -> str:

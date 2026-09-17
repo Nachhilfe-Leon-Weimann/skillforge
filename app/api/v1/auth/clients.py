@@ -10,6 +10,7 @@ from app.core.auth import (
     ApplicationClientScopeGrantNotFoundError,
     ApplicationClientSecretNotFoundError,
     InvalidClientScopeError,
+    Principal,
     Scope,
     create_application_client,
     create_application_client_secret,
@@ -34,7 +35,7 @@ from .schemas import (
 
 router = APIRouter(prefix="/clients")
 
-ManageAuthClients = Annotated[object, Depends(require_scopes(Scope.AUTH_CLIENTS_MANAGE))]
+ManageAuthClients = Annotated[Principal, require_scopes(Scope.AUTH_CLIENTS_MANAGE)]
 
 
 @router.get("", response_model=list[ApplicationClientResponse])
