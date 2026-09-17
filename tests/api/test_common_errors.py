@@ -1,11 +1,21 @@
 from typing import Annotated
 
 import pytest
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.testclient import TestClient
 
-from app.api.v1.common.errors import STATUS_BY_ERROR, code_for_status, register_exception_handlers, status_for
+from app.api.v1.common.errors import (
+    STATUS_BY_ERROR,
+    ApiError,
+    code_for_status,
+    register_exception_handlers,
+    status_for,
+)
 from app.core.errors import ConflictError, DomainError, DomainValidationError, NotFoundError
+
+INVALID_CLIENT = ApiError(
+    401, code="invalid_client", detail="Invalid client credentials", headers={"WWW-Authenticate": "Bearer"}
+)
 
 
 class WidgetServiceError(Exception):
@@ -137,6 +147,22 @@ def test_http_exception_for_a_bodiless_status_stays_bodiless():
     assert response.content == b""
 
 
+def test_raised_api_error_keeps_its_own_code_and_headers():
+    response = _client().get("/api-error/raised")
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+    assert response.json() == {"detail": "Invalid client credentials", "code": "invalid_client"}
+
+
+def test_returned_api_error_has_the_same_shape_as_a_raised_one():
+    raised = _client().get("/api-error/raised")
+    returned = _client().get("/api-error/returned")
+
+    assert (returned.status_code, returned.json()) == (raised.status_code, raised.json())
+    assert returned.headers["www-authenticate"] == raised.headers["www-authenticate"]
+
+
 def test_unknown_route_uses_the_envelope():
     response = _client().get("/missing")
 
@@ -185,5 +211,13 @@ def _client() -> TestClient:
     @app.get("/http/not-modified")
     async def not_modified() -> None:
         raise HTTPException(status_code=304)
+
+    @app.get("/api-error/raised")
+    async def api_error_raised() -> None:
+        raise INVALID_CLIENT.exception()
+
+    @app.get("/api-error/returned")
+    async def api_error_returned() -> Response:
+        return INVALID_CLIENT.response()
 
     return TestClient(app)

@@ -7,6 +7,7 @@ and OpenAPI docs cannot drift.
 
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request, Response
@@ -29,6 +30,40 @@ VALIDATION_ERROR_CODE = "validation_error"
 VALIDATION_ERROR_DETAIL = "Request validation failed"
 
 _NON_CODE_CHARACTERS = re.compile(r"[^a-z0-9]+")
+
+
+class ApiException(StarletteHTTPException):
+    """An ``HTTPException`` that brings its own ``code``; raise it via ``ApiError.exception()``."""
+
+    def __init__(self, status_code: int, *, detail: str, code: str, headers: Mapping[str, str] | None = None) -> None:
+        super().__init__(status_code=status_code, detail=detail, headers=headers)
+        self.code = code
+
+
+@dataclass(frozen=True)
+class ApiError:
+    """An error the API layer declares itself, outside the domain taxonomy.
+
+    For checks that belong to HTTP rather than to a service (OAuth2 form rules) and for local status
+    mappings ``STATUS_BY_ERROR`` does not cover. Declare it once, then raise it, return it, or pass
+    it to ``error_responses`` to document it.
+    """
+
+    status_code: int
+    code: str
+    detail: str
+    headers: Mapping[str, str] | None = None
+
+    def exception(self) -> ApiException:
+        return ApiException(self.status_code, detail=self.detail, code=self.code, headers=self.headers)
+
+    def response(self) -> JSONResponse:
+        """Return the error instead of raising it.
+
+        Only for an endpoint whose transaction must commit although the request failed (e.g. to keep
+        the audit entry of a denied token request): raising would roll the session back.
+        """
+        return _envelope(self.status_code, ErrorResponse(detail=self.detail, code=self.code), headers=self.headers)
 
 
 def status_for(error_type: type[DomainError]) -> int:
@@ -75,11 +110,8 @@ def register_exception_handlers(app: FastAPI) -> None:
             return Response(status_code=exc.status_code, headers=exc.headers)
 
         detail = exc.detail if isinstance(exc.detail, str) else _phrase_for(exc.status_code)
-        return _envelope(
-            exc.status_code,
-            ErrorResponse(detail=detail, code=code_for_status(exc.status_code)),
-            headers=exc.headers,
-        )
+        code = exc.code if isinstance(exc, ApiException) else code_for_status(exc.status_code)
+        return _envelope(exc.status_code, ErrorResponse(detail=detail, code=code), headers=exc.headers)
 
 
 def _phrase_for(status_code: int) -> str:

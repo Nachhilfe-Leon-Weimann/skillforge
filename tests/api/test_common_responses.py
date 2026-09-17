@@ -1,7 +1,7 @@
 import pytest
 from fastapi import FastAPI
 
-from app.api.v1.common import ErrorResponse, error_responses
+from app.api.v1.common import ApiError, ErrorResponse, error_responses
 from app.core.errors import ConflictError, DomainError, NotFoundError
 
 
@@ -40,6 +40,20 @@ def test_error_responses_groups_errors_sharing_a_status():
     assert set(responses[404]["content"]["application/json"]["examples"]) == {"widget_not_found", "gadget_not_found"}
     assert responses[404]["description"] == "Widget not found / Gadget not found"
     assert set(responses[409]["content"]["application/json"]["examples"]) == {"widget_locked"}
+
+
+def test_error_responses_documents_api_errors_next_to_domain_errors():
+    unsupported = ApiError(400, code="unsupported_grant_type", detail="Unsupported grant_type")
+    invalid_scope = ApiError(400, code="invalid_scope", detail="Invalid requested scope")
+
+    responses = error_responses(unsupported, invalid_scope, WidgetNotFoundError)
+
+    assert set(responses) == {400, 404}
+    assert responses[400]["description"] == "Unsupported grant_type / Invalid requested scope"
+    assert responses[400]["content"]["application/json"]["examples"] == {
+        "unsupported_grant_type": {"value": {"detail": "Unsupported grant_type", "code": "unsupported_grant_type"}},
+        "invalid_scope": {"value": {"detail": "Invalid requested scope", "code": "invalid_scope"}},
+    }
 
 
 def test_error_responses_rejects_an_unmapped_error_at_declaration_time():
