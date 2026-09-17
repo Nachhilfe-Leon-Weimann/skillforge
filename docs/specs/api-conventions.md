@@ -334,6 +334,8 @@ keeps a local 400 mapping (non-goal: changing status codes).
 
 **P1-6 - Record the conventions.** Add a bullet to `CLAUDE.md` (Conventions) and a short section to
 `docs/ARCHITECTURE.md` pointing here, once P0 is merged.
+- [x] Done ahead of P0-5: the conventions are in force for `auth` and `bot`, and new CRM endpoints should be
+      written against them. Once P0-5 lands, `parties.py` is the reference implementation to point at.
 
 ### Future considerations (P2)
 

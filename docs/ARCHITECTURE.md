@@ -27,11 +27,13 @@ HTTP -> app/api/system    liveness + health probes (dependencies, workers)
 ```
 
 - **`app/main.py`** - FastAPI entry point. Mounts the top-level `app.api` router (which aggregates
-  the `system` and `v1` routers), registers request logging, and exposes `GET /` (welcome).
+  the `system` and `v1` routers), registers request logging and the exception handlers, exposes
+  `GET /` (welcome), and finishes with `customize_openapi(app)`.
 - **`app/api/system/`** - `health.py`: `GET /health` (aggregate over all dependencies **and**
   workers; `200` healthy / `503` unhealthy / `500` on error), plus `/health/live`,
   `/health/dependencies[/{name}]`, and `/health/workers[/{name}]`.
-- **`app/api/v1/`** - `router.py` with prefix `/api/v1` aggregates two areas:
+- **`app/api/v1/`** - `router.py` with prefix `/api/v1` aggregates two areas, which share the
+  vocabulary in `common/` (see [API conventions](#api-conventions)):
   - `auth/` - `token.py` (OAuth2 token endpoint), `clients.py` (client management).
   - `bot/` - `runtime.py` (read: principals, contexts, command envs), `operations.py` (operation
     reads: by id + filtered list), `jobs.py` (queue reads - by id, filtered list, queue summary -
@@ -46,7 +48,8 @@ HTTP -> app/api/system    liveness + health probes (dependencies, workers)
 - **`app/services/system/`** - health aggregation (`health_service.py`) and worker liveness
   (`heartbeat_service.py`), backing the `/health` tree.
 - **`app/core/`** - `auth/` (OAuth2, JWT, scopes, bootstrap), `db/` (async engine, sessions,
-  models), `logging/` (structured logging via `skillcore`), `config.py` (settings).
+  models), `logging/` (structured logging via `skillcore`), `errors.py` (HTTP-agnostic error
+  taxonomy), `config.py` (settings).
 
 ## Two core concepts
 
@@ -136,14 +139,40 @@ Argon2-hashed secret at the token endpoint and receive a JWT. Endpoints are gate
 | `bot:write` | Write bot API |
 | `auth:clients:manage` | Manage application clients |
 
-`require_scopes()` (`app/core/auth/dependencies.py`) returns `403` on a missing scope.
-`just bootstrap-skillbot` seeds the initial auth state.
+`require_scopes()` (`app/core/auth/dependencies.py`) returns the `Security` marker that guards a
+route: `401` without a valid token, `403` on a missing scope. Each scope carries its description
+on the `Scope` enum. `just bootstrap-skillbot` seeds the initial auth state.
 
 ## API contract
 
 The committed **`openapi.json` is the contract**; consumers generate their clients from it.
 `just openapi` regenerates it, `just openapi-check` (in CI) prevents drift. Never edit it by hand -
 see [ADR 0001](decisions/0001-openapi-as-contract.md).
+
+## API conventions
+
+All `/api/v1` domains share one vocabulary (`app/api/v1/common/`), so an endpoint states only what
+is special about it and both runtime behavior and the OpenAPI docs derive from the same
+declaration. The full rules, with the *why*, are in the
+[API conventions spec](specs/api-conventions.md) and
+[ADR 0006](decisions/0006-error-envelope.md).
+
+- **Operation IDs** are `{tag}_{function_name}` (`operation_id` in `openapi.py`); every route needs
+  exactly one domain tag, set on its domain router.
+- **Scope guards** are declared, never implemented per route: `dependencies=[require_scopes(...)]`
+  on the decorator, or a parameter typed `Annotated[Principal, require_scopes(...)]` when the
+  principal is needed. `customize_openapi` derives the `401`/`403` docs from the declaration.
+- **Errors**: every non-2xx body is `ErrorResponse{detail, code, errors?}`. Services raise
+  subclasses of the taxonomy in `app/core/errors.py` (`NotFoundError`, `ConflictError`,
+  `DomainValidationError`); `STATUS_BY_ERROR` in `errors.py` maps them, the global handlers render
+  them, and `responses=error_responses(...)` documents them - endpoints contain no `try/except`
+  for mapped errors. Errors the API layer owns itself (OAuth2 codes, a local status mapping) are
+  `ApiError` declarations. An endpoint whose transaction must commit although the request failed
+  *returns* the error (`ApiError.response()`) instead of raising it - the token endpoint does, to
+  keep its `TOKEN_DENIED` audit entry.
+- **Lists** take a `PageParams` subclass (`limit`, `offset`, filters; unknown parameters are a
+  `422`) and return `Page[Item]` - never a bare array.
+- **Schemas** derive from `ApiModel`: a docstring under a field becomes its OpenAPI description.
 
 ## Roadmap: capability arcs
 

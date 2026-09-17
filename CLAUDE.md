@@ -26,13 +26,15 @@ app/
   main.py            FastAPI entry point (root route + app wiring)
   api/system/        health.py (/health + /health/live, /health/dependencies[/{name}], /health/workers[/{name}])
   api/v1/            endpoints: auth/ (token, clients), bot/ (runtime, jobs, operations,
-                     command_envs, students, tutors, users, authz)
+                     command_envs, students, tutors, users, authz); common/ (shared API vocabulary:
+                     error envelope + handlers, error_responses, Page/PageParams, OpenAPI hooks)
   services/bot/      business logic: transitions, operations, jobs, principals, provisioning,
                      authz, command_envs, contexts, profile, reaper, views, errors
   services/system/   health aggregation + worker heartbeats (backs /health)
   workers/           reaper.py (lifecycle guardian: job reaper + operation sweeper)
   cli/               deadletters.py (dead-letter list/requeue operator commands)
-  core/              auth/ (OAuth2, JWT, scopes), db/ (engine, models/<schema>/), logging/, config.py
+  core/              auth/ (OAuth2, JWT, scopes), db/ (engine, models/<schema>/), logging/, config.py,
+                     errors.py (HTTP-agnostic error taxonomy)
 migrations/          Alembic (env.py creates schemas; baseline = explicit DDL)
 tests/               api/, auth/, db/, workers/  (DB tests via @pytest.mark.db)
 scripts/             coverage_summary.py, dump_openapi.py, version.py
@@ -53,6 +55,12 @@ DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
 - **Migrations** use the direct DB URL (`DB__MIGRATION_URL`), the app uses the pooled one
   ([ADR 0002](docs/decisions/0002-pooled-vs-migration-url.md)). Drop enum types explicitly on
   downgrade; schemas are created in `migrations/env.py`.
+- **Endpoints follow the API conventions** ([spec](docs/specs/api-conventions.md),
+  [ADR 0006](docs/decisions/0006-error-envelope.md)): guard with `require_scopes(...)` on the
+  decorator; services raise taxonomy errors (`app/core/errors.py`) and endpoints neither catch them
+  nor raise `HTTPException` - declare them with `responses=error_responses(...)`; lists take a
+  `PageParams` subclass and return `Page[T]`; new schemas derive from `ApiModel`. Never hand-write
+  401/403 docs or an `operation_id`.
 - **Discord state changes** run in two phases (`prepare`/`commit`) - Forge never touches the
   Discord API itself ([ADR 0003](docs/decisions/0003-two-phase-transitions.md)).
 - **Jobs** are at-least-once; handlers must be idempotent
