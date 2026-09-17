@@ -14,6 +14,7 @@ do it this way?" doesn't get lost in commit messages and memory. They complement
 | [0003](0003-two-phase-transitions.md) | Two-phase `prepare`/`commit` operations for Discord state | Accepted |
 | [0004](0004-forge-first-job-queue.md) | Forge-first job queue with at-least-once delivery | Accepted |
 | [0005](0005-multi-schema-db.md) | Multi-schema DB + explicit-DDL Alembic baseline | Accepted |
+| [0006](0006-error-envelope.md) | One error envelope for every non-2xx response | Accepted |
 
 ## When to write an ADR?
 
