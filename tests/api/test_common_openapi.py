@@ -85,6 +85,21 @@ def _responses(app: FastAPI, path: str) -> dict[str, Any]:
     return app.openapi()["paths"][path]["get"]["responses"]
 
 
+def _dangling_refs(schema: dict[str, Any]) -> set[str]:
+    return {
+        ref for ref in _refs(schema) if ref.removeprefix("#/components/schemas/") not in schema["components"]["schemas"]
+    }
+
+
+def _refs(node: Any) -> set[str]:
+    if isinstance(node, dict):
+        own = {node["$ref"]} if isinstance(node.get("$ref"), str) else set()
+        return own.union(*(_refs(value) for value in node.values()))
+    if isinstance(node, list):
+        return set().union(*(_refs(value) for value in node))
+    return set()
+
+
 def test_guarded_operation_documents_401_and_403_with_the_error_envelope():
     responses = _responses(_customized_app(), "/guarded")
 
@@ -126,6 +141,14 @@ def test_error_envelope_schema_is_registered_even_if_no_route_references_it():
     schemas = _customized_app().openapi()["components"]["schemas"]
 
     assert schemas["ErrorResponse"]["properties"]["detail"] == {"title": "Detail", "type": "string"}
+
+
+def test_error_envelope_schema_is_registered_together_with_its_nested_schemas():
+    schema = _customized_app().openapi()
+
+    assert "$defs" not in schema["components"]["schemas"]["ErrorResponse"]
+    assert "FieldError" in schema["components"]["schemas"]
+    assert _dangling_refs(schema) == set()
 
 
 def test_customized_schema_is_built_once_and_cached():

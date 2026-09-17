@@ -791,14 +791,34 @@
         "type": "object"
       },
       "ErrorResponse": {
+        "description": "Body of every non-2xx response (ADR 0006).",
         "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
           "detail": {
             "title": "Detail",
             "type": "string"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FieldError"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
           }
         },
         "required": [
-          "detail"
+          "detail",
+          "code"
         ],
         "title": "ErrorResponse",
         "type": "object"
@@ -827,6 +847,40 @@
           }
         },
         "title": "ExternalAccountsProfile",
+        "type": "object"
+      },
+      "FieldError": {
+        "description": "One offending field of a request that failed validation.",
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Loc",
+            "type": "array"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "message",
+          "type"
+        ],
+        "title": "FieldError",
         "type": "object"
       },
       "GroupMembershipResponse": {

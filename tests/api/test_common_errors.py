@@ -1,0 +1,170 @@
+from typing import Annotated
+
+import pytest
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.testclient import TestClient
+
+from app.api.v1.common.errors import STATUS_BY_ERROR, register_exception_handlers, status_for
+from app.core.errors import ConflictError, DomainError, DomainValidationError, NotFoundError
+
+
+class WidgetServiceError(Exception):
+    """Stand-in for a domain's legacy base class (like ``BotServiceError``)."""
+
+
+class WidgetNotFoundError(WidgetServiceError, NotFoundError):
+    message = "Widget not found"
+
+
+class WidgetLockedError(ConflictError):
+    message = "Widget is locked"
+    expose_message = True
+
+
+class WidgetRuleError(DomainValidationError):
+    message = "Widget violates a rule"
+
+
+@pytest.mark.parametrize(
+    ("error_type", "expected"),
+    [
+        (NotFoundError, 404),
+        (ConflictError, 409),
+        (DomainValidationError, 422),
+        (WidgetNotFoundError, 404),
+        (WidgetLockedError, 409),
+        (WidgetRuleError, 422),
+    ],
+)
+def test_status_for_resolves_along_the_mro(error_type: type[DomainError], expected: int):
+    assert status_for(error_type) == expected
+
+
+def test_status_for_rejects_an_error_outside_every_category():
+    with pytest.raises(LookupError, match="DomainError"):
+        status_for(DomainError)
+
+
+def test_status_table_only_maps_taxonomy_categories():
+    assert STATUS_BY_ERROR == {NotFoundError: 404, ConflictError: 409, DomainValidationError: 422}
+
+
+def test_domain_error_becomes_the_envelope_with_its_code():
+    response = _client().get("/domain/not-found")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Widget not found", "code": "widget_not_found"}
+
+
+def test_instance_message_is_not_leaked_by_default():
+    response = _client().get("/domain/not-found")
+
+    assert "7f3a" not in response.text
+
+
+def test_instance_message_is_shown_when_the_class_exposes_it():
+    response = _client().get("/domain/locked", params={"reason": "Locked by operation 42"})
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Locked by operation 42", "code": "widget_locked"}
+
+
+def test_empty_instance_message_falls_back_to_the_class_message():
+    response = _client().get("/domain/locked")
+
+    assert response.json() == {"detail": "Widget is locked", "code": "widget_locked"}
+
+
+def test_domain_validation_error_is_a_422_without_a_field_list():
+    response = _client().get("/domain/rule")
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Widget violates a rule", "code": "widget_rule"}
+
+
+def test_request_validation_error_lists_every_offending_field():
+    response = _client().get("/items/not-a-number", params={"limit": 11})
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["detail"] == "Request validation failed"
+    assert body["code"] == "validation_error"
+    assert {tuple(error["loc"]) for error in body["errors"]} == {("path", "item_id"), ("query", "limit")}
+    for error in body["errors"]:
+        assert set(error) == {"loc", "message", "type"}
+        assert error["message"]
+        assert error["type"]
+
+
+def test_http_exception_keeps_status_detail_and_headers():
+    response = _client().get("/http/unauthorized")
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == 'Bearer scope="bot:read"'
+    assert response.json() == {"detail": "Not authenticated", "code": "unauthorized"}
+
+
+def test_http_exception_with_a_structured_detail_falls_back_to_the_status_phrase():
+    response = _client().get("/http/structured")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Conflict", "code": "conflict"}
+
+
+def test_http_exception_for_a_bodiless_status_stays_bodiless():
+    response = _client().get("/http/not-modified")
+
+    assert response.status_code == 304
+    assert response.content == b""
+
+
+def test_unknown_route_uses_the_envelope():
+    response = _client().get("/missing")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Not Found", "code": "not_found"}
+
+
+def test_wrong_method_uses_the_envelope():
+    response = _client().post("/domain/not-found")
+
+    assert response.status_code == 405
+    assert response.json() == {"detail": "Method Not Allowed", "code": "method_not_allowed"}
+
+
+def _client() -> TestClient:
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/domain/not-found")
+    async def not_found() -> None:
+        raise WidgetNotFoundError("widget 7f3a is gone")
+
+    @app.get("/domain/locked")
+    async def locked(reason: str = "") -> None:
+        raise WidgetLockedError(reason)
+
+    @app.get("/domain/rule")
+    async def rule() -> None:
+        raise WidgetRuleError("rule 12 failed for tenant 9")
+
+    @app.get("/items/{item_id}")
+    async def read_item(item_id: int, limit: Annotated[int, Query(le=10)] = 5) -> None: ...
+
+    @app.get("/http/unauthorized")
+    async def unauthorized() -> None:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": 'Bearer scope="bot:read"'},
+        )
+
+    @app.get("/http/structured")
+    async def structured() -> None:
+        raise HTTPException(status_code=409, detail={"reason": "busy"})
+
+    @app.get("/http/not-modified")
+    async def not_modified() -> None:
+        raise HTTPException(status_code=304)
+
+    return TestClient(app)

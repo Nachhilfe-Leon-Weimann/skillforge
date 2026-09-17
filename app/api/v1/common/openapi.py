@@ -78,8 +78,7 @@ def customize_openapi(app: FastAPI) -> None:
 
 def _document_auth_errors(schema: dict[str, Any]) -> None:
     """Document 401/403 on every operation that declares a ``security`` requirement."""
-    schemas = schema.setdefault("components", {}).setdefault("schemas", {})
-    schemas.setdefault(ErrorResponse.__name__, ErrorResponse.model_json_schema(ref_template=SCHEMA_REF_TEMPLATE))
+    _register_error_envelope(schema)
 
     for path_item in schema.get("paths", {}).values():
         for method, operation in path_item.items():
@@ -89,6 +88,15 @@ def _document_auth_errors(schema: dict[str, Any]) -> None:
             responses = operation.setdefault("responses", {})
             responses["401"] = _error_response("Missing or invalid bearer token", examples=UNAUTHORIZED_EXAMPLES)
             responses["403"] = _error_response(_forbidden_description(operation), example=FORBIDDEN_EXAMPLE)
+
+
+def _register_error_envelope(schema: dict[str, Any]) -> None:
+    """Make sure ``ErrorResponse`` (and what it nests) exists even if no route references it."""
+    schemas = schema.setdefault("components", {}).setdefault("schemas", {})
+    envelope = ErrorResponse.model_json_schema(ref_template=SCHEMA_REF_TEMPLATE)
+    for name, nested in envelope.pop("$defs", {}).items():
+        schemas.setdefault(name, nested)
+    schemas.setdefault(ErrorResponse.__name__, envelope)
 
 
 def _forbidden_description(operation: dict[str, Any]) -> str:
