@@ -316,6 +316,10 @@ PR: unknown query parameters become 422.
 
 **P1-4 - Catch-all 500.** An `Exception` handler returns the envelope with `code="internal_error"` and a generic
 `detail`; the logging middleware (`register_request_logging`) must still log the traceback.
+- [x] Done. The handler runs in Starlette's outermost `ServerErrorMiddleware`, which re-raises after responding;
+      the request-logging middleware sits inside it and logs `http_request_failed` with the traceback exactly once
+      (`test_request_logging_keeps_the_traceback_when_the_500_envelope_handles_the_exception`). A `DomainError`
+      outside every category also ends here, as a 500 rather than a guessed status.
 
 **P1-5 - Migrate the `auth` client routes.** Re-parent the `ApplicationClient*` errors; `InvalidClientScopeError`
 keeps a local 400 mapping (non-goal: changing status codes).
