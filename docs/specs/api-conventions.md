@@ -239,7 +239,8 @@ Domain-specific vocabulary (`PartyId`, `PartyListParams`) lives in the domain pa
   - [x] `openapi.json` contains neither `HTTPValidationError` nor `ValidationError`, and no dangling `$ref`.
   - [x] No existing status code changes (`git diff openapi.json` shows no added/removed status keys except the
         401/403 additions from P0-2).
-  - Known and accepted until P1-1: examples produced by the legacy `error_response()` helper lack `code`.
+  - ~~Known and accepted until P1-1: examples produced by the legacy `error_response()` helper lack `code`.~~
+    Closed by P1-1: the helper is gone and `test_every_documented_error_example_is_a_valid_envelope` guards it.
 
 **P0-4 - Pagination vocabulary.**
 - *Technique:* introduce `ApiModel` (decision I) in [`schemas.py`](../../app/api/v1/common/schemas.py).
@@ -281,7 +282,16 @@ public strings (`JOB_NOT_FOUND`, ...) and `expose_message = True` exactly where 
 surfaces `str(exc)` today. Then delete the per-endpoint `try/except`, `transition_http_exception`, the
 `*_RESPONSES` dicts and the legacy `error_response()` helper. The bot's own `PartyNotFoundError` is replaced by
 the CRM one (CRM owns parties).
-- [ ] `git diff openapi.json` shows no status-code change; every `detail` string observable today is unchanged.
+- [x] `git diff openapi.json` shows no status-code change; every `detail` string observable today is unchanged
+      (pinned per endpoint and error by
+      [`test_bot_error_contract.py`](../../tests/api/test_bot_error_contract.py)). *One deliberate exception,
+      approved 2026-09-18:* `PrincipalNotFoundError` surfaced as three endpoint-specific strings ("Discord
+      principal not found", "Discord user not found", "Actor principal not found"); one class has one `code` and
+      now one `detail`, "Discord principal not found".
+- [ ] *Open until P0-5:* the bot's `PartyNotFoundError` still lives in `app/services/bot/errors.py` (re-parented
+      onto `NotFoundError`), because `app/services/crm/errors.py` does not exist yet. Both classes derive the code
+      `party_not_found`, so the uniqueness guard in
+      [`test_error_taxonomy.py`](../../tests/api/test_error_taxonomy.py) fails until the bot one is replaced.
 
 **P1-2 - Bot lists adopt the vocabulary.** `JobPage` and `OperationPage` are deleted in favor of
 `Page[JobListItem]` / `Page[...]` (the schema rename is free pre-launch, decision L); the list endpoints move to
