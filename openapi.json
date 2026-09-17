@@ -330,7 +330,7 @@
         "title": "AuthorizationCheckResponse",
         "type": "object"
       },
-      "Body_create_token_api_v1_auth_token_post": {
+      "Body_auth_create_token": {
         "properties": {
           "client_id": {
             "anyOf": [
@@ -373,7 +373,7 @@
         "required": [
           "grant_type"
         ],
-        "title": "Body_create_token_api_v1_auth_token_post",
+        "title": "Body_auth_create_token",
         "type": "object"
       },
       "BotJob": {
@@ -2306,7 +2306,7 @@
   "paths": {
     "/": {
       "get": {
-        "operationId": "root__get",
+        "operationId": "system_root",
         "responses": {
           "200": {
             "content": {
@@ -2317,12 +2317,15 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Root"
+        "summary": "Root",
+        "tags": [
+          "system"
+        ]
       }
     },
     "/api/v1/auth/clients": {
       "get": {
-        "operationId": "read_application_clients_api_v1_auth_clients_get",
+        "operationId": "auth_read_application_clients",
         "responses": {
           "200": {
             "content": {
@@ -2331,7 +2334,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ApplicationClientResponse"
                   },
-                  "title": "Response Read Application Clients Api V1 Auth Clients Get",
+                  "title": "Response Auth Read Application Clients",
                   "type": "array"
                 }
               }
@@ -2352,7 +2355,7 @@
         ]
       },
       "post": {
-        "operationId": "create_application_client_endpoint_api_v1_auth_clients_post",
+        "operationId": "auth_create_application_client",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2400,7 +2403,7 @@
     },
     "/api/v1/auth/clients/{client_id}": {
       "get": {
-        "operationId": "read_application_client_api_v1_auth_clients__client_id__get",
+        "operationId": "auth_read_application_client",
         "parameters": [
           {
             "in": "path",
@@ -2447,7 +2450,7 @@
         ]
       },
       "patch": {
-        "operationId": "update_application_client_endpoint_api_v1_auth_clients__client_id__patch",
+        "operationId": "auth_update_application_client",
         "parameters": [
           {
             "in": "path",
@@ -2506,7 +2509,7 @@
     },
     "/api/v1/auth/clients/{client_id}/scopes": {
       "post": {
-        "operationId": "grant_application_client_scopes_endpoint_api_v1_auth_clients__client_id__scopes_post",
+        "operationId": "auth_grant_application_client_scopes",
         "parameters": [
           {
             "in": "path",
@@ -2565,7 +2568,7 @@
     },
     "/api/v1/auth/clients/{client_id}/scopes/{scope_key}": {
       "delete": {
-        "operationId": "revoke_application_client_scope_endpoint_api_v1_auth_clients__client_id__scopes__scope_key__delete",
+        "operationId": "auth_revoke_application_client_scope",
         "parameters": [
           {
             "in": "path",
@@ -2616,7 +2619,7 @@
     },
     "/api/v1/auth/clients/{client_id}/secrets": {
       "post": {
-        "operationId": "create_application_client_secret_endpoint_api_v1_auth_clients__client_id__secrets_post",
+        "operationId": "auth_create_application_client_secret",
         "parameters": [
           {
             "in": "path",
@@ -2675,7 +2678,7 @@
     },
     "/api/v1/auth/clients/{client_id}/secrets/{secret_id}": {
       "delete": {
-        "operationId": "revoke_application_client_secret_endpoint_api_v1_auth_clients__client_id__secrets__secret_id__delete",
+        "operationId": "auth_revoke_application_client_secret",
         "parameters": [
           {
             "in": "path",
@@ -2727,12 +2730,12 @@
     },
     "/api/v1/auth/token": {
       "post": {
-        "operationId": "create_token_api_v1_auth_token_post",
+        "operationId": "auth_create_token",
         "requestBody": {
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_create_token_api_v1_auth_token_post"
+                "$ref": "#/components/schemas/Body_auth_create_token"
               }
             }
           },
@@ -2769,7 +2772,7 @@
     "/api/v1/bot/authz/check": {
       "post": {
         "description": "Check whether an actor may perform an action on a target party (direct or delegated).\n\nCombines the grant engine (*whether* the actor may run `action_key`) with the delegation set\nderived from `PartyRelation` (*on whose behalf* -- own party plus `PARENT_OF` / `PAYS_FOR`\ntargets). An inactive actor is denied; an unknown actor returns 404.",
-        "operationId": "check_authorization_endpoint_api_v1_bot_authz_check_post",
+        "operationId": "bot_check_authorization",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2865,7 +2868,7 @@
     },
     "/api/v1/bot/command-envs": {
       "put": {
-        "operationId": "upsert_command_env_endpoint_api_v1_bot_command_envs_put",
+        "operationId": "bot_upsert_command_env",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2964,7 +2967,7 @@
     },
     "/api/v1/bot/command-envs/{guild_id}/{channel_id}/{kind}": {
       "delete": {
-        "operationId": "delete_command_env_endpoint_api_v1_bot_command_envs__guild_id___channel_id___kind__delete",
+        "operationId": "bot_delete_command_env",
         "parameters": [
           {
             "in": "path",
@@ -3074,7 +3077,7 @@
     "/api/v1/bot/jobs": {
       "get": {
         "description": "List jobs by status / kind, newest first. List items omit the `payload`; read a job by id for it.",
-        "operationId": "list_jobs_endpoint_api_v1_bot_jobs_get",
+        "operationId": "bot_list_jobs",
         "parameters": [
           {
             "in": "query",
@@ -3205,7 +3208,7 @@
     "/api/v1/bot/jobs/claim": {
       "post": {
         "description": "Claim up to `limit` due jobs for processing.\n\n**Delivery is at-least-once.** A claimed job whose worker dies is reclaimed once its lease\n(5 minutes) expires and handed out again, so the same job can be delivered more than once.\nRe-delivery is real, not hypothetical -- handlers **must be idempotent** and must not\ntrigger a duplicate side effect on a job they have already processed.",
-        "operationId": "claim_jobs_endpoint_api_v1_bot_jobs_claim_post",
+        "operationId": "bot_claim_jobs",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3224,7 +3227,7 @@
                   "items": {
                     "$ref": "#/components/schemas/BotJob"
                   },
-                  "title": "Response Claim Jobs Endpoint Api V1 Bot Jobs Claim Post",
+                  "title": "Response Bot Claim Jobs",
                   "type": "array"
                 }
               }
@@ -3293,7 +3296,7 @@
     "/api/v1/bot/jobs/summary": {
       "get": {
         "description": "Queue funnel (depth + status counts, globally and per kind) for operator observability.\n\nPassing `kind` scopes the whole summary -- top-level totals and the `by_kind` list -- to that\nexact job kind.",
-        "operationId": "job_queue_summary_endpoint_api_v1_bot_jobs_summary_get",
+        "operationId": "bot_job_queue_summary",
         "parameters": [
           {
             "in": "query",
@@ -3386,7 +3389,7 @@
     "/api/v1/bot/jobs/{job_id}": {
       "get": {
         "description": "Read a single job by id, including its `payload`.",
-        "operationId": "read_job_api_v1_bot_jobs__job_id__get",
+        "operationId": "bot_read_job",
         "parameters": [
           {
             "in": "path",
@@ -3484,7 +3487,7 @@
     },
     "/api/v1/bot/jobs/{job_id}/complete": {
       "post": {
-        "operationId": "complete_job_endpoint_api_v1_bot_jobs__job_id__complete_post",
+        "operationId": "bot_complete_job",
         "parameters": [
           {
             "in": "path",
@@ -3596,7 +3599,7 @@
     "/api/v1/bot/jobs/{job_id}/fail": {
       "post": {
         "description": "Report a claimed job as failed.\n\nWith `retry` set and attempts remaining, the job is requeued with backoff; otherwise it is\ndead-lettered to `failed`. A worker that crashes without reporting reaches the same outcome\nautomatically once its lease expires (see the at-least-once contract on `claim`).",
-        "operationId": "fail_job_endpoint_api_v1_bot_jobs__job_id__fail_post",
+        "operationId": "bot_fail_job",
         "parameters": [
           {
             "in": "path",
@@ -3718,7 +3721,7 @@
     "/api/v1/bot/operations": {
       "get": {
         "description": "List operations by subject / status / kind, newest first, for post-restart reconciliation.\n\nAll filters are optional and AND-combined; the subject is the pair\n(`guild_id`, `subject_discord_id`). List items omit the `plan` -- read a single operation by id\nfor its full plan.",
-        "operationId": "list_operations_endpoint_api_v1_bot_operations_get",
+        "operationId": "bot_list_operations",
         "parameters": [
           {
             "in": "query",
@@ -3883,7 +3886,7 @@
     "/api/v1/bot/operations/{operation_id}": {
       "get": {
         "description": "Read a single operation by id, including its two-phase `plan`.",
-        "operationId": "read_operation_api_v1_bot_operations__operation_id__get",
+        "operationId": "bot_read_operation",
         "parameters": [
           {
             "in": "path",
@@ -3982,7 +3985,7 @@
     "/api/v1/bot/operations/{operation_id}/cancel": {
       "post": {
         "description": "Explicitly cancel a PREPARED operation, releasing its reservation immediately.\n\nIdempotent on an already-cancelled operation; a non-cancellable state (committed, expired,\nfailed) returns 409 and an unknown id returns 404.",
-        "operationId": "cancel_operation_endpoint_api_v1_bot_operations__operation_id__cancel_post",
+        "operationId": "bot_cancel_operation",
         "parameters": [
           {
             "in": "path",
@@ -4093,7 +4096,7 @@
     },
     "/api/v1/bot/runtime/command-envs/resolve": {
       "get": {
-        "operationId": "resolve_command_env_endpoint_api_v1_bot_runtime_command_envs_resolve_get",
+        "operationId": "bot_resolve_command_env",
         "parameters": [
           {
             "in": "query",
@@ -4227,7 +4230,7 @@
     "/api/v1/bot/runtime/principals/batch": {
       "post": {
         "description": "Resolve many principals in one request. Unresolved ids are returned in `missing`, never 404.",
-        "operationId": "read_principals_batch_api_v1_bot_runtime_principals_batch_post",
+        "operationId": "bot_read_principals_batch",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4310,7 +4313,7 @@
     },
     "/api/v1/bot/runtime/principals/{discord_id}": {
       "get": {
-        "operationId": "read_principal_api_v1_bot_runtime_principals__discord_id__get",
+        "operationId": "bot_read_principal",
         "parameters": [
           {
             "in": "path",
@@ -4409,7 +4412,7 @@
     "/api/v1/bot/runtime/students/{guild_id}/batch": {
       "post": {
         "description": "Resolve many student contexts within one guild. Ids without a workspace are returned in `missing`.",
-        "operationId": "read_student_contexts_batch_api_v1_bot_runtime_students__guild_id__batch_post",
+        "operationId": "bot_read_student_contexts_batch",
         "parameters": [
           {
             "in": "path",
@@ -4504,7 +4507,7 @@
     },
     "/api/v1/bot/runtime/students/{guild_id}/{discord_id}": {
       "get": {
-        "operationId": "read_student_context_api_v1_bot_runtime_students__guild_id___discord_id__get",
+        "operationId": "bot_read_student_context",
         "parameters": [
           {
             "in": "path",
@@ -4613,7 +4616,7 @@
     "/api/v1/bot/runtime/tutors/{guild_id}/batch": {
       "post": {
         "description": "Resolve many tutor contexts within one guild. Ids without a workspace are returned in `missing`.",
-        "operationId": "read_tutor_contexts_batch_api_v1_bot_runtime_tutors__guild_id__batch_post",
+        "operationId": "bot_read_tutor_contexts_batch",
         "parameters": [
           {
             "in": "path",
@@ -4708,7 +4711,7 @@
     },
     "/api/v1/bot/runtime/tutors/{guild_id}/{discord_id}": {
       "get": {
-        "operationId": "read_tutor_context_api_v1_bot_runtime_tutors__guild_id___discord_id__get",
+        "operationId": "bot_read_tutor_context",
         "parameters": [
           {
             "in": "path",
@@ -4816,7 +4819,7 @@
     },
     "/api/v1/bot/students/activations/prepare": {
       "post": {
-        "operationId": "prepare_student_activation_endpoint_api_v1_bot_students_activations_prepare_post",
+        "operationId": "bot_prepare_student_activation",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4915,7 +4918,7 @@
     },
     "/api/v1/bot/students/activations/{operation_id}/commit": {
       "post": {
-        "operationId": "commit_student_activation_endpoint_api_v1_bot_students_activations__operation_id__commit_post",
+        "operationId": "bot_commit_student_activation",
         "parameters": [
           {
             "in": "path",
@@ -5036,7 +5039,7 @@
     },
     "/api/v1/bot/students/{guild_id}/{student_discord_id}/deactivate/prepare": {
       "post": {
-        "operationId": "prepare_student_deactivation_endpoint_api_v1_bot_students__guild_id___student_discord_id__deactivate_prepare_post",
+        "operationId": "bot_prepare_student_deactivation",
         "parameters": [
           {
             "in": "path",
@@ -5147,7 +5150,7 @@
     },
     "/api/v1/bot/students/{guild_id}/{student_discord_id}/deactivate/{operation_id}/commit": {
       "post": {
-        "operationId": "commit_student_deactivation_endpoint_api_v1_bot_students__guild_id___student_discord_id__deactivate__operation_id__commit_post",
+        "operationId": "bot_commit_student_deactivation",
         "parameters": [
           {
             "in": "path",
@@ -5278,7 +5281,7 @@
     },
     "/api/v1/bot/students/{guild_id}/{student_discord_id}/pop/prepare": {
       "post": {
-        "operationId": "prepare_student_pop_endpoint_api_v1_bot_students__guild_id___student_discord_id__pop_prepare_post",
+        "operationId": "bot_prepare_student_pop",
         "parameters": [
           {
             "in": "path",
@@ -5389,7 +5392,7 @@
     },
     "/api/v1/bot/students/{guild_id}/{student_discord_id}/pop/{operation_id}/commit": {
       "post": {
-        "operationId": "commit_student_pop_endpoint_api_v1_bot_students__guild_id___student_discord_id__pop__operation_id__commit_post",
+        "operationId": "bot_commit_student_pop",
         "parameters": [
           {
             "in": "path",
@@ -5520,7 +5523,7 @@
     },
     "/api/v1/bot/students/{guild_id}/{student_discord_id}/stash/prepare": {
       "post": {
-        "operationId": "prepare_student_stash_endpoint_api_v1_bot_students__guild_id___student_discord_id__stash_prepare_post",
+        "operationId": "bot_prepare_student_stash",
         "parameters": [
           {
             "in": "path",
@@ -5631,7 +5634,7 @@
     },
     "/api/v1/bot/students/{guild_id}/{student_discord_id}/stash/{operation_id}/commit": {
       "post": {
-        "operationId": "commit_student_stash_endpoint_api_v1_bot_students__guild_id___student_discord_id__stash__operation_id__commit_post",
+        "operationId": "bot_commit_student_stash",
         "parameters": [
           {
             "in": "path",
@@ -5762,7 +5765,7 @@
     },
     "/api/v1/bot/tutors/activations/prepare": {
       "post": {
-        "operationId": "prepare_tutor_activation_endpoint_api_v1_bot_tutors_activations_prepare_post",
+        "operationId": "bot_prepare_tutor_activation",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5861,7 +5864,7 @@
     },
     "/api/v1/bot/tutors/activations/{operation_id}/commit": {
       "post": {
-        "operationId": "commit_tutor_activation_endpoint_api_v1_bot_tutors_activations__operation_id__commit_post",
+        "operationId": "bot_commit_tutor_activation",
         "parameters": [
           {
             "in": "path",
@@ -5982,7 +5985,7 @@
     },
     "/api/v1/bot/tutors/{guild_id}/{tutor_discord_id}/deactivate/prepare": {
       "post": {
-        "operationId": "prepare_tutor_deactivation_endpoint_api_v1_bot_tutors__guild_id___tutor_discord_id__deactivate_prepare_post",
+        "operationId": "bot_prepare_tutor_deactivation",
         "parameters": [
           {
             "in": "path",
@@ -6093,7 +6096,7 @@
     },
     "/api/v1/bot/tutors/{guild_id}/{tutor_discord_id}/deactivate/{operation_id}/commit": {
       "post": {
-        "operationId": "commit_tutor_deactivation_endpoint_api_v1_bot_tutors__guild_id___tutor_discord_id__deactivate__operation_id__commit_post",
+        "operationId": "bot_commit_tutor_deactivation",
         "parameters": [
           {
             "in": "path",
@@ -6225,7 +6228,7 @@
     "/api/v1/bot/users/{discord_id}": {
       "put": {
         "description": "Register or update a Discord user.\n\nIdempotent: re-registering an existing `discord_id` updates role/nick/active instead of\nconflicting, so the bot can safely replay an onboarding event.",
-        "operationId": "upsert_discord_user_endpoint_api_v1_bot_users__discord_id__put",
+        "operationId": "bot_upsert_discord_user",
         "parameters": [
           {
             "in": "path",
@@ -6321,7 +6324,7 @@
     "/api/v1/bot/users/{discord_id}/account": {
       "delete": {
         "description": "Deactivate (unlink) a Discord account without deleting it.\n\nSets `active` to false and clears `is_primary`, freeing the party's primary slot while keeping\nthe row for history. Re-linking via the `PUT` endpoint reactivates it.",
-        "operationId": "deactivate_discord_account_endpoint_api_v1_bot_users__discord_id__account_delete",
+        "operationId": "bot_deactivate_discord_account",
         "parameters": [
           {
             "in": "path",
@@ -6418,7 +6421,7 @@
       },
       "put": {
         "description": "Link a Discord account to an existing party.\n\nThe party must already exist (the CRM owns party creation); linking to an unknown party returns\n404. Promoting an account to primary demotes the party's current primary account in the same\ntransaction.",
-        "operationId": "link_discord_account_endpoint_api_v1_bot_users__discord_id__account_put",
+        "operationId": "bot_link_discord_account",
         "parameters": [
           {
             "in": "path",
@@ -6540,7 +6543,7 @@
     "/api/v1/bot/users/{discord_id}/groups/{group_key}": {
       "delete": {
         "description": "Remove a Discord user from a permission group.",
-        "operationId": "remove_user_from_group_endpoint_api_v1_bot_users__discord_id__groups__group_key__delete",
+        "operationId": "bot_remove_user_from_group",
         "parameters": [
           {
             "in": "path",
@@ -6640,7 +6643,7 @@
       },
       "put": {
         "description": "Add a Discord user to a permission group. Idempotent on (user, group).",
-        "operationId": "add_user_to_group_endpoint_api_v1_bot_users__discord_id__groups__group_key__put",
+        "operationId": "bot_add_user_to_group",
         "parameters": [
           {
             "in": "path",
@@ -6749,7 +6752,7 @@
     "/health": {
       "get": {
         "description": "Aggregate health across all dependencies and workers.",
-        "operationId": "system_health_check_health_get",
+        "operationId": "system_health_check",
         "responses": {
           "200": {
             "content": {
@@ -6771,7 +6774,7 @@
     "/health/dependencies": {
       "get": {
         "description": "Aggregate health across all external dependencies.",
-        "operationId": "dependencies_health_check_health_dependencies_get",
+        "operationId": "system_dependencies_health_check",
         "responses": {
           "200": {
             "content": {
@@ -6793,7 +6796,7 @@
     "/health/dependencies/{dependency_name}": {
       "get": {
         "description": "Health of a single dependency.",
-        "operationId": "dependency_health_check_health_dependencies__dependency_name__get",
+        "operationId": "system_dependency_health_check",
         "parameters": [
           {
             "in": "path",
@@ -6835,7 +6838,7 @@
     "/health/live": {
       "get": {
         "description": "Liveness probe: the process is up and serving requests.",
-        "operationId": "liveness_check_health_live_get",
+        "operationId": "system_liveness_check",
         "responses": {
           "200": {
             "content": {
@@ -6857,7 +6860,7 @@
     "/health/workers": {
       "get": {
         "description": "Aggregate health across all background workers.",
-        "operationId": "workers_health_check_health_workers_get",
+        "operationId": "system_workers_health_check",
         "responses": {
           "200": {
             "content": {
@@ -6879,7 +6882,7 @@
     "/health/workers/{worker_name}": {
       "get": {
         "description": "Health of a single background worker.",
-        "operationId": "worker_health_check_health_workers__worker_name__get",
+        "operationId": "system_worker_health_check",
         "parameters": [
           {
             "in": "path",
@@ -6918,5 +6921,23 @@
         ]
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "description": "OAuth2 client-credentials token issuance and application client management.",
+      "name": "auth"
+    },
+    {
+      "description": "SkillBot state API: runtime contexts, jobs, two-phase operations, command environments, users and authorization.",
+      "name": "bot"
+    },
+    {
+      "description": "Customer relationship management: parties and the data attached to them.",
+      "name": "crm"
+    },
+    {
+      "description": "Service root plus liveness and health probes for dependencies and workers.",
+      "name": "system"
+    }
+  ]
 }

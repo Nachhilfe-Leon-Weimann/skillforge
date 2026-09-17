@@ -8,7 +8,7 @@ REPOSITORY_URL = "Repository, https://github.com/Nachhilfe-Leon-Weimann/skillfor
 
 def main() -> None:
     client_module = import_module("skillforge_client")
-    endpoint_module = import_module("skillforge_client.api.system.liveness_check_health_live_get")
+    endpoint_module = import_module("skillforge_client.api.system.system_liveness_check")
 
     client_module.Client(base_url="https://api.example.com")
     client_module.AuthenticatedClient(base_url="https://api.example.com", token="test-token")

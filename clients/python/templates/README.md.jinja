@@ -37,10 +37,10 @@ Endpoint functions are grouped by their OpenAPI tag. For example, the liveness e
 import os
 
 from {{ package_name }} import Client
-from {{ package_name }}.api.system import liveness_check_health_live_get
+from {{ package_name }}.api.system import system_liveness_check
 
 with Client(base_url=os.environ["SKILLFORGE_URL"]) as client:
-    health = liveness_check_health_live_get.sync(client=client)
+    health = system_liveness_check.sync(client=client)
 
 if health is not None:
     print(health.status.value)
