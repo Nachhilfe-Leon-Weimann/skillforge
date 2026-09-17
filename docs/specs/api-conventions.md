@@ -252,11 +252,10 @@ Domain-specific vocabulary (`PartyId`, `PartyListParams`) lives in the domain pa
   the endpoint (decision H). The service signature is `list_x(session, *, limit, offset, <filters>) ->
   tuple[list[X], int]` (as `list_jobs` already does) and orders by a deterministic key ending in a unique column.
 - *Acceptance criteria:*
-  - [ ] In `openapi.json`, `limit` and `offset` of a paged endpoint carry description, default, `minimum` and
-        `maximum`. *Open until the first real paged endpoint lands (P0-5): the vocabulary was merged without
-        it, and `test_page_parameters_are_documented_with_defaults_and_bounds` in
-        [`test_common_pagination.py`](../../tests/api/test_common_pagination.py) proves the same against a probe
-        app.*
+  - [x] In `openapi.json`, `limit` and `offset` of a paged endpoint carry description, default, `minimum` and
+        `maximum`. *Fulfilled by the bot lists (P1-2), the first real paged endpoints; asserted by
+        `test_paged_endpoint_documents_limit_and_offset` in
+        [`test_openapi_contract.py`](../../tests/api/test_openapi_contract.py).*
   - [x] `?limit=0`, `?limit=101`, `?offset=-1` and an unknown query parameter each return 422 in the envelope.
   - [x] A subclass with one filter field documents and parses all three parameters.
 
@@ -297,6 +296,10 @@ the CRM one (CRM owns parties).
 `Page[JobListItem]` / `Page[...]` (the schema rename is free pre-launch, decision L); the list endpoints move to
 `PageParams` subclasses with unchanged parameter names (`status` stays an alias). Behavior change to flag in the
 PR: unknown query parameters become 422.
+- [x] Done. `status` needs no alias any more: inside a params model the field can simply be named `status` (the
+      alias only existed because a function parameter of that name shadowed `fastapi.status`), so the endpoint
+      calls the service with `**params.model_dump()`. Parameter names, bounds and defaults are unchanged in
+      `openapi.json`.
 
 **P1-3 - Token endpoint emits the envelope.** The hand-built `JSONResponse`s in `create_token` get `code`
 (`invalid_client`, `invalid_scope`, `unsupported_grant_type`); status codes and `WWW-Authenticate` unchanged.
