@@ -794,10 +794,12 @@
         "description": "Body of every non-2xx response (ADR 0006).",
         "properties": {
           "code": {
+            "description": "Stable, machine-readable identifier in `snake_case`. Branch on this, never on `detail`.",
             "title": "Code",
             "type": "string"
           },
           "detail": {
+            "description": "Human-readable message. Safe to show; never contains internals.",
             "title": "Detail",
             "type": "string"
           },
@@ -813,6 +815,7 @@
                 "type": "null"
               }
             ],
+            "description": "Present only for request-validation failures: one entry per offending field.",
             "title": "Errors"
           }
         },
@@ -853,6 +856,7 @@
         "description": "One offending field of a request that failed validation.",
         "properties": {
           "loc": {
+            "description": "Path to the field, starting with its location (`path`, `query`, `body`, ...).",
             "items": {
               "anyOf": [
                 {
@@ -867,10 +871,12 @@
             "type": "array"
           },
           "message": {
+            "description": "Human-readable reason the value was rejected.",
             "title": "Message",
             "type": "string"
           },
           "type": {
+            "description": "Machine-readable identifier of the violated rule (e.g. `less_than_equal`).",
             "title": "Type",
             "type": "string"
           }

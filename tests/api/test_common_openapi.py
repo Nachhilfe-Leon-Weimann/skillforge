@@ -150,7 +150,8 @@ def test_unguarded_operation_documents_no_auth_errors():
 def test_error_envelope_schema_is_registered_even_if_no_route_references_it():
     schemas = _customized_app().openapi()["components"]["schemas"]
 
-    assert schemas["ErrorResponse"]["properties"]["detail"] == {"title": "Detail", "type": "string"}
+    assert schemas["ErrorResponse"]["required"] == ["detail", "code"]
+    assert schemas["ErrorResponse"]["properties"]["detail"]["type"] == "string"
 
 
 def test_error_envelope_schema_is_registered_together_with_its_nested_schemas():
