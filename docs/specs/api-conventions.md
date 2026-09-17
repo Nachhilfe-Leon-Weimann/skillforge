@@ -201,7 +201,9 @@ Domain-specific vocabulary (`PartyId`, `PartyListParams`) lives in the domain pa
 - *Technique:* remove `responses=auth_error_responses()` from the bot router and delete `auth_error_responses`.
 - *Acceptance criteria:*
   - [x] A test over `app.openapi()` asserts: every operation with `security` documents 401 and 403; no
-        operation without `security` documents either.
+        operation without `security` documents either. *Refined by P1-3: "either" means the derived bearer-token
+        responses. The token endpoint has no `security` but owns a 401 of its own (`invalid_client`), which it
+        declares itself.*
   - [x] The 403 description of `GET /api/v1/bot/jobs` contains `bot:read`; the `auth/clients` operations now
         document 401/403 (they do not today).
   - [x] Runtime behavior is unchanged: the existing auth dependency tests pass (missing token 401 with
@@ -305,6 +307,12 @@ PR: unknown query parameters become 422.
 
 **P1-3 - Token endpoint emits the envelope.** The hand-built `JSONResponse`s in `create_token` get `code`
 (`invalid_client`, `invalid_scope`, `unsupported_grant_type`); status codes and `WWW-Authenticate` unchanged.
+- [x] Done via `ApiError` declarations in `app/api/v1/auth/errors.py`. Beyond the three codes: the missing
+      credentials 422 gets the RFC 6749 code `invalid_request`, and the endpoint now *documents* its 400/401/422
+      (they were undocumented, so the generated client raised `UnexpectedStatus`; SkillBot reads
+      `response.status_code` and is unaffected). The two denials stay *returned* rather than raised - the
+      `TOKEN_DENIED` audit entry must commit - which
+      `test_auth_token_denial_commits_the_session_so_the_audit_entry_survives` guards.
 
 **P1-4 - Catch-all 500.** An `Exception` handler returns the envelope with `code="internal_error"` and a generic
 `detail`; the logging middleware (`register_request_logging`) must still log the traceback.
