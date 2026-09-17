@@ -127,7 +127,7 @@ def test_forbidden_description_names_all_required_scopes():
     assert responses["403"]["description"] == "Missing required scopes: bot:read, bot:write"
 
 
-def test_auth_error_examples_match_the_bodies_the_auth_dependency_returns():
+def test_auth_error_examples_show_the_envelope_with_detail_and_code():
     responses = _responses(_customized_app(), "/guarded")
 
     unauthorized = responses["401"]["content"]["application/json"]["examples"]
@@ -147,16 +147,36 @@ def test_unguarded_operation_documents_no_auth_errors():
     assert "403" not in responses
 
 
-def test_error_envelope_schema_is_registered_even_if_no_route_references_it():
-    schemas = _customized_app().openapi()["components"]["schemas"]
+def _app_without_envelope_references() -> FastAPI:
+    """Only a guarded, parameterless route: nothing makes FastAPI register ``ErrorResponse`` itself."""
+    app = FastAPI()
 
+    @app.get("/guarded", dependencies=[require_scopes(Scope.BOT_READ)])
+    async def guarded() -> None: ...
+
+    return app
+
+
+def test_fastapi_alone_does_not_register_the_error_envelope():
+    schema = _app_without_envelope_references().openapi()
+
+    assert "ErrorResponse" not in schema.get("components", {}).get("schemas", {})
+
+
+def test_error_envelope_schema_is_registered_even_if_no_route_references_it():
+    app = _app_without_envelope_references()
+    customize_openapi(app)
+
+    schemas = app.openapi()["components"]["schemas"]
     assert schemas["ErrorResponse"]["required"] == ["detail", "code"]
     assert schemas["ErrorResponse"]["properties"]["detail"]["type"] == "string"
 
 
 def test_error_envelope_schema_is_registered_together_with_its_nested_schemas():
-    schema = _customized_app().openapi()
+    app = _app_without_envelope_references()
+    customize_openapi(app)
 
+    schema = app.openapi()
     assert "$defs" not in schema["components"]["schemas"]["ErrorResponse"]
     assert "FieldError" in schema["components"]["schemas"]
     assert _dangling_refs(schema) == set()

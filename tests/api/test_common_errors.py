@@ -4,7 +4,7 @@ import pytest
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.testclient import TestClient
 
-from app.api.v1.common.errors import STATUS_BY_ERROR, register_exception_handlers, status_for
+from app.api.v1.common.errors import STATUS_BY_ERROR, code_for_status, register_exception_handlers, status_for
 from app.core.errors import ConflictError, DomainError, DomainValidationError, NotFoundError
 
 
@@ -43,6 +43,25 @@ def test_status_for_resolves_along_the_mro(error_type: type[DomainError], expect
 def test_status_for_rejects_an_error_outside_every_category():
     with pytest.raises(LookupError, match="DomainError"):
         status_for(DomainError)
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected"),
+    [
+        (400, "bad_request"),
+        (401, "unauthorized"),
+        (403, "forbidden"),
+        (404, "not_found"),
+        (405, "method_not_allowed"),
+        (409, "conflict"),
+        (422, "unprocessable_content"),
+        (599, "http_error"),
+    ],
+)
+def test_status_derived_codes_are_pinned(status_code: int, expected: str):
+    # These codes are contract, but derived from the stdlib's status phrases, which have changed
+    # between Python versions (422 was "Unprocessable Entity"). An upgrade must not rename them silently.
+    assert code_for_status(status_code) == expected
 
 
 def test_status_table_only_maps_taxonomy_categories():

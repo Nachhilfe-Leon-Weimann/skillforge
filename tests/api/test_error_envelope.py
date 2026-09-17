@@ -87,6 +87,28 @@ async def test_missing_token_keeps_the_www_authenticate_challenge():
     assert response.headers["www-authenticate"] == 'Bearer scope="bot:read"'
 
 
+@pytest.mark.parametrize("failure", ["missing_token", "invalid_token", "missing_scope"])
+async def test_documented_auth_error_examples_are_the_bodies_the_api_returns(failure: str):
+    headers = {
+        "missing_token": {},
+        "invalid_token": {"Authorization": "Bearer not-a-token"},
+        "missing_scope": _auth_headers((Scope.BOT_WRITE,)),
+    }[failure]
+
+    async with _client() as client:
+        response = await client.get("/api/v1/bot/jobs", headers=headers)
+
+    assert response.json() == _documented_auth_example("/api/v1/bot/jobs", failure)
+
+
+def _documented_auth_example(path: str, failure: str) -> dict[str, str]:
+    responses = app.openapi()["paths"][path]["get"]["responses"]
+    if failure == "missing_scope":
+        return responses["403"]["content"]["application/json"]["example"]
+
+    return responses["401"]["content"]["application/json"]["examples"][failure]["value"]
+
+
 def _raises(error: Exception):
     async def _inner(*args, **kwargs):
         raise error
