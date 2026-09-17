@@ -222,14 +222,14 @@ Domain-specific vocabulary (`PartyId`, `PartyListParams`) lives in the domain pa
   (the one referencing `HTTPValidationError`) with `ErrorResponse` and removes the two unused validation schemas.
   A 422 declared by a route itself is left untouched.
 - *Acceptance criteria:*
-  - [ ] A parametrized API test asserts the body validates against `ErrorResponse` for: a mapped domain error,
+  - [x] A parametrized API test asserts the body validates against `ErrorResponse` for: a mapped domain error,
         an unknown route (404), a missing token (401, `WWW-Authenticate` header still present), a missing
         scope (403), a malformed path/query parameter (422 with a non-empty `errors` list).
-  - [ ] A test imports all service error modules and asserts every concrete `DomainError` subclass resolves via
+  - [x] A test imports all service error modules and asserts every concrete `DomainError` subclass resolves via
         `status_for` and that all `code` values are unique.
-  - [ ] An instance message is **not** leaked for a class with `expose_message = False`.
-  - [ ] `openapi.json` contains neither `HTTPValidationError` nor `ValidationError`, and no dangling `$ref`.
-  - [ ] No existing status code changes (`git diff openapi.json` shows no added/removed status keys except the
+  - [x] An instance message is **not** leaked for a class with `expose_message = False`.
+  - [x] `openapi.json` contains neither `HTTPValidationError` nor `ValidationError`, and no dangling `$ref`.
+  - [x] No existing status code changes (`git diff openapi.json` shows no added/removed status keys except the
         401/403 additions from P0-2).
   - Known and accepted until P1-1: examples produced by the legacy `error_response()` helper lack `code`.
 
