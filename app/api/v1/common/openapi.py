@@ -76,22 +76,29 @@ def operation_id(route: APIRoute) -> str:
 def customize_openapi(app: FastAPI) -> None:
     """Wrap ``app.openapi`` with the post-processing that derives docs from declared facts.
 
-    Call once, after all routers are included. The result is cached in ``app.openapi_schema``
-    like FastAPI's own schema, so the post-processing runs a single time.
+    Call once, after all routers are included. Caching stays with FastAPI (``app.openapi_schema``,
+    regenerated when routes change); a schema is post-processed exactly once, when FastAPI hands
+    out a new one.
+
+    The schema is built right away: FastAPI resolves included routers lazily, so without this a
+    route rejected by ``operation_id`` would not fail at import but turn requests into 500s.
     """
     generate_openapi = app.openapi
+    customized: dict[str, Any] | None = None
 
     def openapi() -> dict[str, Any]:
-        if app.openapi_schema is None:
-            schema = generate_openapi()
+        nonlocal customized
+        schema = generate_openapi()
+        if schema is not customized:
             _register_error_envelope(schema)
             _document_auth_errors(schema)
             _unify_validation_errors(schema)
-            app.openapi_schema = schema
-        return app.openapi_schema
+            customized = schema
+        return schema
 
     # Overriding the bound method is FastAPI's documented way to extend the schema.
     app.openapi = openapi  # ty: ignore[invalid-assignment]
+    app.openapi()
 
 
 def _register_error_envelope(schema: dict[str, Any]) -> None:

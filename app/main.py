@@ -45,9 +45,12 @@ app = FastAPI(
 register_request_logging(app)
 register_exception_handlers(app)
 app.include_router(router)
-customize_openapi(app)
 
 
 @app.get("/", tags=["system"])
 async def root():
     return {"message": "Welcome to the skillforge API!"}
+
+
+# Last, once every route is registered: it builds the schema right away.
+customize_openapi(app)

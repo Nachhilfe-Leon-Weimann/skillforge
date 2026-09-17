@@ -212,3 +212,28 @@ def test_customized_schema_is_built_once_and_cached():
 
     assert app.openapi() is app.openapi()
     assert app.openapi_schema is app.openapi()
+
+
+def test_customized_schema_follows_routes_added_later():
+    app = _customized_app()
+    app.openapi()
+
+    @app.get("/late", dependencies=[require_scopes(Scope.BOT_WRITE)])
+    async def late() -> None: ...
+
+    assert _responses(app, "/late")["403"]["description"] == "Missing required scope: bot:write"
+
+
+def test_customize_openapi_rejects_an_untagged_included_router_right_away():
+    # FastAPI resolves included routers lazily, so ``operation_id`` alone would only fail on the
+    # first request - as a 500 on every route resolved after the untagged one.
+    router = APIRouter(prefix="/bad")
+
+    @router.get("/untagged")
+    async def untagged() -> None: ...
+
+    app = FastAPI(generate_unique_id_function=operation_id)
+    app.include_router(router)
+
+    with pytest.raises(RuntimeError, match="/bad/untagged"):
+        customize_openapi(app)

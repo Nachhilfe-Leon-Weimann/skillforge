@@ -81,6 +81,14 @@ Agents can rely on these and should not re-derive them:
   but fails every request with 422 `Field required: <model param name>`. Hence decision H.
 - `generate_unique_id_function` set on the `FastAPI` app is applied with the *final* merged tags, also for
   routers nested three levels deep. An untagged route registered on the app raises at decoration time.
+- **Trap (found during implementation):** routes of an *included router* are resolved lazily - on the first
+  request or the first `app.openapi()` call, not at `include_router`. An untagged router would therefore import
+  fine and then answer 500 on its own routes, on every router included after it and on unknown paths.
+  `customize_openapi` builds the schema right away, which resolves all routes and keeps decision B's
+  import-time failure.
+- FastAPI's `app.openapi()` regenerates its cached schema when routes change. A wrapper must not short-circuit
+  on `app.openapi_schema` itself; `customize_openapi` post-processes whenever FastAPI hands out a new schema
+  object.
 - `class JobPage(Page[JobListItem])` keeps the OpenAPI schema name `JobPage`; using `Page[JobListItem]` directly
   yields `Page_JobListItem_`.
 - A `StrEnum` whose `__new__` takes `(value, description)` keeps full `StrEnum` behavior
