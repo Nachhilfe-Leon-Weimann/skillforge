@@ -3,11 +3,16 @@ from typing import Any
 import pytest
 from fastapi import APIRouter, FastAPI
 
-from app.api.v1.common import ErrorResponse
+from app.api.v1.common import ErrorResponse, error_responses
 from app.api.v1.common.openapi import customize_openapi, operation_id
 from app.core.auth import Scope, require_scopes
+from app.core.errors import DomainValidationError
 
 ERROR_RESPONSE_REF = {"$ref": "#/components/schemas/ErrorResponse"}
+
+
+class GadgetRuleError(DomainValidationError):
+    message = "Gadget violates a rule"
 
 
 def _operation_ids(app: FastAPI) -> set[str]:
@@ -83,6 +88,12 @@ def _customized_app() -> FastAPI:
 
     @app.get("/rules/{rule_id}", responses={422: {"model": ErrorResponse, "description": "Rule rejected"}})
     async def read_rule(rule_id: int) -> None: ...
+
+    @app.get("/gadgets/{gadget_id}", responses=error_responses(GadgetRuleError))
+    async def read_gadget(gadget_id: int) -> None: ...
+
+    @app.get("/gadgets", responses=error_responses(GadgetRuleError))
+    async def list_gadgets() -> None: ...
 
     customize_openapi(app)
     return app
@@ -205,6 +216,21 @@ def test_422_declared_by_a_route_is_left_untouched():
 
     assert responses["422"]["description"] == "Rule rejected"
     assert "example" not in responses["422"]["content"]["application/json"]
+
+
+def test_route_declared_422_keeps_the_validation_example_next_to_its_own():
+    declared = _responses(_customized_app(), "/gadgets/{gadget_id}")["422"]
+
+    assert declared["description"] == "Gadget violates a rule"
+    examples = declared["content"]["application/json"]["examples"]
+    assert list(examples) == ["gadget_rule", "validation_error"]
+    assert examples["validation_error"]["value"]["errors"]
+
+
+def test_route_declared_422_without_request_input_gets_no_validation_example():
+    declared = _responses(_customized_app(), "/gadgets")["422"]
+
+    assert list(declared["content"]["application/json"]["examples"]) == ["gadget_rule"]
 
 
 def test_customized_schema_is_built_once_and_cached():

@@ -3406,6 +3406,22 @@
                       "code": "command_env_validation",
                       "detail": "Command env references an unknown guild, channel, or owner"
                     }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
                   }
                 },
                 "schema": {
@@ -5744,6 +5760,22 @@
                       "code": "transition_validation",
                       "detail": "Transition validation failed"
                     }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
                   }
                 },
                 "schema": {
@@ -6021,6 +6053,22 @@
                     "value": {
                       "code": "transition_validation",
                       "detail": "Transition validation failed"
+                    }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
                     }
                   }
                 },
@@ -6310,6 +6358,22 @@
                       "code": "transition_validation",
                       "detail": "Transition validation failed"
                     }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
                   }
                 },
                 "schema": {
@@ -6598,6 +6662,22 @@
                       "code": "transition_validation",
                       "detail": "Transition validation failed"
                     }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
                   }
                 },
                 "schema": {
@@ -6873,6 +6953,22 @@
                     "value": {
                       "code": "transition_validation",
                       "detail": "Transition validation failed"
+                    }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
                     }
                   }
                 },
@@ -7151,6 +7247,22 @@
                     "value": {
                       "code": "transition_validation",
                       "detail": "Transition validation failed"
+                    }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
                     }
                   }
                 },

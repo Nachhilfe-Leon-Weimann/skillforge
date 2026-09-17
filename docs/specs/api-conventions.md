@@ -228,7 +228,9 @@ Domain-specific vocabulary (`PartyId`, `PartyListParams`) lives in the domain pa
   `status_for` and returns a `responses=` dict whose examples are keyed by `code` and contain
   `{"detail": message, "code": code}`. `customize_openapi` additionally replaces FastAPI's **auto-generated** 422
   (the one referencing `HTTPValidationError`) with `ErrorResponse` and removes the two unused validation schemas.
-  A 422 declared by a route itself is left untouched.
+  A 422 declared by a route itself is left untouched - except that, if it lists `examples` (as
+  `error_responses` does) and the route takes input, the `validation_error` example joins them: FastAPI omits
+  its own 422 once a route declares one, although request validation can still fail.
 - *Acceptance criteria:*
   - [x] A parametrized API test asserts the body validates against `ErrorResponse` for: a mapped domain error,
         an unknown route (404), a missing token (401, `WWW-Authenticate` header still present), a missing

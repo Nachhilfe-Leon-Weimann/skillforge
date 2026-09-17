@@ -122,12 +122,19 @@ def _document_auth_errors(schema: dict[str, Any]) -> None:
 
 
 def _unify_validation_errors(schema: dict[str, Any]) -> None:
-    """Replace FastAPI's auto-generated 422 with the envelope; a 422 a route declares itself stays."""
+    """Replace FastAPI's auto-generated 422 with the envelope.
+
+    A 422 a route declares itself stays as it is. FastAPI then omits its own 422, although a route
+    that takes input can still fail request validation - so if the declared 422 lists ``examples``
+    (as ``error_responses`` does), the validation example joins them.
+    """
     framework_ref = {"$ref": SCHEMA_REF_TEMPLATE.format(model=FRAMEWORK_VALIDATION_SCHEMAS[0])}
     for operation in _operations(schema):
-        response = operation.get("responses", {}).get("422", {})
-        if response.get("content", {}).get("application/json", {}).get("schema") == framework_ref:
+        content = operation.get("responses", {}).get("422", {}).get("content", {}).get("application/json", {})
+        if content.get("schema") == framework_ref:
             operation["responses"]["422"] = _error_response(VALIDATION_ERROR_DETAIL, example=VALIDATION_ERROR_EXAMPLE)
+        elif "examples" in content and (operation.get("parameters") or operation.get("requestBody")):
+            content["examples"].setdefault(VALIDATION_ERROR_CODE, {"value": VALIDATION_ERROR_EXAMPLE})
 
     schemas = schema["components"]["schemas"]
     for name in FRAMEWORK_VALIDATION_SCHEMAS:
