@@ -3258,15 +3258,20 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Actor principal not found"
+                "examples": {
+                  "principal_not_found": {
+                    "value": {
+                      "code": "principal_not_found",
+                      "detail": "Discord principal not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Actor principal not found"
+            "description": "Discord principal not found"
           },
           "422": {
             "content": {
@@ -3371,8 +3376,13 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Owner already owns a command env of this kind in the guild"
+                "examples": {
+                  "command_env_conflict": {
+                    "value": {
+                      "code": "command_env_conflict",
+                      "detail": "Owner already owns a command env of this kind in the guild"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -3384,8 +3394,13 @@
           "422": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Command env references an unknown guild, channel, or owner"
+                "examples": {
+                  "command_env_validation": {
+                    "value": {
+                      "code": "command_env_validation",
+                      "detail": "Command env references an unknown guild, channel, or owner"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -3486,8 +3501,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Command env channel not found"
+                "examples": {
+                  "command_env_not_found": {
+                    "value": {
+                      "code": "command_env_not_found",
+                      "detail": "Command env channel not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -3965,8 +3985,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Job not found"
+                "examples": {
+                  "job_not_found": {
+                    "value": {
+                      "code": "job_not_found",
+                      "detail": "Job not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4080,8 +4105,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Job not found"
+                "examples": {
+                  "job_not_found": {
+                    "value": {
+                      "code": "job_not_found",
+                      "detail": "Job not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4093,8 +4123,13 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Job is not in a claimed state"
+                "examples": {
+                  "job_not_claimed": {
+                    "value": {
+                      "code": "job_not_claimed",
+                      "detail": "Job is not in a claimed state"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4219,8 +4254,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Job not found"
+                "examples": {
+                  "job_not_found": {
+                    "value": {
+                      "code": "job_not_found",
+                      "detail": "Job not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4232,8 +4272,13 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Job is not in a claimed state"
+                "examples": {
+                  "job_not_claimed": {
+                    "value": {
+                      "code": "job_not_claimed",
+                      "detail": "Job is not in a claimed state"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4530,8 +4575,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Operation not found"
+                "examples": {
+                  "operation_not_found": {
+                    "value": {
+                      "code": "operation_not_found",
+                      "detail": "Operation not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4646,8 +4696,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Operation not found"
+                "examples": {
+                  "operation_not_found": {
+                    "value": {
+                      "code": "operation_not_found",
+                      "detail": "Operation not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4659,8 +4714,13 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Operation is not in a prepared state (already committed, failed, or expired)"
+                "examples": {
+                  "operation_not_pending": {
+                    "value": {
+                      "code": "operation_not_pending",
+                      "detail": "Operation is not in a prepared state (already committed, failed, or expired)"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4809,8 +4869,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Command env channel not found"
+                "examples": {
+                  "command_env_not_found": {
+                    "value": {
+                      "code": "command_env_not_found",
+                      "detail": "Command env channel not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5025,8 +5090,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Discord principal not found"
+                "examples": {
+                  "principal_not_found": {
+                    "value": {
+                      "code": "principal_not_found",
+                      "detail": "Discord principal not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5263,8 +5333,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Student context not found"
+                "examples": {
+                  "student_context_not_found": {
+                    "value": {
+                      "code": "student_context_not_found",
+                      "detail": "Student context not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5501,8 +5576,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Tutor context not found"
+                "examples": {
+                  "tutor_context_not_found": {
+                    "value": {
+                      "code": "tutor_context_not_found",
+                      "detail": "Tutor context not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5614,8 +5694,13 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5627,8 +5712,13 @@
           "422": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition validation failed"
+                "examples": {
+                  "transition_validation": {
+                    "value": {
+                      "code": "transition_validation",
+                      "detail": "Transition validation failed"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5728,8 +5818,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Operation not found"
+                "examples": {
+                  "operation_not_found": {
+                    "value": {
+                      "code": "operation_not_found",
+                      "detail": "Operation not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5741,15 +5836,26 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "operation_not_pending": {
+                    "value": {
+                      "code": "operation_not_pending",
+                      "detail": "Operation is not in a prepared state (already committed, failed, or expired)"
+                    }
+                  },
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Transition conflict"
+            "description": "Operation is not in a prepared state (already committed, failed, or expired) / Transition conflict"
           },
           "422": {
             "content": {
@@ -5866,8 +5972,13 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5879,8 +5990,13 @@
           "422": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition validation failed"
+                "examples": {
+                  "transition_validation": {
+                    "value": {
+                      "code": "transition_validation",
+                      "detail": "Transition validation failed"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5990,8 +6106,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Operation not found"
+                "examples": {
+                  "operation_not_found": {
+                    "value": {
+                      "code": "operation_not_found",
+                      "detail": "Operation not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6003,15 +6124,26 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "operation_not_pending": {
+                    "value": {
+                      "code": "operation_not_pending",
+                      "detail": "Operation is not in a prepared state (already committed, failed, or expired)"
+                    }
+                  },
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Transition conflict"
+            "description": "Operation is not in a prepared state (already committed, failed, or expired) / Transition conflict"
           },
           "422": {
             "content": {
@@ -6128,8 +6260,13 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6141,8 +6278,13 @@
           "422": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition validation failed"
+                "examples": {
+                  "transition_validation": {
+                    "value": {
+                      "code": "transition_validation",
+                      "detail": "Transition validation failed"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6252,8 +6394,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Operation not found"
+                "examples": {
+                  "operation_not_found": {
+                    "value": {
+                      "code": "operation_not_found",
+                      "detail": "Operation not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6265,15 +6412,26 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "operation_not_pending": {
+                    "value": {
+                      "code": "operation_not_pending",
+                      "detail": "Operation is not in a prepared state (already committed, failed, or expired)"
+                    }
+                  },
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Transition conflict"
+            "description": "Operation is not in a prepared state (already committed, failed, or expired) / Transition conflict"
           },
           "422": {
             "content": {
@@ -6390,8 +6548,13 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6403,8 +6566,13 @@
           "422": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition validation failed"
+                "examples": {
+                  "transition_validation": {
+                    "value": {
+                      "code": "transition_validation",
+                      "detail": "Transition validation failed"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6514,8 +6682,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Operation not found"
+                "examples": {
+                  "operation_not_found": {
+                    "value": {
+                      "code": "operation_not_found",
+                      "detail": "Operation not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6527,15 +6700,26 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "operation_not_pending": {
+                    "value": {
+                      "code": "operation_not_pending",
+                      "detail": "Operation is not in a prepared state (already committed, failed, or expired)"
+                    }
+                  },
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Transition conflict"
+            "description": "Operation is not in a prepared state (already committed, failed, or expired) / Transition conflict"
           },
           "422": {
             "content": {
@@ -6640,8 +6824,13 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6653,8 +6842,13 @@
           "422": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition validation failed"
+                "examples": {
+                  "transition_validation": {
+                    "value": {
+                      "code": "transition_validation",
+                      "detail": "Transition validation failed"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6754,8 +6948,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Operation not found"
+                "examples": {
+                  "operation_not_found": {
+                    "value": {
+                      "code": "operation_not_found",
+                      "detail": "Operation not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6767,15 +6966,26 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "operation_not_pending": {
+                    "value": {
+                      "code": "operation_not_pending",
+                      "detail": "Operation is not in a prepared state (already committed, failed, or expired)"
+                    }
+                  },
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Transition conflict"
+            "description": "Operation is not in a prepared state (already committed, failed, or expired) / Transition conflict"
           },
           "422": {
             "content": {
@@ -6892,8 +7102,13 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6905,8 +7120,13 @@
           "422": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition validation failed"
+                "examples": {
+                  "transition_validation": {
+                    "value": {
+                      "code": "transition_validation",
+                      "detail": "Transition validation failed"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7016,8 +7236,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Operation not found"
+                "examples": {
+                  "operation_not_found": {
+                    "value": {
+                      "code": "operation_not_found",
+                      "detail": "Operation not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7029,15 +7254,26 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Transition conflict"
+                "examples": {
+                  "operation_not_pending": {
+                    "value": {
+                      "code": "operation_not_pending",
+                      "detail": "Operation is not in a prepared state (already committed, failed, or expired)"
+                    }
+                  },
+                  "transition_conflict": {
+                    "value": {
+                      "code": "transition_conflict",
+                      "detail": "Transition conflict"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Transition conflict"
+            "description": "Operation is not in a prepared state (already committed, failed, or expired) / Transition conflict"
           },
           "422": {
             "content": {
@@ -7258,8 +7494,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Discord account not found"
+                "examples": {
+                  "discord_account_not_found": {
+                    "value": {
+                      "code": "discord_account_not_found",
+                      "detail": "Discord account not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7382,8 +7623,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Party not found"
+                "examples": {
+                  "party_not_found": {
+                    "value": {
+                      "code": "party_not_found",
+                      "detail": "Party not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7395,8 +7641,13 @@
           "409": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Another primary account already exists for this party"
+                "examples": {
+                  "account_link_conflict": {
+                    "value": {
+                      "code": "account_link_conflict",
+                      "detail": "Another primary account already exists for this party"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7514,8 +7765,13 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Group membership not found"
+                "examples": {
+                  "group_membership_not_found": {
+                    "value": {
+                      "code": "group_membership_not_found",
+                      "detail": "Group membership not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7638,15 +7894,26 @@
           "404": {
             "content": {
               "application/json": {
-                "example": {
-                  "detail": "Discord user not found or Permission group not found"
+                "examples": {
+                  "permission_group_not_found": {
+                    "value": {
+                      "code": "permission_group_not_found",
+                      "detail": "Permission group not found"
+                    }
+                  },
+                  "principal_not_found": {
+                    "value": {
+                      "code": "principal_not_found",
+                      "detail": "Discord principal not found"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Discord user not found or Permission group not found"
+            "description": "Discord principal not found / Permission group not found"
           },
           "422": {
             "content": {

@@ -1,21 +1,20 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.common import error_response
+from app.api.v1.common import error_responses
 from app.core.db.dependencies import get_db_session
 from app.core.db.models import OperationKind, OperationStatus
 from app.services.bot import (
-    BotServiceError,
     OperationNotFoundError,
+    OperationNotPendingError,
     cancel_operation,
     get_operation,
     list_operations,
 )
 
-from ._transitions import CANCEL_RESPONSES, OPERATION_NOT_FOUND, transition_http_exception
 from .dependencies import BotRead, BotWrite
 from .schemas import OperationCancelResponse, OperationPage, OperationResponse, OperationSummary
 
@@ -59,7 +58,7 @@ async def list_operations_endpoint(
 @router.get(
     "/{operation_id}",
     response_model=OperationResponse,
-    responses={404: error_response(OPERATION_NOT_FOUND)},
+    responses=error_responses(OperationNotFoundError),
 )
 async def read_operation(
     operation_id: uuid.UUID,
@@ -67,18 +66,14 @@ async def read_operation(
     _: BotRead,
 ) -> OperationResponse:
     """Read a single operation by id, including its two-phase `plan`."""
-    try:
-        operation = await get_operation(session, operation_id=operation_id)
-    except OperationNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=OPERATION_NOT_FOUND) from exc
-
+    operation = await get_operation(session, operation_id=operation_id)
     return OperationResponse.from_model(operation)
 
 
 @router.post(
     "/{operation_id}/cancel",
     response_model=OperationCancelResponse,
-    responses=CANCEL_RESPONSES,
+    responses=error_responses(OperationNotFoundError, OperationNotPendingError),
 )
 async def cancel_operation_endpoint(
     operation_id: uuid.UUID,
@@ -90,9 +85,5 @@ async def cancel_operation_endpoint(
     Idempotent on an already-cancelled operation; a non-cancellable state (committed, expired,
     failed) returns 409 and an unknown id returns 404.
     """
-    try:
-        operation = await cancel_operation(session, operation_id=operation_id)
-    except BotServiceError as exc:
-        raise transition_http_exception(exc) from exc
-
+    operation = await cancel_operation(session, operation_id=operation_id)
     return OperationCancelResponse.from_model(operation)

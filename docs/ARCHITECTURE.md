@@ -37,8 +37,8 @@ HTTP -> app/api/system    liveness + health probes (dependencies, workers)
     reads: by id + filtered list), `jobs.py` (queue reads - by id, filtered list, queue summary -
     plus claim/complete/fail), `students.py` & `tutors.py` (state transitions), `command_envs.py`,
     `users.py` (provisioning: register users, link/deactivate accounts, group membership),
-    `authz.py` (delegated authorization check). `_transitions.py` maps service errors to HTTP
-    codes, `dependencies.py` wires the scope gates.
+    `authz.py` (delegated authorization check). `dependencies.py` wires the scope gates. Endpoints
+    do not catch domain errors: the handlers in `app/api/v1/common/errors.py` map them to HTTP.
 - **`app/services/bot/`** - the actual logic, free of HTTP concerns: `transitions.py`,
   `operations.py` (operation reads), `jobs.py`, `principals.py`, `provisioning.py`, `authz.py`,
   `command_envs.py`, `contexts.py`, `profile.py`, `reaper.py`, `views.py` (immutable view models for

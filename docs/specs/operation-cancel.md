@@ -56,7 +56,8 @@ Requires the existing **`BotWrite`** scope; lives on the existing `/api/v1/bot/o
 ```
 
 Errors map through the existing `transition_http_exception`; a new `CANCEL_RESPONSES = {404, 409}`
-is added to `_transitions.py`.
+is added to `_transitions.py`. *(Superseded: both were removed by the
+[API conventions](api-conventions.md) arc - the global exception handlers map the errors now.)*
 
 ## State semantics
 

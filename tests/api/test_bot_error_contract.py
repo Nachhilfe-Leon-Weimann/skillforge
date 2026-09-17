@@ -1,4 +1,4 @@
-"""Pins status and ``detail`` of every domain error the bot API returns.
+"""Pins status, ``detail`` and ``code`` of every domain error the bot API returns.
 
 Each case stubs the service function an endpoint calls, makes it raise the domain error with an
 *internal* instance message, and asserts what a client sees.
@@ -19,6 +19,7 @@ from pydantic import SecretStr
 from app.core.auth import AuthSettings, Scope, create_application_access_token
 from app.core.auth.dependencies import get_auth_settings
 from app.core.db.dependencies import get_db_session
+from app.core.errors import DomainError
 from app.main import app
 from app.services.bot import (
     AccountLinkConflictError,
@@ -116,7 +117,7 @@ COMMIT_ENDPOINTS = {
 }
 
 # (endpoint, raised error, status, detail)
-type Expectation = tuple[str, Exception, int, str]
+type Expectation = tuple[str, DomainError, int, str]
 
 OPERATION_NOT_PENDING = "Operation is not in a prepared state (already committed, failed, or expired)"
 
@@ -141,10 +142,10 @@ EXPECTATIONS: list[Expectation] = [
     ("link_account", PartyNotFoundError(INTERNAL), 404, "Party not found"),
     ("link_account", AccountLinkConflictError(INTERNAL), 409, "Another primary account already exists for this party"),
     ("deactivate_account", DiscordAccountNotFoundError(INTERNAL), 404, "Discord account not found"),
-    ("add_user_to_group", PrincipalNotFoundError(INTERNAL), 404, "Discord user not found"),
+    ("add_user_to_group", PrincipalNotFoundError(INTERNAL), 404, "Discord principal not found"),
     ("add_user_to_group", PermissionGroupNotFoundError(INTERNAL), 404, "Permission group not found"),
     ("remove_user_from_group", GroupMembershipNotFoundError(INTERNAL), 404, "Group membership not found"),
-    ("check_authorization", PrincipalNotFoundError(INTERNAL), 404, "Actor principal not found"),
+    ("check_authorization", PrincipalNotFoundError(INTERNAL), 404, "Discord principal not found"),
     ("read_job", JobNotFoundError(INTERNAL), 404, "Job not found"),
     ("complete_job", JobNotFoundError(INTERNAL), 404, "Job not found"),
     ("complete_job", JobNotClaimedError(INTERNAL), 409, "Job is not in a claimed state"),
@@ -157,13 +158,13 @@ EXPECTATIONS: list[Expectation] = [
 ]
 
 # Transition messages are written for clients ("Tutor student capacity reached") and shown as-is.
-PREPARE_EXPECTATIONS: list[tuple[Exception, int, str]] = [
+PREPARE_EXPECTATIONS: list[tuple[DomainError, int, str]] = [
     (TransitionConflictError("Tutor student capacity reached"), 409, "Tutor student capacity reached"),
     (TransitionConflictError(), 409, "Transition conflict"),
     (TransitionValidationError("Guild not found"), 422, "Guild not found"),
     (TransitionValidationError(), 422, "Transition validation failed"),
 ]
-COMMIT_EXPECTATIONS: list[tuple[Exception, int, str]] = [
+COMMIT_EXPECTATIONS: list[tuple[DomainError, int, str]] = [
     (OperationNotFoundError(INTERNAL), 404, "Operation not found"),
     (OperationNotPendingError("Operation has expired"), 409, "Operation has expired"),
     (OperationNotPendingError(), 409, OPERATION_NOT_PENDING),
@@ -199,7 +200,8 @@ async def test_bot_domain_error_status_and_detail(expectation: Expectation, monk
         )
 
     assert response.status_code == status
-    assert response.json()["detail"] == detail
+    # The code values themselves are pinned per class in ``tests/test_bot_errors.py``.
+    assert response.json() == {"detail": detail, "code": type(error).code}
     assert INTERNAL not in response.text
 
 

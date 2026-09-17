@@ -31,8 +31,8 @@ discipline the rest of the bot lifecycle follows.
 
 - **Two-phase machinery.** `_create_operation` / `_load_prepared_operation` / `_mark_committed`,
   `OPERATION_TTL`, the `bot.operation` reservation log, and the `prepare`/`commit` HTTP surface
-  ([`students.py`](../../app/api/v1/bot/students.py), [`tutors.py`](../../app/api/v1/bot/tutors.py),
-  [`_transitions.py`](../../app/api/v1/bot/_transitions.py)). New kinds slot straight in.
+  ([`students.py`](../../app/api/v1/bot/students.py), [`tutors.py`](../../app/api/v1/bot/tutors.py)).
+  New kinds slot straight in.
 - **Capacity counting.** `_assert_tutor_capacity` already counts committed workspaces plus outstanding
   `PREPARED` inbound reservations. Teardown reuses the same count to enforce the tutor-refuse policy.
 - **Error -> HTTP mapping.** `TransitionValidationError` (422) and `TransitionConflictError` (409) are

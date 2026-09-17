@@ -7,7 +7,7 @@ Status: Accepted, 2026-09
 Error handling grew per endpoint: each route catches its service exceptions, raises an
 `HTTPException` with a hand-picked status and string, and repeats both in `responses={...}` for the
 docs (`complete_job_endpoint` in [`jobs.py`](../../app/api/v1/bot/jobs.py),
-`transition_http_exception` in [`_transitions.py`](../../app/api/v1/bot/_transitions.py)). Three
+`transition_http_exception` in the since-removed `app/api/v1/bot/_transitions.py`). Three
 places must stay in sync by hand, and a new domain (CRM) would copy the pattern a third time.
 
 The contract has two concrete defects today:
