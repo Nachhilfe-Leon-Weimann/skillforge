@@ -22,7 +22,7 @@ oauth2_scheme = OAuth2ClientCredentialsBearer(
     flows=OAuthFlows(
         clientCredentials=OAuthFlowClientCredentials(
             tokenUrl="/api/v1/auth/token",
-            scopes={scope.value: scope.name for scope in Scope},
+            scopes={scope.value: scope.description for scope in Scope},
         )
     ),
     auto_error=False,

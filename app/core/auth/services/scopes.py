@@ -6,24 +6,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.models import ApplicationClient, ApplicationClientScopeGrant, PermissionScope
 
 from ..audit import AuditEventType, write_auth_audit_log
-from ..scopes import DEFAULT_SCOPES, Scope
+from ..scopes import Scope
 from .clients import get_application_client
 from .errors import ApplicationClientScopeGrantNotFoundError, InvalidClientScopeError
 
 
 async def seed_default_scopes(session: AsyncSession) -> list[PermissionScope]:
     scopes: list[PermissionScope] = []
-    for scope, description in DEFAULT_SCOPES.items():
+    for scope in Scope:
         permission_scope = await session.get(PermissionScope, scope.value)
         if permission_scope is None:
             permission_scope = PermissionScope(
                 key=scope.value,
-                description=description,
+                description=scope.description,
                 active=True,
             )
             session.add(permission_scope)
         else:
-            permission_scope.description = description
+            permission_scope.description = scope.description
             permission_scope.active = True
 
         scopes.append(permission_scope)

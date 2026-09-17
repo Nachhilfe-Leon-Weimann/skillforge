@@ -2,7 +2,7 @@ from .config import AuthSettings
 from .dependencies import get_current_principal, require_application, require_scopes
 from .principal import Principal
 from .results import BootstrappedApplicationClient, CreatedClientSecret
-from .scopes import DEFAULT_SCOPES, Scope
+from .scopes import Scope
 from .secrets import (
     generate_client_secret,
     hash_client_secret,
@@ -43,7 +43,6 @@ __all__ = [
     "ClientCredentialsError",
     "CreatedClientSecret",
     "CreatedAccessToken",
-    "DEFAULT_SCOPES",
     "InvalidClientCredentialsError",
     "InvalidClientScopeError",
     "Principal",

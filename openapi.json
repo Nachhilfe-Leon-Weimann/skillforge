@@ -2286,9 +2286,9 @@
         "flows": {
           "clientCredentials": {
             "scopes": {
-              "auth:clients:manage": "AUTH_CLIENTS_MANAGE",
-              "bot:read": "BOT_READ",
-              "bot:write": "BOT_WRITE"
+              "auth:clients:manage": "Manage application clients.",
+              "bot:read": "Read bot API surface.",
+              "bot:write": "Write bot API surface."
             },
             "tokenUrl": "/api/v1/auth/token"
           }
