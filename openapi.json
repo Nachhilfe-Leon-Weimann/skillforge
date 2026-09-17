@@ -2466,6 +2466,24 @@
             },
             "description": "Missing required scope: auth:clients:manage"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "application_client_already_exists": {
+                    "value": {
+                      "code": "application_client_already_exists",
+                      "detail": "Application client already exists"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Application client already exists"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2566,6 +2584,24 @@
               }
             },
             "description": "Missing required scope: auth:clients:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "application_client_not_found": {
+                    "value": {
+                      "code": "application_client_not_found",
+                      "detail": "Application client not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Application client not found"
           },
           "422": {
             "content": {
@@ -2676,6 +2712,24 @@
             },
             "description": "Missing required scope: auth:clients:manage"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "application_client_not_found": {
+                    "value": {
+                      "code": "application_client_not_found",
+                      "detail": "Application client not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Application client not found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2749,6 +2803,24 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_scope": {
+                    "value": {
+                      "code": "invalid_scope",
+                      "detail": "Invalid requested scope"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid requested scope"
+          },
           "401": {
             "content": {
               "application/json": {
@@ -2786,6 +2858,24 @@
               }
             },
             "description": "Missing required scope: auth:clients:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "application_client_not_found": {
+                    "value": {
+                      "code": "application_client_not_found",
+                      "detail": "Application client not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Application client not found"
           },
           "422": {
             "content": {
@@ -2889,6 +2979,30 @@
               }
             },
             "description": "Missing required scope: auth:clients:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "application_client_not_found": {
+                    "value": {
+                      "code": "application_client_not_found",
+                      "detail": "Application client not found"
+                    }
+                  },
+                  "application_client_scope_grant_not_found": {
+                    "value": {
+                      "code": "application_client_scope_grant_not_found",
+                      "detail": "Application client scope grant not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Application client not found / Application client scope grant not found"
           },
           "422": {
             "content": {
@@ -3001,6 +3115,24 @@
             },
             "description": "Missing required scope: auth:clients:manage"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "application_client_not_found": {
+                    "value": {
+                      "code": "application_client_not_found",
+                      "detail": "Application client not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Application client not found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3104,6 +3236,30 @@
               }
             },
             "description": "Missing required scope: auth:clients:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "application_client_not_found": {
+                    "value": {
+                      "code": "application_client_not_found",
+                      "detail": "Application client not found"
+                    }
+                  },
+                  "application_client_secret_not_found": {
+                    "value": {
+                      "code": "application_client_secret_not_found",
+                      "detail": "Application client secret not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Application client not found / Application client secret not found"
           },
           "422": {
             "content": {

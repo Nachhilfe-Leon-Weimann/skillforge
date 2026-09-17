@@ -1,4 +1,4 @@
-"""Pins status and ``detail`` of every error the application-client routes return.
+"""Pins status, ``detail`` and ``code`` of every error the application-client routes return.
 
 Each case stubs the service function an endpoint calls, makes it raise with an *internal* instance
 message, and asserts what a client sees.
@@ -54,36 +54,49 @@ ENDPOINTS = {
     "revoke_scope": Endpoint("DELETE", "/x/scopes/bot:read", "revoke_application_client_scope"),
 }
 
-# (endpoint, raised error, status, detail)
-type Expectation = tuple[str, Exception, int, str]
+# (endpoint, raised error, status, detail, code)
+type Expectation = tuple[str, Exception, int, str, str]
 
 EXPECTATIONS: list[Expectation] = [
-    ("create_client", ApplicationClientAlreadyExistsError(INTERNAL), 409, "Application client already exists"),
-    ("read_client", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND),
-    ("update_client", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND),
-    ("create_secret", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND),
-    ("revoke_secret", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND),
-    ("revoke_secret", ApplicationClientSecretNotFoundError(INTERNAL), 404, "Application client secret not found"),
-    ("grant_scopes", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND),
-    ("grant_scopes", InvalidClientScopeError(INTERNAL), 400, "Invalid requested scope"),
-    ("revoke_scope", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND),
+    (
+        "create_client",
+        ApplicationClientAlreadyExistsError(INTERNAL),
+        409,
+        "Application client already exists",
+        "application_client_already_exists",
+    ),
+    ("read_client", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND, "application_client_not_found"),
+    ("update_client", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND, "application_client_not_found"),
+    ("create_secret", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND, "application_client_not_found"),
+    ("revoke_secret", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND, "application_client_not_found"),
+    (
+        "revoke_secret",
+        ApplicationClientSecretNotFoundError(INTERNAL),
+        404,
+        "Application client secret not found",
+        "application_client_secret_not_found",
+    ),
+    ("grant_scopes", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND, "application_client_not_found"),
+    ("grant_scopes", InvalidClientScopeError(INTERNAL), 400, "Invalid requested scope", "invalid_scope"),
+    ("revoke_scope", ApplicationClientNotFoundError(INTERNAL), 404, CLIENT_NOT_FOUND, "application_client_not_found"),
     (
         "revoke_scope",
         ApplicationClientScopeGrantNotFoundError(INTERNAL),
         404,
         "Application client scope grant not found",
+        "application_client_scope_grant_not_found",
     ),
 ]
 
 
 def _expectation_id(expectation: Expectation) -> str:
-    name, error, _, _ = expectation
+    name, error, *_ = expectation
     return f"{name}-{type(error).__name__}"
 
 
 @pytest.mark.parametrize("expectation", EXPECTATIONS, ids=_expectation_id)
 async def test_auth_client_error_status_and_detail(expectation: Expectation, monkeypatch):
-    name, error, status, detail = expectation
+    name, error, status, detail, code = expectation
     endpoint = ENDPOINTS[name]
     monkeypatch.setattr(f"app.api.v1.auth.clients.{endpoint.stub}", _raises(error))
 
@@ -96,8 +109,22 @@ async def test_auth_client_error_status_and_detail(expectation: Expectation, mon
         )
 
     assert response.status_code == status
-    assert response.json()["detail"] == detail
+    assert response.json() == {"detail": detail, "code": code}
     assert INTERNAL not in response.text
+
+
+def test_every_error_of_the_table_is_documented_on_its_route():
+    paths = app.openapi()["paths"]
+
+    for name, _, status, detail, code in EXPECTATIONS:
+        endpoint = ENDPOINTS[name]
+        operation = paths[f"/api/v1/auth/clients{_template(endpoint.path)}"][endpoint.method.lower()]
+        examples = operation["responses"][str(status)]["content"]["application/json"]["examples"]
+        assert examples[code]["value"] == {"detail": detail, "code": code}, name
+
+
+def _template(path: str) -> str:
+    return path.replace("/x", "/{client_id}", 1).replace(ID, "{secret_id}").replace("bot:read", "{scope_key}")
 
 
 def test_every_endpoint_of_the_table_is_exercised():
