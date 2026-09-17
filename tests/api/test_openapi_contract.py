@@ -71,17 +71,26 @@ def test_every_operation_has_exactly_one_documented_domain_tag(schema: dict[str,
         assert documented.get(operation["tags"][0], "").strip(), f"{method} {path}"
 
 
-def test_auth_error_responses_are_documented_exactly_where_a_token_is_required(schema: dict[str, Any]):
+def test_bearer_auth_errors_are_documented_exactly_where_a_token_is_required(schema: dict[str, Any]):
     guarded = 0
     for method, path, operation in _operations(schema):
-        documented = {"401", "403"} & set(operation["responses"])
+        responses = operation["responses"]
         if operation.get("security"):
             guarded += 1
-            assert documented == {"401", "403"}, f"{method} {path}"
+            assert _documents_bearer_401(responses), f"{method} {path}"
+            assert "403" in responses, f"{method} {path}"
         else:
-            assert not documented, f"{method} {path}"
+            # An unguarded operation may own a 401 (the token endpoint's ``invalid_client``), but
+            # never the derived bearer-token one, and no 403.
+            assert not _documents_bearer_401(responses), f"{method} {path}"
+            assert "403" not in responses, f"{method} {path}"
 
     assert guarded
+
+
+def _documents_bearer_401(responses: dict[str, Any]) -> bool:
+    examples = responses.get("401", {}).get("content", {}).get("application/json", {}).get("examples", {})
+    return {"missing_token", "invalid_token"} <= set(examples)
 
 
 def test_forbidden_response_names_the_required_scope(schema: dict[str, Any]):

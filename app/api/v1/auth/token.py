@@ -4,11 +4,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse
 from fastapi.security.utils import get_authorization_scheme_param
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.common import error_responses
 from app.core.auth import (
     AuthSettings,
     CreatedAccessToken,
@@ -20,6 +21,7 @@ from app.core.auth.dependencies import get_auth_settings
 from app.core.db.dependencies import get_db_session
 from app.core.logging import bind_request_log_context
 
+from .errors import INVALID_CLIENT, INVALID_REQUEST, INVALID_SCOPE, UNSUPPORTED_GRANT_TYPE
 from .schemas import AccessTokenResponse
 
 router = APIRouter()
@@ -54,10 +56,7 @@ async def get_client_token_form(
 
     if not resolved_client_id or not resolved_client_secret:
         bind_request_log_context(request, auth_reason="missing_client_credentials")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="client_id and client_secret are required",
-        )
+        raise INVALID_REQUEST.exception()
 
     return ClientTokenForm(
         grant_type=grant_type,
@@ -85,7 +84,11 @@ def _get_basic_credentials(request: Request) -> tuple[str, str] | None:
     return username, password
 
 
-@router.post("/token", response_model=AccessTokenResponse)
+@router.post(
+    "/token",
+    response_model=AccessTokenResponse,
+    responses=error_responses(UNSUPPORTED_GRANT_TYPE, INVALID_SCOPE, INVALID_CLIENT, INVALID_REQUEST),
+)
 async def create_token(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db_session)],
@@ -95,10 +98,7 @@ async def create_token(
 ) -> AccessTokenResponse | JSONResponse:
     if form.grant_type != "client_credentials":
         bind_request_log_context(request, auth_reason="unsupported_grant_type")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported grant_type",
-        )
+        raise UNSUPPORTED_GRANT_TYPE.exception()
 
     try:
         token: CreatedAccessToken = await issue_token(
@@ -108,18 +108,13 @@ async def create_token(
             client_secret=form.client_secret,
             requested_scopes=form.scope,
         )
+    # Both denials are *returned*, not raised: issue_token has written a TOKEN_DENIED audit entry,
+    # and raising would roll the session back and lose it.
     except InvalidClientCredentialsError:
         bind_request_log_context(request, auth_reason="invalid_client_credentials", client_id=form.client_id)
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            headers={"WWW-Authenticate": "Bearer"},
-            content={"detail": "Invalid client credentials"},
-        )
+        return INVALID_CLIENT.response()
     except InvalidClientScopeError:
         bind_request_log_context(request, auth_reason="invalid_requested_scope", client_id=form.client_id)
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": "Invalid requested scope"},
-        )
+        return INVALID_SCOPE.response()
 
     return AccessTokenResponse.from_created_token(token)

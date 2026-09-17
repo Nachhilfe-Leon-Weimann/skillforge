@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -105,6 +106,7 @@ def test_auth_token_endpoint_rejects_unsupported_grant_type():
         )
 
     assert response.status_code == 400
+    assert response.json() == {"detail": "Unsupported grant_type", "code": "unsupported_grant_type"}
 
 
 def test_auth_token_endpoint_rejects_invalid_client_credentials():
@@ -123,6 +125,7 @@ def test_auth_token_endpoint_rejects_invalid_client_credentials():
 
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
+    assert response.json() == {"detail": "Invalid client credentials", "code": "invalid_client"}
 
 
 def test_auth_token_endpoint_rejects_invalid_scope():
@@ -141,6 +144,35 @@ def test_auth_token_endpoint_rejects_invalid_scope():
         )
 
     assert response.status_code == 400
+    assert response.json() == {"detail": "Invalid requested scope", "code": "invalid_scope"}
+
+
+@pytest.mark.parametrize("denial", [InvalidClientCredentialsError("invalid"), InvalidClientScopeError("invalid scope")])
+def test_auth_token_denial_commits_the_session_so_the_audit_entry_survives(denial: Exception):
+    # issue_client_token writes a TOKEN_DENIED audit entry before it raises. The endpoint must
+    # return the error: an exception reaching the session dependency would roll the entry back.
+    outcome: list[str] = []
+
+    async def tracked_session():
+        try:
+            yield "session"
+        except BaseException:
+            outcome.append("rolled back")
+            raise
+        outcome.append("committed")
+
+    async def fake_create_token(*args, **kwargs):
+        raise denial
+
+    with _overrides(fake_create_token):
+        app.dependency_overrides[get_db_session] = tracked_session
+        response = TestClient(app).post(
+            "/api/v1/auth/token",
+            data={"grant_type": "client_credentials", "client_id": "skillbot", "client_secret": "wrong"},
+        )
+
+    assert response.status_code in {400, 401}
+    assert outcome == ["committed"]
 
 
 def test_auth_token_endpoint_requires_form_fields():
@@ -151,6 +183,31 @@ def test_auth_token_endpoint_requires_form_fields():
         response = TestClient(app).post("/api/v1/auth/token", data={})
 
     assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    assert [error["loc"] for error in response.json()["errors"]] == [["body", "grant_type"]]
+
+
+def test_auth_token_endpoint_requires_client_credentials():
+    async def fake_create_token(*args, **kwargs):
+        raise AssertionError("service should not be called")
+
+    with _overrides(fake_create_token):
+        response = TestClient(app).post("/api/v1/auth/token", data={"grant_type": "client_credentials"})
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "client_id and client_secret are required", "code": "invalid_request"}
+
+
+def test_auth_token_endpoint_documents_every_error_it_returns():
+    responses = app.openapi()["paths"]["/api/v1/auth/token"]["post"]["responses"]
+
+    assert set(responses) == {"200", "400", "401", "422"}
+    assert set(responses["400"]["content"]["application/json"]["examples"]) == {
+        "unsupported_grant_type",
+        "invalid_scope",
+    }
+    assert set(responses["401"]["content"]["application/json"]["examples"]) == {"invalid_client"}
+    assert set(responses["422"]["content"]["application/json"]["examples"]) == {"invalid_request", "validation_error"}
 
 
 class _overrides:
