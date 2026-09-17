@@ -52,7 +52,7 @@ Pagination is `limit` (default 50, 1–100) + `offset` (≥ 0); list responses w
 | Method & path | Response | Notes |
 |---|---|---|
 | `GET /operations/{operation_id}` | `OperationResponse` (full, **incl. `plan`**) | 404 → `OperationNotFoundError` |
-| `GET /operations` | `OperationPage` of `OperationSummary` (**no `plan`**) | Filters (optional, AND-combined): `guild_id`, `subject_discord_id`, `status`, `kind` |
+| `GET /operations` | `Page[OperationSummary]` (**no `plan`**) | Filters (optional, AND-combined): `guild_id`, `subject_discord_id`, `status`, `kind` |
 
 The subject of an operation is the pair `(guild_id, subject_discord_id)`; both are exposed as
 independent optional filters (the `ix_operation_subject` index covers the `guild_id` prefix).
@@ -65,7 +65,7 @@ The heavy `plan` JSONB is returned only on the by-id detail, keeping list pages 
 |---|---|---|
 | `GET /jobs/summary` | `JobQueueSummary` | Optional `kind` filter; declared **before** `/{job_id}` to avoid path capture |
 | `GET /jobs/{job_id}` | `JobDetail` (full, **incl. `payload`**) | 404 → `JobNotFoundError` |
-| `GET /jobs` | `JobPage` of `JobListItem` (**no `payload`**) | Filters (optional, AND): `status`, `kind` |
+| `GET /jobs` | `Page[JobListItem]` (**no `payload`**) | Filters (optional, AND): `status`, `kind` |
 
 `JobQueueSummary` is a queue-depth funnel with a per-kind breakdown:
 

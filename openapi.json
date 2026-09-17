@@ -1252,38 +1252,6 @@
         "title": "JobListItem",
         "type": "object"
       },
-      "JobPage": {
-        "description": "A page of jobs plus the total match count, for offset pagination.",
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/JobListItem"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "limit": {
-            "title": "Limit",
-            "type": "integer"
-          },
-          "offset": {
-            "title": "Offset",
-            "type": "integer"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "limit",
-          "offset"
-        ],
-        "title": "JobPage",
-        "type": "object"
-      },
       "JobQueueSummary": {
         "description": "Queue funnel: global depth (``total``/``open``) and status counts, plus a per-kind breakdown.\n\n``open`` is outstanding work -- ``pending`` (including jobs delayed by retry backoff) plus\n``claimed``. Terminal counts are historical totals (rows are retained). ``by_kind`` is sorted by\nkind and scoped to whatever ``kind`` filter the summary was fetched with.",
         "properties": {
@@ -1508,38 +1476,6 @@
         ],
         "title": "OperationKind",
         "type": "string"
-      },
-      "OperationPage": {
-        "description": "A page of operations plus the total match count, for offset pagination.",
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/OperationSummary"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "limit": {
-            "title": "Limit",
-            "type": "integer"
-          },
-          "offset": {
-            "title": "Offset",
-            "type": "integer"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "limit",
-          "offset"
-        ],
-        "title": "OperationPage",
-        "type": "object"
       },
       "OperationResponse": {
         "description": "Full read view of a single operation, including the two-phase ``plan``.",
@@ -1857,6 +1793,76 @@
           "party_id"
         ],
         "title": "OperationalProfile",
+        "type": "object"
+      },
+      "Page_JobListItem_": {
+        "properties": {
+          "items": {
+            "description": "The items of this page, in the order of the list.",
+            "items": {
+              "$ref": "#/components/schemas/JobListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "The page size that was applied.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Number of items skipped before this page.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Number of items matching the request across all pages.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[JobListItem]",
+        "type": "object"
+      },
+      "Page_OperationSummary_": {
+        "properties": {
+          "items": {
+            "description": "The items of this page, in the order of the list.",
+            "items": {
+              "$ref": "#/components/schemas/OperationSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "The page size that was applied.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Number of items skipped before this page.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Number of items matching the request across all pages.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[OperationSummary]",
         "type": "object"
       },
       "PartyRelationType": {
@@ -3560,6 +3566,34 @@
         "operationId": "bot_list_jobs",
         "parameters": [
           {
+            "description": "Maximum number of items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Maximum number of items to return.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip before the first returned item.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip before the first returned item.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only jobs in this status.",
             "in": "query",
             "name": "status",
             "required": false,
@@ -3572,10 +3606,12 @@
                   "type": "null"
                 }
               ],
+              "description": "Only jobs in this status.",
               "title": "Status"
             }
           },
           {
+            "description": "Only jobs of exactly this kind.",
             "in": "query",
             "name": "kind",
             "required": false,
@@ -3588,30 +3624,8 @@
                   "type": "null"
                 }
               ],
+              "description": "Only jobs of exactly this kind.",
               "title": "Kind"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 100,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
             }
           }
         ],
@@ -3620,7 +3634,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/JobPage"
+                  "$ref": "#/components/schemas/Page_JobListItem_"
                 }
               }
             },
@@ -4331,6 +4345,34 @@
         "operationId": "bot_list_operations",
         "parameters": [
           {
+            "description": "Maximum number of items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Maximum number of items to return.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip before the first returned item.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip before the first returned item.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only operations in this guild.",
             "in": "query",
             "name": "guild_id",
             "required": false,
@@ -4344,10 +4386,12 @@
                   "type": "null"
                 }
               ],
+              "description": "Only operations in this guild.",
               "title": "Guild Id"
             }
           },
           {
+            "description": "Only operations on this subject (Discord user).",
             "in": "query",
             "name": "subject_discord_id",
             "required": false,
@@ -4361,10 +4405,12 @@
                   "type": "null"
                 }
               ],
+              "description": "Only operations on this subject (Discord user).",
               "title": "Subject Discord Id"
             }
           },
           {
+            "description": "Only operations in this status.",
             "in": "query",
             "name": "status",
             "required": false,
@@ -4377,10 +4423,12 @@
                   "type": "null"
                 }
               ],
+              "description": "Only operations in this status.",
               "title": "Status"
             }
           },
           {
+            "description": "Only operations of this kind.",
             "in": "query",
             "name": "kind",
             "required": false,
@@ -4393,30 +4441,8 @@
                   "type": "null"
                 }
               ],
+              "description": "Only operations of this kind.",
               "title": "Kind"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 100,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
             }
           }
         ],
@@ -4425,7 +4451,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationPage"
+                  "$ref": "#/components/schemas/Page_OperationSummary_"
                 }
               }
             },

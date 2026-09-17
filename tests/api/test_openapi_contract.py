@@ -114,6 +114,51 @@ def test_every_documented_error_body_is_the_envelope(schema: dict[str, Any]):
     assert checked
 
 
+PAGED_ENDPOINTS = {
+    "/api/v1/bot/jobs": ("Page_JobListItem_", {"status", "kind"}),
+    "/api/v1/bot/operations": ("Page_OperationSummary_", {"guild_id", "subject_discord_id", "status", "kind"}),
+}
+
+
+@pytest.mark.parametrize("path", PAGED_ENDPOINTS)
+def test_paged_endpoint_documents_limit_and_offset(schema: dict[str, Any], path: str):
+    parameters = {parameter["name"]: parameter for parameter in schema["paths"][path]["get"]["parameters"]}
+
+    limit, offset = parameters["limit"], parameters["offset"]
+    assert limit["description"]
+    assert offset["description"]
+    assert (limit["schema"]["default"], limit["schema"]["minimum"], limit["schema"]["maximum"]) == (50, 1, 100)
+    assert (offset["schema"]["default"], offset["schema"]["minimum"]) == (0, 0)
+
+
+@pytest.mark.parametrize(("path", "expected"), PAGED_ENDPOINTS.items())
+def test_paged_endpoint_keeps_its_filters_and_describes_them(
+    schema: dict[str, Any], path: str, expected: tuple[str, set[str]]
+):
+    _, filters = expected
+    parameters = {parameter["name"]: parameter for parameter in schema["paths"][path]["get"]["parameters"]}
+
+    assert set(parameters) == filters | {"limit", "offset"}
+    for name in filters:
+        assert parameters[name]["in"] == "query"
+        assert not parameters[name]["required"]
+        assert parameters[name]["description"], name
+
+
+@pytest.mark.parametrize(("path", "expected"), PAGED_ENDPOINTS.items())
+def test_paged_endpoint_returns_the_generic_page(schema: dict[str, Any], path: str, expected: tuple[str, set[str]]):
+    page, _ = expected
+    response = schema["paths"][path]["get"]["responses"]["200"]
+
+    assert response["content"]["application/json"]["schema"] == {"$ref": f"#/components/schemas/{page}"}
+    assert schema["components"]["schemas"][page]["required"] == ["items", "total", "limit", "offset"]
+
+
+def test_domain_specific_page_schemas_are_gone(schema: dict[str, Any]):
+    assert "JobPage" not in schema["components"]["schemas"]
+    assert "OperationPage" not in schema["components"]["schemas"]
+
+
 def test_every_documented_error_example_is_a_valid_envelope(schema: dict[str, Any]):
     examples = [
         (f"{method} {path} {status}", example)

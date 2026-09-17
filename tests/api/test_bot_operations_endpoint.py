@@ -131,6 +131,19 @@ async def test_list_operations_defaults_to_no_filters(monkeypatch):
     }
 
 
+async def test_list_operations_rejects_unknown_query_parameters(monkeypatch):
+    _patch(monkeypatch, "list_operations", _returns(([], 0)))
+
+    async with _client() as client:
+        response = await client.get(
+            "/api/v1/bot/operations", params={"guild": 5}, headers=_auth_headers(Scope.BOT_READ)
+        )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    assert [error["loc"] for error in response.json()["errors"]] == [["query", "guild"]]
+
+
 async def test_list_operations_requires_bot_read_scope():
     async with _client() as client:
         response = await client.get("/api/v1/bot/operations", headers=_auth_headers(Scope.BOT_WRITE))

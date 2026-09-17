@@ -217,6 +217,17 @@ async def test_list_jobs_defaults_to_no_filters(monkeypatch):
     assert captured == {"status": None, "kind": None, "limit": 50, "offset": 0}
 
 
+async def test_list_jobs_rejects_unknown_query_parameters(monkeypatch):
+    _patch(monkeypatch, "list_jobs", _returns(([], 0)))
+
+    async with _client() as client:
+        response = await client.get("/api/v1/bot/jobs", params={"limt": 5}, headers=_auth_headers(Scope.BOT_READ))
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    assert [error["loc"] for error in response.json()["errors"]] == [["query", "limt"]]
+
+
 async def test_list_jobs_requires_bot_read_scope():
     async with _client() as client:
         response = await client.get("/api/v1/bot/jobs", headers=_auth_headers(Scope.BOT_WRITE))

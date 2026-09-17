@@ -427,15 +427,6 @@ class JobDetail(BaseModel):
         return cls.model_validate(job)
 
 
-class JobPage(BaseModel):
-    """A page of jobs plus the total match count, for offset pagination."""
-
-    items: list[JobListItem]
-    total: int
-    limit: int
-    offset: int
-
-
 class JobStatusCounts(BaseModel):
     """Job counts for every status in the queue funnel, zero-filled (no silent gaps)."""
 
@@ -609,12 +600,3 @@ class OperationResponse(BaseModel):
     @classmethod
     def from_model(cls, operation: Operation) -> OperationResponse:
         return cls.model_validate(operation)
-
-
-class OperationPage(BaseModel):
-    """A page of operations plus the total match count, for offset pagination."""
-
-    items: list[OperationSummary]
-    total: int
-    limit: int
-    offset: int

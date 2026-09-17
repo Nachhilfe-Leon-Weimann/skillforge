@@ -2,9 +2,10 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.common import error_responses
+from app.api.v1.common import Page, PageParams, error_responses
 from app.core.db.dependencies import get_db_session
 from app.core.db.models import JobStatus
 from app.services.bot import (
@@ -25,12 +26,19 @@ from .schemas import (
     JobDetail,
     JobFailRequest,
     JobListItem,
-    JobPage,
     JobQueueSummary,
     JobResponse,
 )
 
 router = APIRouter(prefix="/jobs")
+
+
+class JobListParams(PageParams):
+    status: JobStatus | None = Field(None, description="Only jobs in this status.")
+    kind: str | None = Field(None, description="Only jobs of exactly this kind.")
+
+
+type JobListQuery = Annotated[JobListParams, Query()]
 
 
 @router.post("/claim", response_model=list[BotJob])
@@ -85,23 +93,15 @@ async def fail_job_endpoint(
     return JobResponse.from_model(job)
 
 
-@router.get("", response_model=JobPage)
+@router.get("")
 async def list_jobs_endpoint(
+    params: JobListQuery,
     session: Annotated[AsyncSession, Depends(get_db_session)],
     _: BotRead,
-    status_filter: Annotated[JobStatus | None, Query(alias="status")] = None,
-    kind: Annotated[str | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
-) -> JobPage:
+) -> Page[JobListItem]:
     """List jobs by status / kind, newest first. List items omit the `payload`; read a job by id for it."""
-    jobs, total = await list_jobs(session, status=status_filter, kind=kind, limit=limit, offset=offset)
-    return JobPage(
-        items=[JobListItem.from_model(job) for job in jobs],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+    jobs, total = await list_jobs(session, **params.model_dump())
+    return Page.of([JobListItem.from_model(job) for job in jobs], total=total, params=params)
 
 
 # Declared before ``/{job_id}`` so the static path is matched first.
