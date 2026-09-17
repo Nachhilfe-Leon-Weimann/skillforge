@@ -68,3 +68,29 @@ def test_every_operation_has_exactly_one_documented_domain_tag(schema: dict[str,
     for method, path, operation in _operations(schema):
         assert len(operation.get("tags", [])) == 1, f"{method} {path}"
         assert documented.get(operation["tags"][0], "").strip(), f"{method} {path}"
+
+
+def test_auth_error_responses_are_documented_exactly_where_a_token_is_required(schema: dict[str, Any]):
+    guarded = 0
+    for method, path, operation in _operations(schema):
+        documented = {"401", "403"} & set(operation["responses"])
+        if operation.get("security"):
+            guarded += 1
+            assert documented == {"401", "403"}, f"{method} {path}"
+        else:
+            assert not documented, f"{method} {path}"
+
+    assert guarded
+
+
+def test_forbidden_response_names_the_required_scope(schema: dict[str, Any]):
+    forbidden = schema["paths"]["/api/v1/bot/jobs"]["get"]["responses"]["403"]
+
+    assert "bot:read" in forbidden["description"]
+
+
+def test_auth_client_operations_document_auth_errors(schema: dict[str, Any]):
+    responses = schema["paths"]["/api/v1/auth/clients"]["get"]["responses"]
+
+    assert "auth:clients:manage" in responses["403"]["description"]
+    assert responses["401"]["content"]["application/json"]["schema"] == {"$ref": "#/components/schemas/ErrorResponse"}

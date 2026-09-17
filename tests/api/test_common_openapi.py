@@ -1,7 +1,12 @@
+from typing import Any
+
 import pytest
 from fastapi import APIRouter, FastAPI
 
-from app.api.v1.common.openapi import operation_id
+from app.api.v1.common.openapi import customize_openapi, operation_id
+from app.core.auth import Scope, require_scopes
+
+ERROR_RESPONSE_REF = {"$ref": "#/components/schemas/ErrorResponse"}
 
 
 def _operation_ids(app: FastAPI) -> set[str]:
@@ -58,3 +63,73 @@ def test_untagged_route_is_rejected_at_registration():
 
         @app.get("/untagged")
         async def untagged() -> None: ...
+
+
+def _customized_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/guarded", dependencies=[require_scopes(Scope.BOT_READ)])
+    async def guarded() -> None: ...
+
+    @app.get("/guarded-twice", dependencies=[require_scopes(Scope.BOT_READ, Scope.BOT_WRITE)])
+    async def guarded_twice() -> None: ...
+
+    @app.get("/open")
+    async def unguarded() -> None: ...
+
+    customize_openapi(app)
+    return app
+
+
+def _responses(app: FastAPI, path: str) -> dict[str, Any]:
+    return app.openapi()["paths"][path]["get"]["responses"]
+
+
+def test_guarded_operation_documents_401_and_403_with_the_error_envelope():
+    responses = _responses(_customized_app(), "/guarded")
+
+    assert responses["401"]["description"] == "Missing or invalid bearer token"
+    assert responses["401"]["content"]["application/json"]["schema"] == ERROR_RESPONSE_REF
+    assert responses["403"]["content"]["application/json"]["schema"] == ERROR_RESPONSE_REF
+
+
+def test_forbidden_description_names_the_required_scope():
+    responses = _responses(_customized_app(), "/guarded")
+
+    assert responses["403"]["description"] == "Missing required scope: bot:read"
+
+
+def test_forbidden_description_names_all_required_scopes():
+    responses = _responses(_customized_app(), "/guarded-twice")
+
+    assert responses["403"]["description"] == "Missing required scopes: bot:read, bot:write"
+
+
+def test_auth_error_examples_match_the_bodies_the_auth_dependency_returns():
+    responses = _responses(_customized_app(), "/guarded")
+
+    unauthorized = responses["401"]["content"]["application/json"]["examples"]
+    forbidden = responses["403"]["content"]["application/json"]["example"]
+    assert unauthorized["missing_token"]["value"]["detail"] == "Not authenticated"
+    assert unauthorized["invalid_token"]["value"]["detail"] == "Invalid authentication credentials"
+    assert forbidden["detail"] == "Not enough permissions"
+
+
+def test_unguarded_operation_documents_no_auth_errors():
+    responses = _responses(_customized_app(), "/open")
+
+    assert "401" not in responses
+    assert "403" not in responses
+
+
+def test_error_envelope_schema_is_registered_even_if_no_route_references_it():
+    schemas = _customized_app().openapi()["components"]["schemas"]
+
+    assert schemas["ErrorResponse"]["properties"]["detail"] == {"title": "Detail", "type": "string"}
+
+
+def test_customized_schema_is_built_once_and_cached():
+    app = _customized_app()
+
+    assert app.openapi() is app.openapi()
+    assert app.openapi_schema is app.openapi()

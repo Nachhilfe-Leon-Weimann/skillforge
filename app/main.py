@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from skillcore import get_project_version
 
 from app.api import router
-from app.api.v1.common import OPENAPI_TAGS, operation_id
+from app.api.v1.common import OPENAPI_TAGS, customize_openapi, operation_id
 from app.core.config import get_settings
 from app.core.db import Database
 from app.core.logging import configure_logging, get_logger, register_request_logging
@@ -44,6 +44,7 @@ app = FastAPI(
 )
 register_request_logging(app)
 app.include_router(router)
+customize_openapi(app)
 
 
 @app.get("/", tags=["system"])
