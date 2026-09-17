@@ -192,13 +192,13 @@ Domain-specific vocabulary (`PartyId`, `PartyListParams`) lives in the domain pa
   [`responses.py`](../../app/api/v1/common/responses.py). Called once in `main.py` after the routers are included.
 - *Technique:* remove `responses=auth_error_responses()` from the bot router and delete `auth_error_responses`.
 - *Acceptance criteria:*
-  - [ ] A test over `app.openapi()` asserts: every operation with `security` documents 401 and 403; no
+  - [x] A test over `app.openapi()` asserts: every operation with `security` documents 401 and 403; no
         operation without `security` documents either.
-  - [ ] The 403 description of `GET /api/v1/bot/jobs` contains `bot:read`; the `auth/clients` operations now
+  - [x] The 403 description of `GET /api/v1/bot/jobs` contains `bot:read`; the `auth/clients` operations now
         document 401/403 (they do not today).
-  - [ ] Runtime behavior is unchanged: the existing auth dependency tests pass (missing token 401 with
+  - [x] Runtime behavior is unchanged: the existing auth dependency tests pass (missing token 401 with
         `WWW-Authenticate`, invalid token 401, missing scope 403).
-  - [ ] No occurrence of `Depends(require_scopes(` or `Annotated[object,` remains in `app/` or `tests/`.
+  - [x] No occurrence of `Depends(require_scopes(` or `Annotated[object,` remains in `app/` or `tests/`.
 
 **P0-3 - Error envelope and global handlers** (implements ADR 0006).
 - *Technique - taxonomy:* `app/core/errors.py` defines `DomainError(Exception)` with class attributes
