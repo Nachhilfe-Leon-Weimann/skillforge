@@ -244,9 +244,12 @@ Domain-specific vocabulary (`PartyId`, `PartyListParams`) lives in the domain pa
   tuple[list[X], int]` (as `list_jobs` already does) and orders by a deterministic key ending in a unique column.
 - *Acceptance criteria:*
   - [ ] In `openapi.json`, `limit` and `offset` of a paged endpoint carry description, default, `minimum` and
-        `maximum`.
-  - [ ] `?limit=0`, `?limit=101`, `?offset=-1` and an unknown query parameter each return 422 in the envelope.
-  - [ ] A subclass with one filter field documents and parses all three parameters.
+        `maximum`. *Open until the first real paged endpoint lands (P0-5): the vocabulary was merged without
+        it, and `test_page_parameters_are_documented_with_defaults_and_bounds` in
+        [`test_common_pagination.py`](../../tests/api/test_common_pagination.py) proves the same against a probe
+        app.*
+  - [x] `?limit=0`, `?limit=101`, `?offset=-1` and an unknown query parameter each return 422 in the envelope.
+  - [x] A subclass with one filter field documents and parses all three parameters.
 
 **P0-5 - CRM `parties` as the reference implementation.**
 - *Technique:* bring [`parties.py`](../../app/api/v1/crm/parties.py) to the target shape. `get_party` in the
