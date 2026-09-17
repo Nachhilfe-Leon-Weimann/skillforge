@@ -164,16 +164,16 @@ Domain-specific vocabulary (`PartyId`, `PartyListParams`) lives in the domain pa
   `seed_default_scopes` iterates `Scope`; `oauth2_scheme` in [`security.py`](../../app/core/auth/security.py)
   maps `scope.value -> scope.description`.
 - *Acceptance criteria:*
-  - [ ] A test over `app.openapi()` asserts every `operationId` matches `^(auth|bot|crm|system)_[a-z0-9_]+$` and
+  - [x] A test over `app.openapi()` asserts every `operationId` matches `^(auth|bot|crm|system)_[a-z0-9_]+$` and
         is unique.
-  - [ ] Spot checks: `POST /api/v1/auth/token` is `auth_create_token`; `GET /api/v1/bot/jobs` is `bot_list_jobs`;
+  - [x] Spot checks: `POST /api/v1/auth/token` is `auth_create_token`; `GET /api/v1/bot/jobs` is `bot_list_jobs`;
         `GET /health` is `system_health_check` (no `system_system_` stutter); `GET /` is `system_root`.
-  - [ ] Renaming an endpoint function by only dropping `_endpoint` leaves all operation IDs in `openapi.json`
+  - [x] Renaming an endpoint function by only dropping `_endpoint` leaves all operation IDs in `openapi.json`
         unchanged.
-  - [ ] Every tag used by an operation has an `openapi_tags` entry with a non-empty description.
-  - [ ] `components.securitySchemes` lists every scope with its description text; no reference to
+  - [x] Every tag used by an operation has an `openapi_tags` entry with a non-empty description.
+  - [x] `components.securitySchemes` lists every scope with its description text; no reference to
         `DEFAULT_SCOPES` remains; existing scope-seeding tests pass unchanged in behavior.
-  - [ ] `openapi.json` is regenerated via `just openapi`; the PR description lists the consumer impact (below).
+  - [x] `openapi.json` is regenerated via `just openapi`; the PR description lists the consumer impact (below).
 
 **P0-2 - Scope guards as declarations, 401/403 derived.**
 - *Technique:* `require_scopes(*scopes)` in [`dependencies.py`](../../app/core/auth/dependencies.py) returns
