@@ -1,8 +1,10 @@
+from collections.abc import Iterator
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
+from .errors import VALIDATION_ERROR_CODE, VALIDATION_ERROR_DETAIL, code_for_status
 from .schemas import ErrorResponse
 
 ENDPOINT_SUFFIX = "_endpoint"
@@ -33,10 +35,24 @@ OPENAPI_TAGS: list[dict[str, Any]] = [
 
 # Bodies raised by ``get_current_principal`` in ``app/core/auth/dependencies.py``.
 UNAUTHORIZED_EXAMPLES: dict[str, dict[str, Any]] = {
-    "missing_token": {"value": {"detail": "Not authenticated"}},
-    "invalid_token": {"value": {"detail": "Invalid authentication credentials"}},
+    "missing_token": {"value": {"detail": "Not authenticated", "code": code_for_status(401)}},
+    "invalid_token": {"value": {"detail": "Invalid authentication credentials", "code": code_for_status(401)}},
 }
-FORBIDDEN_EXAMPLE: dict[str, Any] = {"detail": "Not enough permissions"}
+FORBIDDEN_EXAMPLE: dict[str, Any] = {"detail": "Not enough permissions", "code": code_for_status(403)}
+VALIDATION_ERROR_EXAMPLE: dict[str, Any] = {
+    "detail": VALIDATION_ERROR_DETAIL,
+    "code": VALIDATION_ERROR_CODE,
+    "errors": [
+        {
+            "loc": ["query", "limit"],
+            "message": "Input should be less than or equal to 100",
+            "type": "less_than_equal",
+        }
+    ],
+}
+
+# The schemas FastAPI generates for its built-in 422; replaced by the envelope (ADR 0006).
+FRAMEWORK_VALIDATION_SCHEMAS = ("HTTPValidationError", "ValidationError")
 
 
 def operation_id(route: APIRoute) -> str:
@@ -68,26 +84,14 @@ def customize_openapi(app: FastAPI) -> None:
     def openapi() -> dict[str, Any]:
         if app.openapi_schema is None:
             schema = generate_openapi()
+            _register_error_envelope(schema)
             _document_auth_errors(schema)
+            _unify_validation_errors(schema)
             app.openapi_schema = schema
         return app.openapi_schema
 
     # Overriding the bound method is FastAPI's documented way to extend the schema.
     app.openapi = openapi  # ty: ignore[invalid-assignment]
-
-
-def _document_auth_errors(schema: dict[str, Any]) -> None:
-    """Document 401/403 on every operation that declares a ``security`` requirement."""
-    _register_error_envelope(schema)
-
-    for path_item in schema.get("paths", {}).values():
-        for method, operation in path_item.items():
-            if method not in HTTP_METHODS or not operation.get("security"):
-                continue
-
-            responses = operation.setdefault("responses", {})
-            responses["401"] = _error_response("Missing or invalid bearer token", examples=UNAUTHORIZED_EXAMPLES)
-            responses["403"] = _error_response(_forbidden_description(operation), example=FORBIDDEN_EXAMPLE)
 
 
 def _register_error_envelope(schema: dict[str, Any]) -> None:
@@ -97,6 +101,47 @@ def _register_error_envelope(schema: dict[str, Any]) -> None:
     for name, nested in envelope.pop("$defs", {}).items():
         schemas.setdefault(name, nested)
     schemas.setdefault(ErrorResponse.__name__, envelope)
+
+
+def _document_auth_errors(schema: dict[str, Any]) -> None:
+    """Document 401/403 on every operation that declares a ``security`` requirement."""
+    for operation in _operations(schema):
+        if not operation.get("security"):
+            continue
+
+        responses = operation.setdefault("responses", {})
+        responses["401"] = _error_response("Missing or invalid bearer token", examples=UNAUTHORIZED_EXAMPLES)
+        responses["403"] = _error_response(_forbidden_description(operation), example=FORBIDDEN_EXAMPLE)
+
+
+def _unify_validation_errors(schema: dict[str, Any]) -> None:
+    """Replace FastAPI's auto-generated 422 with the envelope; a 422 a route declares itself stays."""
+    framework_ref = {"$ref": SCHEMA_REF_TEMPLATE.format(model=FRAMEWORK_VALIDATION_SCHEMAS[0])}
+    for operation in _operations(schema):
+        response = operation.get("responses", {}).get("422", {})
+        if response.get("content", {}).get("application/json", {}).get("schema") == framework_ref:
+            operation["responses"]["422"] = _error_response(VALIDATION_ERROR_DETAIL, example=VALIDATION_ERROR_EXAMPLE)
+
+    schemas = schema["components"]["schemas"]
+    for name in FRAMEWORK_VALIDATION_SCHEMAS:
+        if SCHEMA_REF_TEMPLATE.format(model=name) not in _refs(schema):
+            schemas.pop(name, None)
+
+
+def _operations(schema: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    for path_item in schema.get("paths", {}).values():
+        for method, operation in path_item.items():
+            if method in HTTP_METHODS:
+                yield operation
+
+
+def _refs(node: Any) -> set[str]:
+    if isinstance(node, dict):
+        own = {node["$ref"]} if isinstance(node.get("$ref"), str) else set()
+        return own.union(*(_refs(value) for value in node.values()))
+    if isinstance(node, list):
+        return set().union(*(_refs(value) for value in node))
+    return set()
 
 
 def _forbidden_description(operation: dict[str, Any]) -> str:

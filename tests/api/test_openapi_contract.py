@@ -89,6 +89,39 @@ def test_forbidden_response_names_the_required_scope(schema: dict[str, Any]):
     assert "bot:read" in forbidden["description"]
 
 
+def test_framework_validation_schemas_are_not_part_of_the_contract(schema: dict[str, Any]):
+    assert "HTTPValidationError" not in schema["components"]["schemas"]
+    assert "ValidationError" not in schema["components"]["schemas"]
+
+
+def test_contract_has_no_dangling_refs(schema: dict[str, Any]):
+    known = {f"#/components/schemas/{name}" for name in schema["components"]["schemas"]}
+
+    assert _refs(schema) - known == set()
+
+
+def test_every_documented_error_body_is_the_envelope(schema: dict[str, Any]):
+    envelope = {"$ref": "#/components/schemas/ErrorResponse"}
+    checked = 0
+    for method, path, operation in _operations(schema):
+        for status, response in operation["responses"].items():
+            if status.startswith("2") or "content" not in response:
+                continue
+            checked += 1
+            assert response["content"]["application/json"]["schema"] == envelope, f"{method} {path} {status}"
+
+    assert checked
+
+
+def _refs(node: Any) -> set[str]:
+    if isinstance(node, dict):
+        own = {node["$ref"]} if isinstance(node.get("$ref"), str) else set()
+        return own.union(*(_refs(value) for value in node.values()))
+    if isinstance(node, list):
+        return set().union(*(_refs(value) for value in node))
+    return set()
+
+
 def test_auth_client_operations_document_auth_errors(schema: dict[str, Any]):
     responses = schema["paths"]["/api/v1/auth/clients"]["get"]["responses"]
 

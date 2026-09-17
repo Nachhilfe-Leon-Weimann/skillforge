@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 from fastapi import APIRouter, FastAPI
 
+from app.api.v1.common import ErrorResponse
 from app.api.v1.common.openapi import customize_openapi, operation_id
 from app.core.auth import Scope, require_scopes
 
@@ -77,6 +78,12 @@ def _customized_app() -> FastAPI:
     @app.get("/open")
     async def unguarded() -> None: ...
 
+    @app.get("/items/{item_id}")
+    async def read_item(item_id: int) -> None: ...
+
+    @app.get("/rules/{rule_id}", responses={422: {"model": ErrorResponse, "description": "Rule rejected"}})
+    async def read_rule(rule_id: int) -> None: ...
+
     customize_openapi(app)
     return app
 
@@ -125,9 +132,12 @@ def test_auth_error_examples_match_the_bodies_the_auth_dependency_returns():
 
     unauthorized = responses["401"]["content"]["application/json"]["examples"]
     forbidden = responses["403"]["content"]["application/json"]["example"]
-    assert unauthorized["missing_token"]["value"]["detail"] == "Not authenticated"
-    assert unauthorized["invalid_token"]["value"]["detail"] == "Invalid authentication credentials"
-    assert forbidden["detail"] == "Not enough permissions"
+    assert unauthorized["missing_token"]["value"] == {"detail": "Not authenticated", "code": "unauthorized"}
+    assert unauthorized["invalid_token"]["value"] == {
+        "detail": "Invalid authentication credentials",
+        "code": "unauthorized",
+    }
+    assert forbidden == {"detail": "Not enough permissions", "code": "forbidden"}
 
 
 def test_unguarded_operation_documents_no_auth_errors():
@@ -149,6 +159,31 @@ def test_error_envelope_schema_is_registered_together_with_its_nested_schemas():
     assert "$defs" not in schema["components"]["schemas"]["ErrorResponse"]
     assert "FieldError" in schema["components"]["schemas"]
     assert _dangling_refs(schema) == set()
+
+
+def test_auto_generated_422_is_replaced_by_the_error_envelope():
+    responses = _responses(_customized_app(), "/items/{item_id}")
+
+    assert responses["422"]["description"] == "Request validation failed"
+    assert responses["422"]["content"]["application/json"]["schema"] == ERROR_RESPONSE_REF
+    example = responses["422"]["content"]["application/json"]["example"]
+    assert example["code"] == "validation_error"
+    assert example["errors"]
+
+
+def test_framework_validation_schemas_leave_the_contract():
+    schema = _customized_app().openapi()
+
+    assert "HTTPValidationError" not in schema["components"]["schemas"]
+    assert "ValidationError" not in schema["components"]["schemas"]
+    assert _dangling_refs(schema) == set()
+
+
+def test_422_declared_by_a_route_is_left_untouched():
+    responses = _responses(_customized_app(), "/rules/{rule_id}")
+
+    assert responses["422"]["description"] == "Rule rejected"
+    assert "example" not in responses["422"]["content"]["application/json"]
 
 
 def test_customized_schema_is_built_once_and_cached():
