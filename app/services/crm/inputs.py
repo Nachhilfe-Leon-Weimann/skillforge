@@ -59,6 +59,11 @@ class TutorRoleData:
     subject_ids: Set[int] = field(default_factory=frozenset)
 
 
+# The longest e-mail address there is (RFC 5321) and far beyond any phone number. The value sits in
+# the index of uq_contact_info, whose rows Postgres limits to about 2700 bytes.
+MAX_CONTACT_VALUE_LENGTH = 254
+
+
 def require_storable_text(value: str) -> str:
     """Return ``value`` if Postgres can store it as ``text``, or raise ``ValueError``.
 
@@ -78,19 +83,25 @@ def require_storable_text(value: str) -> str:
 def normalize_contact_value(type: ContactInfoType, value: str) -> str:
     """Return the canonical form of a contact value, or raise ``ValueError`` if it is not valid.
 
-    An e-mail is validated the way ``EmailStr`` does and lowercased; a phone number loses all
-    whitespace and must not be empty. The messages never repeat the value: it is personal data.
+    An e-mail is lowercased and validated the way ``EmailStr`` does; a phone number loses all
+    whitespace and must not be empty. The result is a fixed point - normalizing it again changes
+    nothing - because the create routes normalize in the request model and again in the service.
+    The messages never repeat the value: it is personal data.
     """
     require_storable_text(value)
     match type:
         case ContactInfoType.EMAIL:
             try:
-                _, email = validate_email(value)
+                # Lowercase first: the validator then checks - and NFC-normalizes - the form that is
+                # stored. Lowercasing its result instead can lengthen it or break its normalization.
+                _, normalized = validate_email(value.lower())
             except ValueError:
                 raise ValueError("Value is not a valid e-mail address") from None
-            return email.lower()
         case ContactInfoType.PHONE:
-            phone = "".join(value.split())
-            if not phone:
+            normalized = "".join(value.split())
+            if not normalized:
                 raise ValueError("Value is not a valid phone number: it must not be empty")
-            return phone
+
+    if len(normalized) > MAX_CONTACT_VALUE_LENGTH:
+        raise ValueError(f"Value must not be longer than {MAX_CONTACT_VALUE_LENGTH} characters")
+    return normalized

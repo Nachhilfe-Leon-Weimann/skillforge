@@ -51,6 +51,10 @@ SubjectId = Annotated[
 ]
 
 
+# Every word of `q` becomes four bind parameters, and a statement takes 32767 of them.
+MAX_SEARCH_LENGTH = 200
+
+
 class PartyListParams(PageParams):
     """Filters of `GET /parties`. They never fail: a combination nothing matches is an empty page."""
 
@@ -65,6 +69,7 @@ class PartyListParams(PageParams):
     q: Annotated[str, AfterValidator(require_storable_text)] | None = Field(
         None,
         min_length=2,
+        max_length=MAX_SEARCH_LENGTH,
         description=(
             "Search text, split on whitespace. Every word must appear, ignoring case, in the first name, the last "
             "name, the company name or a contact value. Searching for an e-mail address doubles as the duplicate "

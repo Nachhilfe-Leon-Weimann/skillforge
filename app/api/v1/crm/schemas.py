@@ -27,6 +27,7 @@ from app.core.db.models import (
     Tutor,
 )
 from app.services.crm.inputs import (
+    MAX_CONTACT_VALUE_LENGTH,
     NewContactInfo,
     PartyRole,
     RelationDirection,
@@ -99,7 +100,7 @@ class ContactInfoCreateRequest(ApiModel):
 
     type: ContactInfoType = Field(examples=[ContactInfoType.EMAIL])
     """Kind of the contact info; it cannot be changed later."""
-    value: str = Field(examples=["max.mustermann@example.com"])
+    value: str = Field(max_length=MAX_CONTACT_VALUE_LENGTH, examples=["max.mustermann@example.com"])
     """An e-mail address (stored in lowercase) or a phone number (stored without whitespace), matching `type`."""
     label: Name | None = Field(None, examples=["private"])
     """Free-text note telling contact infos of the same type apart, e.g. `work`."""
@@ -117,7 +118,11 @@ class ContactInfoCreateRequest(ApiModel):
 
 # The type of a stored contact info is only known from the database, so the update model checks
 # what needs none (error rule I-2) and the service checks the value against the stored type.
-ContactValue = Annotated[str, StringConstraints(min_length=1), AfterValidator(require_storable_text)]
+ContactValue = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=MAX_CONTACT_VALUE_LENGTH),
+    AfterValidator(require_storable_text),
+]
 
 
 class ContactInfoUpdateRequest(ApiModel):
@@ -342,7 +347,12 @@ def _subjects(subjects: Iterable[Subject]) -> list[SubjectResponse]:
 
 
 # core.subject.id is a Postgres INTEGER: anything outside its range cannot be a subject - nor be bound to a query.
-SubjectIds = Annotated[set[Annotated[int, Field(ge=1, le=MAX_SUBJECT_ID)]], Field(examples=[[1, 2]])]
+# The size is bounded as well: every ID becomes a bind parameter, and a statement takes 32767 of them.
+MAX_SUBJECT_IDS = 100
+SubjectIds = Annotated[
+    set[Annotated[int, Field(ge=1, le=MAX_SUBJECT_ID)]],
+    Field(max_length=MAX_SUBJECT_IDS, examples=[[1, 2]]),
+]
 
 
 class StudentRoleRequest(ApiModel):

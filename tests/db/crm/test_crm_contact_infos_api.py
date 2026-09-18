@@ -259,6 +259,68 @@ async def test_patch_into_an_existing_type_and_value_is_409_and_keeping_its_own_
     ]
 
 
+# --- bounds ---
+
+
+async def test_an_oversized_contact_value_is_the_validation_422_on_every_write(
+    client: AsyncClient, session: AsyncSession
+):
+    """The value sits in the index of uq_contact_info: unbounded, it fails there as a 500."""
+    person = await _person(client, {"type": "phone", "value": "0151234567"})
+    url = f"/parties/{person['id']}/contact-infos"
+    oversized = "1" * 255
+    huge = "1" * 5000
+
+    nested = await client.post(
+        "/persons",
+        json={"firstname": "Mia", "lastname": "M", "contact_infos": [{"type": "phone", "value": huge}]},
+    )
+    posted = await client.post(url, json={"type": "phone", "value": oversized})
+    patched = await client.patch(f"{url}/{person['contact_infos'][0]['id']}", json={"value": huge})
+    fits = await client.post(url, json={"type": "phone", "value": "1" * 254})
+
+    assert [error["loc"] for error in nested.json()["errors"]] == [["body", "contact_infos", 0, "value"]]
+    assert [error["loc"] for error in posted.json()["errors"]] == [["body", "value"]]
+    assert {tuple(error["loc"][:2]) for error in patched.json()["errors"]} == {("body", "value")}
+    assert [r.status_code for r in (nested, posted, patched, fits)] == [422, 422, 422, 201]
+    assert "11111" not in nested.text + posted.text + patched.text
+    assert [value for _, value, _ in await _stored(session, person["id"])] == ["0151234567", "1" * 254]
+
+
+async def test_two_spellings_of_one_address_are_a_duplicate_on_every_route(client: AsyncClient, session: AsyncSession):
+    """``J`` + caron and U+01F0 normalize to the same address - in the request model, not only in the service."""
+    decomposed, composed = "J\u030cx@example.com", "\u01f0x@example.com"
+
+    nested = await client.post(
+        "/persons",
+        json={
+            "firstname": "Mia",
+            "lastname": "M",
+            "contact_infos": [{"type": "email", "value": decomposed}, {"type": "email", "value": composed}],
+        },
+    )
+    person = await _person(client, {"type": "email", "value": decomposed})
+    posted = await client.post(f"/parties/{person['id']}/contact-infos", json={"type": "email", "value": composed})
+
+    assert nested.status_code == 422
+    assert [error["loc"] for error in nested.json()["errors"]] == [["body", "contact_infos"]]
+    assert (posted.status_code, posted.json()) == (409, ALREADY_EXISTS)
+    assert await _stored(session, person["id"]) == [("email", composed, None)]
+
+
+async def test_post_and_patch_store_the_same_form_of_an_address(client: AsyncClient):
+    person = await _person(
+        client, {"type": "email", "value": "J\u030cx@example.com"}, {"type": "email", "value": "b@x.de"}
+    )
+    second = person["contact_infos"][0 if person["contact_infos"][0]["value"] == "b@x.de" else 1]
+
+    response = await client.patch(
+        f"/parties/{person['id']}/contact-infos/{second['id']}", json={"value": "J\u030cx@Example.com"}
+    )
+
+    assert (response.status_code, response.json()) == (409, ALREADY_EXISTS)
+
+
 # --- another party's contact info ---
 
 
