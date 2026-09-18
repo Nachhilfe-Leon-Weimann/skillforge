@@ -318,13 +318,17 @@ async def test_get_orders_by_creation_type_and_other_party_and_pages_without_gap
     paged = [item["party"]["id"] for page in pages for item in page["items"]]
     assert paged == [item["party"]["id"] for item in everything["items"]]
     assert sorted(paged) == sorted(child["id"] for child in children)
+    # Equal created_at and type, so the other party's ID decides (uuid order is its hex string order).
+    assert paged == sorted(paged)
     # One transaction means one created_at here, so the order itself is asserted on the statement.
     ordered = [
         statement for statement in statements if "FROM core.party_relation" in statement and "ORDER BY" in statement
     ]
     assert len(ordered) == 4
     order_by = ordered[0].split("ORDER BY", 1)[1]
-    assert order_by.strip().startswith("core.party_relation.created_at, core.party_relation.type, CASE WHEN")
+    assert order_by.strip().startswith(
+        "core.party_relation.created_at, core.party_relation.type, CASE WHEN (core.party_relation.from_party_id = $"
+    )
     assert "THEN core.party_relation.to_party_id ELSE core.party_relation.from_party_id END" in order_by
 
 
