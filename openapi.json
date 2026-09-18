@@ -3189,6 +3189,7 @@
             "schema": {
               "default": 0,
               "description": "Number of items to skip before the first returned item.",
+              "maximum": 2147483647,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -4731,6 +4732,7 @@
             "schema": {
               "default": 0,
               "description": "Number of items to skip before the first returned item.",
+              "maximum": 2147483647,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -5534,6 +5536,7 @@
             "schema": {
               "default": 0,
               "description": "Number of items to skip before the first returned item.",
+              "maximum": 2147483647,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -9643,6 +9646,7 @@
             "schema": {
               "default": 0,
               "description": "Number of items to skip before the first returned item.",
+              "maximum": 2147483647,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -10603,6 +10607,7 @@
             "schema": {
               "default": 0,
               "description": "Number of items to skip before the first returned item.",
+              "maximum": 2147483647,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -11913,6 +11918,7 @@
             "schema": {
               "default": 0,
               "description": "Number of items to skip before the first returned item.",
+              "maximum": 2147483647,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"

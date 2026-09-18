@@ -36,6 +36,7 @@ def test_page_parameters_are_documented_with_defaults_and_bounds():
     assert parameters["offset"]["schema"] == {
         "type": "integer",
         "minimum": 0,
+        "maximum": 2**31 - 1,
         "default": 0,
         "title": "Offset",
         "description": parameters["offset"]["description"],
@@ -64,6 +65,9 @@ def test_page_echoes_the_applied_window():
         ({"limit": 0}, "limit"),
         ({"limit": 101}, "limit"),
         ({"offset": -1}, "offset"),
+        ({"offset": 2**31}, "offset"),
+        # Beyond int64 the database driver could not bind the value at all.
+        ({"offset": 2**63}, "offset"),
         ({"limt": 7}, "limt"),
     ],
 )
