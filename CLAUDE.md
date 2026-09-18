@@ -48,8 +48,7 @@ DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
 - **Write everything in English** - docs, comments, specs, configs. The codebase is not German.
 - **Reference code by symbol, not line number** - in Markdown docs, link to the file and name the
   function, class, or constant (e.g. `OPERATION_TTL` in `transitions.py`), never a bare
-  `file.py:<line>` anchor. Line anchors rot on the next edit. `just docs-check` (part of
-  `just check`) fails on any such anchor or dead relative file link in the docs.
+  `file.py:<line>` anchor. Line anchors rot on the next edit.
 - **`openapi.json` is generated** - never edit it by hand. After API changes, run `just openapi`
   and commit ([ADR 0001](docs/decisions/0001-openapi-as-contract.md)).
 - **Migrations** use the direct DB URL (`DB__MIGRATION_URL`), the app uses the pooled one
