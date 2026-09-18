@@ -3,6 +3,7 @@
 import uuid
 from collections.abc import Callable, Set
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.models import Party, Person, PreferredMeetingTool, Student, StudentSubject, Tutor, TutorSubject
@@ -91,10 +92,11 @@ def apply_tutor_role(person: Person, *, subject_ids: Set[int]) -> bool:
 def _sync_subjects[Link: (StudentSubject, TutorSubject)](
     links: list[Link], subject_ids: Set[int], new_link: Callable[[int], Link]
 ) -> bool:
-    """Add the missing rows and delete the surplus ones.
+    """Add the missing rows and delete the surplus ones; return whether the set changed.
 
-    Reassigning the collection would delete and re-insert the unchanged rows under the same
-    composite key.
+    The difference is what tells a write from a PUT that changes nothing. (For the rows themselves
+    it makes no difference to reassigning the loaded collection: SQLAlchemy turns a deleted and a
+    pending object with the same key into no statement at all.)
     """
     current = {link.subject_id: link for link in links}
     surplus = current.keys() - subject_ids
@@ -107,7 +109,14 @@ def _sync_subjects[Link: (StudentSubject, TutorSubject)](
 
 
 async def _load_person(session: AsyncSession, party_id: uuid.UUID) -> Person:
-    """Load the person through the one loading path; a company's ID does not exist from here."""
+    """Load the person through the one loading path; a company's ID does not exist from here.
+
+    The party row is locked first. Without it two overlapping PUTs of the same role - a client
+    retrying - would both find no role and both insert it, and the loser's primary-key violation
+    would be a 500. With it the second request waits, sees the role and changes nothing. It is the
+    lock ``saved`` takes anyway (``FOR NO KEY UPDATE``), so linking and relating are not blocked.
+    """
+    await session.execute(select(Party.id).where(Party.id == party_id).with_for_update(key_share=True))
     try:
         party = await load_party(session, party_id)
     except PartyNotFoundError:
