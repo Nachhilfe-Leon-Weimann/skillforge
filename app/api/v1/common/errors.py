@@ -7,7 +7,7 @@ and OpenAPI docs cannot drift.
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request, Response
@@ -54,7 +54,8 @@ class ApiError:
     status_code: int
     code: str
     detail: str
-    headers: Mapping[str, str] | None = None
+    # Excluded from the hash: a dict is unhashable, and status, code and detail identify the error.
+    headers: Mapping[str, str] | None = field(default=None, hash=False)
 
     def exception(self) -> ApiException:
         return ApiException(self.status_code, detail=self.detail, code=self.code, headers=self.headers)

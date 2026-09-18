@@ -153,6 +153,10 @@ def test_http_exception_for_a_bodiless_status_stays_bodiless():
     assert response.content == b""
 
 
+def test_api_error_with_headers_is_hashable_so_declarations_can_live_in_sets_and_dict_keys():
+    assert {INVALID_CLIENT: "documented"}[INVALID_CLIENT] == "documented"
+
+
 def test_raised_api_error_keeps_its_own_code_and_headers():
     response = _client().get("/api-error/raised")
 
