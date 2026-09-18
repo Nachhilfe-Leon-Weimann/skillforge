@@ -45,6 +45,18 @@ class ContactInfoAlreadyExistsError(ConflictError):
     message = "Contact info already exists for this party"
 
 
+class PartyRelationNotFoundError(NotFoundError):
+    """No relation of the requested type leads from the party to the other one."""
+
+    message = "Party relation not found"
+
+
+class RelatedPartyNotFoundError(NotFoundError):
+    """The party on the other side of a relation - the second ID in the path - does not exist."""
+
+    message = "Related party not found"
+
+
 class PartyInUseError(ConflictError):
     """The party is linked to an external system or a Discord account and must not be orphaned there."""
 
@@ -76,6 +88,14 @@ class UnknownSubjectError(DomainValidationError):
 
     message = "Unknown subject"
     # Raised with a client-ready message only: it lists the unknown IDs the client sent itself.
+    expose_message = True
+
+
+class InvalidPartyRelationError(DomainValidationError):
+    """The pair of parties violates the rule of the relation type."""
+
+    message = "Invalid party relation"
+    # Raised with a client-ready message only: it names the violated rule, never a party.
     expose_message = True
 
 

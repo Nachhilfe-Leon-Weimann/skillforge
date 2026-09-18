@@ -2154,6 +2154,41 @@
         "title": "Page[PartyListItem]",
         "type": "object"
       },
+      "Page_RelationResponse_": {
+        "properties": {
+          "items": {
+            "description": "The items of this page, in the order of the list.",
+            "items": {
+              "$ref": "#/components/schemas/RelationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "The page size that was applied.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Number of items skipped before this page.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Number of items matching the request across all pages.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[RelationResponse]",
+        "type": "object"
+      },
       "Page_SubjectResponse_": {
         "properties": {
           "items": {
@@ -2512,6 +2547,15 @@
         "title": "PrincipalBatch",
         "type": "object"
       },
+      "RelationDirection": {
+        "description": "A relation seen from one of its two parties: that party is the ``from`` side, or the ``to`` side.",
+        "enum": [
+          "outgoing",
+          "incoming"
+        ],
+        "title": "RelationDirection",
+        "type": "string"
+      },
       "RelationProfile": {
         "properties": {
           "counterparty_party_id": {
@@ -2537,6 +2581,37 @@
           "counterparty_party_id"
         ],
         "title": "RelationProfile",
+        "type": "object"
+      },
+      "RelationResponse": {
+        "description": "A relation, seen from the party in the path.",
+        "properties": {
+          "created_at": {
+            "description": "When the relation was created.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/RelationDirection",
+            "description": "`outgoing` if the party in the path is the one the relation starts at, `incoming` if it points to it."
+          },
+          "party": {
+            "$ref": "#/components/schemas/PartyListItem",
+            "description": "The party on the other side of the relation."
+          },
+          "type": {
+            "$ref": "#/components/schemas/PartyRelationType",
+            "description": "Type of the relation."
+          }
+        },
+        "required": [
+          "type",
+          "direction",
+          "party",
+          "created_at"
+        ],
+        "title": "RelationResponse",
         "type": "object"
       },
       "StudentActivationCommitRequest": {
@@ -10481,6 +10556,522 @@
           }
         ],
         "summary": "Update Contact Info",
+        "tags": [
+          "crm"
+        ]
+      }
+    },
+    "/api/v1/crm/parties/{party_id}/relations": {
+      "get": {
+        "description": "List the relations of a party in both directions, oldest first; each names the party on the other side.",
+        "operationId": "crm_list_relations",
+        "parameters": [
+          {
+            "description": "ID of the party.",
+            "in": "path",
+            "name": "party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party.",
+              "examples": [
+                "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+              ],
+              "format": "uuid",
+              "title": "Party Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Maximum number of items to return.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip before the first returned item.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip before the first returned item.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`outgoing`: only relations starting at this party; `incoming`: only those pointing to it. Both by default.",
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RelationDirection"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`outgoing`: only relations starting at this party; `incoming`: only those pointing to it. Both by default.",
+              "title": "Direction"
+            }
+          },
+          {
+            "description": "Only relations of this type.",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PartyRelationType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only relations of this type.",
+              "title": "Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_RelationResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:read"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "party_not_found": {
+                    "value": {
+                      "code": "party_not_found",
+                      "detail": "Party not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Party not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:read"
+            ]
+          }
+        ],
+        "summary": "List Relations",
+        "tags": [
+          "crm"
+        ]
+      }
+    },
+    "/api/v1/crm/parties/{party_id}/relations/{type}/{to_party_id}": {
+      "delete": {
+        "description": "Remove the relation `{party_id}` is `{type}` `{to_party_id}`.",
+        "operationId": "crm_remove_relation",
+        "parameters": [
+          {
+            "description": "ID of the party.",
+            "in": "path",
+            "name": "party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party.",
+              "examples": [
+                "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+              ],
+              "format": "uuid",
+              "title": "Party Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Type of the relation, read from the first party: `{party_id}` is `parent_of` `{to_party_id}`.",
+            "in": "path",
+            "name": "type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/PartyRelationType",
+              "description": "Type of the relation, read from the first party: `{party_id}` is `parent_of` `{to_party_id}`.",
+              "examples": [
+                "parent_of"
+              ]
+            }
+          },
+          {
+            "description": "ID of the party the relation points to, e.g. the child of `parent_of`.",
+            "in": "path",
+            "name": "to_party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party the relation points to, e.g. the child of `parent_of`.",
+              "examples": [
+                "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+              ],
+              "format": "uuid",
+              "title": "To Party Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "party_relation_not_found": {
+                    "value": {
+                      "code": "party_relation_not_found",
+                      "detail": "Party relation not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Party relation not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Remove Relation",
+        "tags": [
+          "crm"
+        ]
+      },
+      "put": {
+        "description": "Relate two parties: `{party_id}` is `{type}` `{to_party_id}`. Idempotent.\n\n`parent_of` needs a person on both sides, `tutor_of` a tutor and a student, and `pays_for` points\nto a person. The answer names the other party, which confirms the pasted ID.",
+        "operationId": "crm_put_relation",
+        "parameters": [
+          {
+            "description": "ID of the party.",
+            "in": "path",
+            "name": "party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party.",
+              "examples": [
+                "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+              ],
+              "format": "uuid",
+              "title": "Party Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Type of the relation, read from the first party: `{party_id}` is `parent_of` `{to_party_id}`.",
+            "in": "path",
+            "name": "type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/PartyRelationType",
+              "description": "Type of the relation, read from the first party: `{party_id}` is `parent_of` `{to_party_id}`.",
+              "examples": [
+                "parent_of"
+              ]
+            }
+          },
+          {
+            "description": "ID of the party the relation points to, e.g. the child of `parent_of`.",
+            "in": "path",
+            "name": "to_party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party the relation points to, e.g. the child of `parent_of`.",
+              "examples": [
+                "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+              ],
+              "format": "uuid",
+              "title": "To Party Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "party_not_found": {
+                    "value": {
+                      "code": "party_not_found",
+                      "detail": "Party not found"
+                    }
+                  },
+                  "related_party_not_found": {
+                    "value": {
+                      "code": "related_party_not_found",
+                      "detail": "Related party not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Party not found / Related party not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_party_relation": {
+                    "value": {
+                      "code": "invalid_party_relation",
+                      "detail": "Invalid party relation"
+                    }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid party relation"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Put Relation",
         "tags": [
           "crm"
         ]

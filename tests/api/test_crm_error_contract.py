@@ -28,9 +28,12 @@ from app.services.crm.errors import (
     ContactInfoAlreadyExistsError,
     ContactInfoNotFoundError,
     InvalidContactValueError,
+    InvalidPartyRelationError,
     PartyInUseError,
     PartyNotFoundError,
+    PartyRelationNotFoundError,
     PersonNotFoundError,
+    RelatedPartyNotFoundError,
     RoleNotFoundError,
     SubjectAlreadyExistsError,
     SubjectInUseError,
@@ -39,7 +42,9 @@ from app.services.crm.errors import (
 )
 
 ID = "00000000-0000-0000-0000-0000000000aa"
+OTHER_ID = "00000000-0000-0000-0000-0000000000bb"
 INTERNAL = "internal: row 7f3a"
+INVALID_RELATION = "Invalid party relation"
 PARTY_IN_USE = "Party is linked to external systems"
 PERSON = {"firstname": "Max", "lastname": "Mustermann"}
 EMAIL = {"type": "email", "value": "max.mustermann@example.com"}
@@ -70,6 +75,9 @@ ENDPOINTS = {
         "PATCH", f"/parties/{ID}/contact-infos/{ID}", "contact_infos.update_contact_info", json={"value": "a@b.example"}
     ),
     "remove_contact_info": Endpoint("DELETE", f"/parties/{ID}/contact-infos/{ID}", "contact_infos.remove_contact_info"),
+    "list_relations": Endpoint("GET", f"/parties/{ID}/relations", "relations.list_relations"),
+    "put_relation": Endpoint("PUT", f"/parties/{ID}/relations/parent_of/{OTHER_ID}", "relations.put_relation"),
+    "remove_relation": Endpoint("DELETE", f"/parties/{ID}/relations/parent_of/{OTHER_ID}", "relations.remove_relation"),
     "update_person": Endpoint("PATCH", f"/persons/{ID}", "persons.update_person", json={"firstname": "Max"}),
     "update_company": Endpoint("PATCH", f"/companies/{ID}", "companies.update_company", json={"name": "Musterfirma"}),
     "create_subject": Endpoint("POST", "/subjects", "subjects.create_subject", json={"title": "Mathematics"}),
@@ -107,6 +115,17 @@ EXPECTATIONS: list[Expectation] = [
     ("update_contact_info", ContactInfoAlreadyExistsError(INTERNAL), 409, CONTACT_INFO_EXISTS),
     ("update_contact_info", InvalidContactValueError(INTERNAL), 422, INVALID_CONTACT_VALUE),
     ("remove_contact_info", ContactInfoNotFoundError(INTERNAL), 404, "Contact info not found"),
+    ("list_relations", PartyNotFoundError(INTERNAL), 404, "Party not found"),
+    ("put_relation", PartyNotFoundError(INTERNAL), 404, "Party not found"),
+    ("put_relation", RelatedPartyNotFoundError(INTERNAL), 404, "Related party not found"),
+    (
+        "put_relation",
+        InvalidPartyRelationError(f"{INVALID_RELATION}: pays_for must point to a person"),
+        422,
+        f"{INVALID_RELATION}: pays_for must point to a person",
+    ),
+    ("put_relation", InvalidPartyRelationError(), 422, INVALID_RELATION),
+    ("remove_relation", PartyRelationNotFoundError(INTERNAL), 404, "Party relation not found"),
     ("update_person", PersonNotFoundError(INTERNAL), 404, "Person not found"),
     ("update_company", CompanyNotFoundError(INTERNAL), 404, "Company not found"),
     ("create_subject", SubjectAlreadyExistsError(INTERNAL), 409, "Subject already exists"),
@@ -125,6 +144,9 @@ CATALOG: dict[type[DomainError], tuple[str, int, str, bool]] = {
     ContactInfoNotFoundError: ("contact_info_not_found", 404, "Contact info not found", False),
     ContactInfoAlreadyExistsError: ("contact_info_already_exists", 409, CONTACT_INFO_EXISTS, False),
     InvalidContactValueError: ("invalid_contact_value", 422, INVALID_CONTACT_VALUE, False),
+    PartyRelationNotFoundError: ("party_relation_not_found", 404, "Party relation not found", False),
+    RelatedPartyNotFoundError: ("related_party_not_found", 404, "Related party not found", False),
+    InvalidPartyRelationError: ("invalid_party_relation", 422, INVALID_RELATION, True),
     RoleNotFoundError: ("role_not_found", 404, "Role not assigned", False),
     UnknownSubjectError: ("unknown_subject", 422, "Unknown subject", True),
     SubjectNotFoundError: ("subject_not_found", 404, "Subject not found", False),
@@ -166,6 +188,11 @@ def test_catalog_class_carries_its_code_message_and_exposure(error_type: type[Do
         message,
         expose_message,
     )
+
+
+def test_the_catalog_is_closed_at_the_fifteen_classes_of_the_spec():
+    assert len(CATALOG) == 15
+    assert len({code for code, *_ in CATALOG.values()}) == 15
 
 
 def test_every_catalog_class_is_pinned():

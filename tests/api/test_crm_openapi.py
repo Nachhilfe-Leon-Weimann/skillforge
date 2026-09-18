@@ -171,3 +171,56 @@ def test_every_property_of_a_create_request_carries_examples(schema: dict[str, A
     for name, definition in create_requests.items():
         for property_name, property_schema in definition["properties"].items():
             assert property_schema.get("examples"), f"{name}.{property_name}"
+
+
+# The route map of the CRM API spec is closed: method, path and operation ID are the contract.
+ROUTE_MAP = {
+    ("GET", "/parties"): "crm_list_parties",
+    ("GET", "/parties/{party_id}"): "crm_get_party",
+    ("DELETE", "/parties/{party_id}"): "crm_delete_party",
+    ("POST", "/persons"): "crm_create_person",
+    ("PATCH", "/persons/{party_id}"): "crm_update_person",
+    ("POST", "/companies"): "crm_create_company",
+    ("PATCH", "/companies/{party_id}"): "crm_update_company",
+    ("PUT", "/persons/{party_id}/student"): "crm_put_student_role",
+    ("DELETE", "/persons/{party_id}/student"): "crm_remove_student_role",
+    ("PUT", "/persons/{party_id}/tutor"): "crm_put_tutor_role",
+    ("DELETE", "/persons/{party_id}/tutor"): "crm_remove_tutor_role",
+    ("POST", "/parties/{party_id}/contact-infos"): "crm_add_contact_info",
+    ("PATCH", "/parties/{party_id}/contact-infos/{contact_info_id}"): "crm_update_contact_info",
+    ("DELETE", "/parties/{party_id}/contact-infos/{contact_info_id}"): "crm_remove_contact_info",
+    ("GET", "/parties/{party_id}/relations"): "crm_list_relations",
+    ("PUT", "/parties/{party_id}/relations/{type}/{to_party_id}"): "crm_put_relation",
+    ("DELETE", "/parties/{party_id}/relations/{type}/{to_party_id}"): "crm_remove_relation",
+    ("GET", "/subjects"): "crm_list_subjects",
+    ("POST", "/subjects"): "crm_create_subject",
+    ("PATCH", "/subjects/{subject_id}"): "crm_update_subject",
+    ("DELETE", "/subjects/{subject_id}"): "crm_delete_subject",
+}
+SUCCESS_STATUS = {"POST": "201", "DELETE": "204"}
+
+
+def test_the_crm_routes_are_exactly_the_route_map_of_the_spec(schema: dict[str, Any]):
+    actual = {
+        (method, path.removeprefix("/api/v1/crm")): operation["operationId"]
+        for method, path, operation in _crm_operations(schema)
+    }
+
+    assert actual == ROUTE_MAP
+
+
+def test_every_crm_route_answers_with_the_success_status_of_its_method(schema: dict[str, Any]):
+    """Decision E: `POST` is 201, every `DELETE` is 204, everything else 200."""
+    for method, path, operation in _crm_operations(schema):
+        success = [status for status in operation["responses"] if status.startswith("2")]
+        assert success == [SUCCESS_STATUS.get(method, "200")], f"{method} {path}"
+
+
+def test_the_lists_return_the_generic_page(schema: dict[str, Any]):
+    for path, item in [
+        ("/api/v1/crm/parties", "PartyListItem"),
+        ("/api/v1/crm/parties/{party_id}/relations", "RelationResponse"),
+        ("/api/v1/crm/subjects", "SubjectResponse"),
+    ]:
+        response = schema["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+        assert response == {"$ref": f"#/components/schemas/Page_{item}_"}
