@@ -180,6 +180,13 @@ def test_unhandled_exception_becomes_a_generic_500_envelope():
     assert response.json() == {"detail": "Internal server error", "code": "internal_error"}
 
 
+def test_500_envelope_works_without_the_request_logging_middleware():
+    response = _client().get("/boom")
+
+    assert response.status_code == 500
+    assert "x-request-id" not in response.headers
+
+
 def test_unhandled_exception_does_not_leak_its_message():
     response = _client().get("/boom")
 

@@ -95,6 +95,7 @@ async def test_unexpected_exception_is_a_500_envelope_without_internals(monkeypa
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal server error", "code": "internal_error"}
+    assert response.headers["x-request-id"]
 
 
 @pytest.mark.parametrize("failure", ["missing_token", "invalid_token", "missing_scope"])

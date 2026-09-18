@@ -320,6 +320,8 @@ PR: unknown query parameters become 422.
       the request-logging middleware sits inside it and logs `http_request_failed` with the traceback exactly once
       (`test_request_logging_keeps_the_traceback_when_the_500_envelope_handles_the_exception`). A `DomainError`
       outside every category also ends here, as a 500 rather than a guessed status.
+      Because the response is built outside the logging middleware, the handler adds the `x-request-id` header
+      itself (`get_request_id` in `app/core/logging/middleware.py`), so a 500 can be matched to its log entry.
 
 **P1-5 - Migrate the `auth` client routes.** Re-parent the `ApplicationClient*` errors; `InvalidClientScopeError`
 keeps a local 400 mapping (non-goal: changing status codes).

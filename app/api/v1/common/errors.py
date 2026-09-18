@@ -17,6 +17,7 @@ from fastapi.utils import is_body_allowed_for_status_code
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.errors import ConflictError, DomainError, DomainValidationError, NotFoundError
+from app.core.logging import REQUEST_ID_HEADER, get_request_id
 
 from .schemas import ErrorResponse, FieldError
 
@@ -120,8 +121,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def handle_unexpected_error(request: Request, exc: Exception) -> Response:
         # Runs in Starlette's outermost ServerErrorMiddleware, which re-raises after responding. The
         # request-logging middleware sits inside it and has logged the traceback by then, so this
-        # only shapes the body - and never shows the exception's message.
-        return _envelope(500, ErrorResponse(detail=INTERNAL_ERROR_DETAIL, code=INTERNAL_ERROR_CODE))
+        # only shapes the body - and never shows the exception's message. For the same reason the
+        # middleware cannot stamp this response, so the request id is added here.
+        request_id = get_request_id(request)
+        headers = {REQUEST_ID_HEADER: request_id} if request_id else None
+        return _envelope(500, ErrorResponse(detail=INTERNAL_ERROR_DETAIL, code=INTERNAL_ERROR_CODE), headers=headers)
 
 
 def _phrase_for(status_code: int) -> str:

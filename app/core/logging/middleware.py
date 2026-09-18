@@ -7,6 +7,8 @@ from skillcore.logging import get_logger
 from structlog import contextvars
 
 request_logger = get_logger("app.request")
+REQUEST_ID_HEADER = "x-request-id"
+_REQUEST_ID_STATE = "request_id"
 _REQUEST_LOG_CONTEXT_STATE = "request_log_context"
 
 # Path prefixes treated as health/readiness probes: silenced while healthy and
@@ -24,11 +26,21 @@ def bind_request_log_context(request: Request | None = None, **values: object) -
         setattr(request.state, _REQUEST_LOG_CONTEXT_STATE, request_context | context)
 
 
+def get_request_id(request: Request) -> str | None:
+    """Return the id the request-logging middleware assigned to this request, if it ran.
+
+    Lives in ``request.state``, which hangs off the ASGI scope: it stays readable where the
+    middleware's response hook is not, e.g. in the catch-all 500 handler that runs outside of it.
+    """
+    return getattr(request.state, _REQUEST_ID_STATE, None)
+
+
 def register_request_logging(app: FastAPI) -> None:
     @app.middleware("http")
     async def log_requests(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         started_at = time.perf_counter()
-        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+        request_id = request.headers.get(REQUEST_ID_HEADER) or uuid.uuid4().hex
+        setattr(request.state, _REQUEST_ID_STATE, request_id)
         contextvars.bind_contextvars(request_id=request_id)
 
         try:
@@ -45,7 +57,7 @@ def register_request_logging(app: FastAPI) -> None:
                 )
                 raise
 
-            response.headers["x-request-id"] = request_id
+            response.headers[REQUEST_ID_HEADER] = request_id
             _log_http_request(request, response, started_at)
             return response
         finally:

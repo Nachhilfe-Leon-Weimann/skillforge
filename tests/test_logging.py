@@ -158,6 +158,41 @@ def test_request_logging_keeps_the_traceback_when_the_500_envelope_handles_the_e
     assert "kaputt" in json.dumps(failed[0])
 
 
+def test_500_envelope_carries_the_request_id_of_the_logged_failure(capsys):
+    configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
+    app = _failing_app()
+    capsys.readouterr()
+
+    response = TestClient(app, raise_server_exceptions=False).get("/boom")
+
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    failed = next(event for event in events if event["event"] == "http_request_failed")
+    assert response.status_code == 500
+    assert response.headers["x-request-id"] == failed["request_id"]
+
+
+def test_500_envelope_echoes_a_request_id_the_client_sent():
+    configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
+
+    response = TestClient(_failing_app(), raise_server_exceptions=False).get(
+        "/boom", headers={"x-request-id": "trace-me-42"}
+    )
+
+    assert response.headers["x-request-id"] == "trace-me-42"
+
+
+def _failing_app() -> FastAPI:
+    app = FastAPI()
+    register_request_logging(app)
+    register_exception_handlers(app)
+
+    @app.get("/boom")
+    async def boom():
+        raise RuntimeError("kaputt")
+
+    return app
+
+
 def test_configure_logging_disables_uvicorn_access_log():
     configure_logging(LoggingSettings(level=LogLevel.INFO, format=LogFormat.JSON))
 
