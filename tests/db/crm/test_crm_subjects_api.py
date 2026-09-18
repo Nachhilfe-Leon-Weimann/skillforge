@@ -150,7 +150,8 @@ async def test_delete_subject_is_409_while_a_role_references_it(client: AsyncCli
 
 
 async def test_list_subjects_is_a_page_ordered_by_lowercased_title_then_id(client: AsyncClient):
-    created = [await _create(client, title) for title in ["physics", "Biology", "chemistry", "Art"]]
+    # "art" sorts after "Biology" by code point, so on a C-collated database only lower() orders them.
+    created = [await _create(client, title) for title in ["physics", "Biology", "chemistry", "art"]]
     by_title = {subject["title"]: subject for subject in created}
 
     full = await client.get("/subjects")
@@ -158,7 +159,7 @@ async def test_list_subjects_is_a_page_ordered_by_lowercased_title_then_id(clien
 
     assert full.status_code == 200
     assert full.json() == {
-        "items": [by_title["Art"], by_title["Biology"], by_title["chemistry"], by_title["physics"]],
+        "items": [by_title["art"], by_title["Biology"], by_title["chemistry"], by_title["physics"]],
         "total": 4,
         "limit": 50,
         "offset": 0,
@@ -171,8 +172,42 @@ async def test_list_subjects_is_a_page_ordered_by_lowercased_title_then_id(clien
     }
 
 
+async def test_list_subjects_orders_in_sql_by_lowercased_title_then_id(client: AsyncClient, statements: list[str]):
+    """The test database collates case-insensitively anyway, so the data alone cannot prove ``lower()``."""
+    await _create(client, "Mathematics")
+    statements.clear()
+
+    await client.get("/subjects")
+
+    listing = [statement for statement in statements if "FROM core.subject ORDER BY" in statement]
+    assert len(listing) == 1, statements
+    assert "ORDER BY lower(core.subject.title), core.subject.id LIMIT" in listing[0]
+
+
 async def test_list_subjects_rejects_an_unknown_query_parameter(client: AsyncClient):
     response = await client.get("/subjects", params={"limt": 5})
 
     assert response.status_code == 422
     assert [error["loc"] for error in response.json()["errors"]] == [["query", "limt"]]
+
+
+async def test_a_title_conflict_leaves_the_surrounding_transaction_usable(session: AsyncSession):
+    """The violation happens inside a SAVEPOINT - not in a flush that precedes it."""
+    from app.services.crm import subjects
+    from app.services.crm.errors import SubjectAlreadyExistsError
+
+    mathematics = await subjects.create_subject(session, title="Mathematics")
+    physics = await subjects.create_subject(session, title="Physics")
+    physics_id = physics.id
+
+    with pytest.raises(SubjectAlreadyExistsError):
+        await subjects.create_subject(session, title="MATHEMATICS")
+    with pytest.raises(SubjectAlreadyExistsError):
+        await subjects.update_subject(session, physics_id, title="mathematics")
+
+    # Without a real SAVEPOINT the session would now answer PendingRollbackError.
+    chemistry = await subjects.create_subject(session, title="Chemistry")
+    assert chemistry.id not in {mathematics.id, physics_id}
+    assert await _titles(session) == ["Chemistry", "Mathematics", "Physics"]
+    # The rollback expired what the failed update touched; the row itself kept its title.
+    assert await session.scalar(select(Subject.title).where(Subject.id == physics_id)) == "Physics"
