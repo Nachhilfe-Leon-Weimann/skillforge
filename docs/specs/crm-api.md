@@ -381,6 +381,11 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
     visible under `tests/db/`); its `client` fixture wraps every request in a SAVEPOINT that rolls back on failure,
     mirroring the request-scoped transaction. Stubbed API tests stay in `tests/api/test_crm_*.py`.
   - The 401 / 403 criterion is asserted for **every** CRM operation of the OpenAPI document, not for one route.
+  - The savepoint pattern differs from `upsert_command_env` in one point: the change is made **inside**
+    `begin_nested()` (`_unique_title` in `subjects.py`). `begin_nested()` first flushes whatever is pending into the
+    enclosing transaction, so a change made before it fails out there, no SAVEPOINT is involved and the session
+    ends in `PendingRollbackError`. Status, `code` and `detail` are the same either way; found by the first review
+    gate. The bot's call sites are left alone (guardrail).
 
 **P0-2 - Party aggregate: create, read, update.**
 
@@ -422,6 +427,10 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
     contract test is unchanged.
   - `contact_infos` in the detail are ordered by `(type, value)`, role `subjects` by `lower(title), id`: the
     relationships have no order of their own.
+  - **Text Postgres cannot store is a validation 422** (error rule I-2): `Name` and `normalize_contact_value`
+    reject U+0000 and a lone UTF-16 surrogate through `require_storable_text` in `inputs.py`. Left to the database
+    both were a 500, and the driver's message for the surrogate repeated the phone number into the request log.
+    Found by the first review gate. `openapi.json` is unchanged by it.
   - Outside the CRM packages: the engine runs with `hide_parameters=True`, so a logged database error does not
     repeat names or contact values. Postgres' own `DETAIL` of a unique violation still names the key; the services
     translate those inside a SAVEPOINT, so only an untranslated `IntegrityError` would show it.
