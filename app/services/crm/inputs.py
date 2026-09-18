@@ -19,6 +19,13 @@ class PartyRole(StrEnum):
     TUTOR = "tutor"
 
 
+class RelationDirection(StrEnum):
+    """A relation seen from one of its two parties: that party is the ``from`` side, or the ``to`` side."""
+
+    OUTGOING = "outgoing"
+    INCOMING = "incoming"
+
+
 class Unset(Enum):
     """Type of ``UNSET``: "leave this nullable field as it is", where ``None`` already means "clear it"."""
 

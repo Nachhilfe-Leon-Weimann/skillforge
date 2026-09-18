@@ -23,7 +23,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.crm.schemas import ContactInfoResponse, PersonDetail, party_detail
+from app.api.v1.crm.schemas import ContactInfoResponse, PersonDetail, RelationResponse, party_detail
 from app.core.db.models import (
     ContactInfo,
     ContactInfoType,
@@ -37,7 +37,7 @@ from app.core.db.models import (
     TutorSubject,
 )
 from app.services import crm as crm_services
-from app.services.crm import companies, contact_infos, parties, persons, roles, subjects
+from app.services.crm import companies, contact_infos, parties, persons, relations, roles, subjects
 from app.services.crm.inputs import NewContactInfo, StudentRoleData, TutorRoleData
 
 pytestmark = pytest.mark.db
@@ -47,6 +47,7 @@ pytestmark = pytest.mark.db
 NOT_AGGREGATE_WRITES = {
     parties.load_party,  # the loading path itself
     parties.list_parties,
+    relations.list_relations,
     parties.saved,  # the bookkeeping every write ends with
     persons.get_person,
     companies.get_company,
@@ -168,6 +169,20 @@ async def _remove_contact_info(session: AsyncSession, seed: Seed) -> None:
     await contact_infos.remove_contact_info(session, seed.person_id, contact_info_id)
 
 
+async def _put_relation(session: AsyncSession, seed: Seed) -> RelationResponse:
+    view = await relations.put_relation(session, seed.company_id, PartyRelationType.PAYS_FOR, seed.person_id)
+    return RelationResponse.from_view(view)
+
+
+async def _remove_relation(session: AsyncSession, seed: Seed) -> None:
+    session.add(
+        PartyRelation(from_party_id=seed.company_id, to_party_id=seed.person_id, type=PartyRelationType.PAYS_FOR)
+    )
+    await session.flush()
+    session.expunge_all()
+    await relations.remove_relation(session, seed.company_id, PartyRelationType.PAYS_FOR, seed.person_id)
+
+
 async def _create_person_with_roles(session: AsyncSession, seed: Seed) -> Party:
     return await persons.create_person(
         session,
@@ -200,6 +215,9 @@ WRITES = [
     Write(roles.put_tutor_role, _put_tutor_role, touches=lambda seed: (seed.person_id,)),
     Write(roles.remove_student_role, _remove_student_role, touches=lambda seed: (seed.person_id,)),
     Write(roles.remove_tutor_role, _remove_tutor_role, touches=lambda seed: (seed.person_id,)),
+    # A relation belongs to both aggregates.
+    Write(relations.put_relation, _put_relation, touches=lambda seed: (seed.company_id, seed.person_id)),
+    Write(relations.remove_relation, _remove_relation, touches=lambda seed: (seed.company_id, seed.person_id)),
     # A child write returns the child: the scenario maps it, which must not lazy-load either.
     Write(contact_infos.add_contact_info, _add_contact_info, touches=lambda seed: (seed.company_id,)),
     Write(contact_infos.update_contact_info, _update_contact_info, touches=lambda seed: (seed.person_id,)),

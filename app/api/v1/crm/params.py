@@ -7,12 +7,28 @@ from fastapi import Path, Query
 from pydantic import AfterValidator, Field
 
 from app.api.v1.common import PageParams
-from app.core.db.models import PartyType
-from app.services.crm.inputs import PartyRole, require_storable_text
+from app.core.db.models import PartyRelationType, PartyType
+from app.services.crm.inputs import PartyRole, RelationDirection, require_storable_text
 
 PartyId = Annotated[
     uuid.UUID,
     Path(description="ID of the party.", examples=["7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"]),
+]
+
+ToPartyId = Annotated[
+    uuid.UUID,
+    Path(
+        description="ID of the party the relation points to, e.g. the child of `parent_of`.",
+        examples=["1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"],
+    ),
+]
+
+RelationType = Annotated[
+    PartyRelationType,
+    Path(
+        description="Type of the relation, read from the first party: `{party_id}` is `parent_of` `{to_party_id}`.",
+        examples=[PartyRelationType.PARENT_OF],
+    ),
 ]
 
 ContactInfoId = Annotated[
@@ -58,3 +74,18 @@ class PartyListParams(PageParams):
 
 
 type PartyListQuery = Annotated[PartyListParams, Query()]
+
+
+class RelationListParams(PageParams):
+    """Filters of `GET /parties/{party_id}/relations`."""
+
+    direction: RelationDirection | None = Field(
+        None,
+        description=(
+            "`outgoing`: only relations starting at this party; `incoming`: only those pointing to it. Both by default."
+        ),
+    )
+    type: PartyRelationType | None = Field(None, description="Only relations of this type.")
+
+
+type RelationListQuery = Annotated[RelationListParams, Query()]

@@ -18,6 +18,7 @@ from app.core.db.models import (
     ContactInfo,
     ContactInfoType,
     Party,
+    PartyRelationType,
     PartyType,
     Person,
     PreferredMeetingTool,
@@ -28,11 +29,13 @@ from app.core.db.models import (
 from app.services.crm.inputs import (
     NewContactInfo,
     PartyRole,
+    RelationDirection,
     StudentRoleData,
     TutorRoleData,
     normalize_contact_value,
     require_storable_text,
 )
+from app.services.crm.relations import PartyRelationView
 
 from .params import MAX_SUBJECT_ID
 
@@ -157,6 +160,28 @@ class PartyListItem(ApiModel):
     @classmethod
     def from_model(cls, party: Party) -> Self:
         return cls(id=party.id, type=party.type, display_name=_display_name(party), roles=_roles(party))
+
+
+class RelationResponse(ApiModel):
+    """A relation, seen from the party in the path."""
+
+    type: PartyRelationType
+    """Type of the relation."""
+    direction: RelationDirection
+    """`outgoing` if the party in the path is the one the relation starts at, `incoming` if it points to it."""
+    party: PartyListItem
+    """The party on the other side of the relation."""
+    created_at: datetime
+    """When the relation was created."""
+
+    @classmethod
+    def from_view(cls, view: PartyRelationView) -> Self:
+        return cls(
+            type=view.type,
+            direction=view.direction,
+            party=PartyListItem.from_model(view.party),
+            created_at=view.created_at,
+        )
 
 
 class StudentRole(ApiModel):

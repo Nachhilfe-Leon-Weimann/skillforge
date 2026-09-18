@@ -50,3 +50,79 @@ def test_the_import_check_catches_every_import_form():
     assert _violations("from .. import bot", package=package)
     assert _violations("from ..bot.errors import BotServiceError", package=package)
     assert _violations("from . import subjects\nfrom app.core.errors import NotFoundError", package=package) == set()
+
+
+# --- standing criteria of the CRM API spec: what an endpoint module must not contain ---
+
+API_PACKAGE = REPO_ROOT / "app/api/v1/crm"
+ROUTE_DECORATORS = {"get", "post", "put", "patch", "delete"}
+
+
+def _endpoints(tree: ast.AST) -> list[ast.AsyncFunctionDef]:
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef)
+        and any(
+            isinstance(decorator, ast.Call)
+            and isinstance(decorator.func, ast.Attribute)
+            and decorator.func.attr in ROUTE_DECORATORS
+            for decorator in node.decorator_list
+        )
+    ]
+
+
+def _boilerplate(source: str) -> list[str]:
+    tree = ast.parse(source)
+    found = [f"try/except at line {node.lineno}" for node in ast.walk(tree) if isinstance(node, (ast.Try, ast.TryStar))]
+    found += [
+        f"HTTPException at line {node.lineno}"
+        for node in ast.walk(tree)
+        if (isinstance(node, ast.Name) and node.id == "HTTPException")
+        or (isinstance(node, ast.alias) and node.name == "HTTPException")
+    ]
+    for endpoint in _endpoints(tree):
+        arguments = [*endpoint.args.posonlyargs, *endpoint.args.args, *endpoint.args.kwonlyargs]
+        for argument in arguments:
+            if argument.arg == "_":
+                found.append(f"{endpoint.name}: parameter named _")
+            annotation = argument.annotation
+            if annotation is None or any(
+                isinstance(node, ast.Name) and node.id == "Annotated" for node in ast.walk(annotation)
+            ):
+                found.append(f"{endpoint.name}: parameter {argument.arg} is not typed by an alias")
+    return found
+
+
+def test_the_crm_endpoints_carry_no_boilerplate():
+    modules = sorted(API_PACKAGE.glob("*.py"))
+    endpoints = [endpoint.name for module in modules for endpoint in _endpoints(ast.parse(module.read_text()))]
+
+    assert len(endpoints) == 21, endpoints
+    for module in modules:
+        assert _boilerplate(module.read_text()) == [], module.name
+
+
+def test_the_boilerplate_check_catches_each_kind():
+    offending = """
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Path
+router = APIRouter()
+
+@router.get("/{party_id}")
+async def get_party(party_id: Annotated[int, Path()], _: object, session):
+    try:
+        return 1
+    except ValueError:
+        raise HTTPException(404)
+"""
+
+    assert _boilerplate(offending) == [
+        "try/except at line 8",
+        "HTTPException at line 3",
+        "HTTPException at line 11",
+        "get_party: parameter party_id is not typed by an alias",
+        "get_party: parameter named _",
+        "get_party: parameter session is not typed by an alias",
+    ]
+    assert _boilerplate("async def helper(x: int): ...") == []
