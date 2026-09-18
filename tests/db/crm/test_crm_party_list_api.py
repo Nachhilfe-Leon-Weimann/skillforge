@@ -120,6 +120,18 @@ async def test_a_blank_q_filters_nothing_and_a_single_character_is_rejected(clie
     assert [error["loc"] for error in too_short.json()["errors"]] == [["query", "q"]]
 
 
+async def test_an_oversized_q_is_a_validation_error_not_a_500(client: AsyncClient):
+    """Every word becomes four bind parameters; a statement takes 32767 of them."""
+    await _person(client, "Max", "Mustermann")
+
+    too_long = await client.get("/parties", params={"q": "a " * 101})
+    many_words = await client.get("/parties", params={"q": " ".join(["ma"] * 66)})
+
+    assert too_long.status_code == 422
+    assert [error["loc"] for error in too_long.json()["errors"]] == [["query", "q"]]
+    assert (many_words.status_code, many_words.json()["total"]) == (200, 1)
+
+
 async def test_q_with_a_nul_character_is_a_validation_error_not_a_500(client: AsyncClient):
     response = await client.get("/parties?q=ma%00x")
 

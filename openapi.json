@@ -686,6 +686,7 @@
             "examples": [
               "max.mustermann@example.com"
             ],
+            "maxLength": 254,
             "title": "Value",
             "type": "string"
           }
@@ -792,6 +793,7 @@
           },
           "value": {
             "description": "New value. It must fit the stored type (422 `invalid_contact_value` otherwise) and is normalized as on create.",
+            "maxLength": 254,
             "minLength": 1,
             "title": "Value",
             "type": "string"
@@ -2786,6 +2788,7 @@
               "minimum": 1.0,
               "type": "integer"
             },
+            "maxItems": 100,
             "title": "Subject Ids",
             "type": "array",
             "uniqueItems": true
@@ -3063,6 +3066,7 @@
               "minimum": 1.0,
               "type": "integer"
             },
+            "maxItems": 100,
             "title": "Subject Ids",
             "type": "array",
             "uniqueItems": true
@@ -9716,6 +9720,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "maxLength": 200,
                   "minLength": 2,
                   "type": "string"
                 },
