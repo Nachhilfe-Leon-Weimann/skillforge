@@ -6,7 +6,7 @@ client sees; the instance message a service raises with stays internal unless th
 ``expose_message``.
 """
 
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import ConflictError, DomainValidationError, NotFoundError
 
 
 class PartyNotFoundError(NotFoundError):
@@ -25,6 +25,12 @@ class CompanyNotFoundError(NotFoundError):
     """No company exists for the requested party_id; a person's ID counts as missing here."""
 
     message = "Company not found"
+
+
+class RoleNotFoundError(NotFoundError):
+    """The person does not hold the role that was to be removed; one class for both roles."""
+
+    message = "Role not assigned"
 
 
 class PartyInUseError(ConflictError):
@@ -51,3 +57,11 @@ class SubjectInUseError(ConflictError):
     """The subject is still referenced by a student or tutor role."""
 
     message = "Subject is still assigned to students or tutors"
+
+
+class UnknownSubjectError(DomainValidationError):
+    """A subject referenced in a request body does not exist (body reference: 422, not 404)."""
+
+    message = "Unknown subject"
+    # Raised with a client-ready message only: it lists the unknown IDs the client sent itself.
+    expose_message = True

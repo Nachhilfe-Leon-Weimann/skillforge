@@ -37,8 +37,8 @@ from app.core.db.models import (
     TutorSubject,
 )
 from app.services import crm as crm_services
-from app.services.crm import companies, parties, persons, subjects
-from app.services.crm.inputs import NewContactInfo
+from app.services.crm import companies, parties, persons, roles, subjects
+from app.services.crm.inputs import NewContactInfo, StudentRoleData, TutorRoleData
 
 pytestmark = pytest.mark.db
 
@@ -56,6 +56,7 @@ NOT_AGGREGATE_WRITES = {
     subjects.create_subject,
     subjects.update_subject,
     subjects.delete_subject,
+    subjects.require_subjects,
 }
 
 
@@ -97,6 +98,59 @@ async def _delete_the_company_that_pays_for_the_person(session: AsyncSession, se
     await parties.delete_party(session, seed.company_id)
 
 
+async def _subject_ids(session: AsyncSession, *titles: str) -> frozenset[int]:
+    return frozenset([(await subjects.create_subject(session, title=title)).id for title in titles])
+
+
+async def _put_student_role(session: AsyncSession, seed: Seed) -> Party:
+    return await roles.put_student_role(
+        session,
+        seed.person_id,
+        preferred_meeting_tool=PreferredMeetingTool.PHONE,
+        subject_ids=await _subject_ids(session, "Mathematics", "Art"),
+    )
+
+
+async def _replace_student_role(session: AsyncSession, seed: Seed) -> Party:
+    await _put_student_role(session, seed)
+    session.expunge_all()
+    return await roles.put_student_role(
+        session,
+        seed.person_id,
+        preferred_meeting_tool=PreferredMeetingTool.PHONE,
+        subject_ids=await _subject_ids(session, "Physics"),
+    )
+
+
+async def _put_tutor_role(session: AsyncSession, seed: Seed) -> Party:
+    return await roles.put_tutor_role(session, seed.person_id, subject_ids=await _subject_ids(session, "Chemistry"))
+
+
+async def _remove_student_role(session: AsyncSession, seed: Seed) -> Party:
+    session.add(Student(person_id=seed.person_id, preferred_meeting_tool=PreferredMeetingTool.DISCORD))
+    await session.flush()
+    session.expunge_all()
+    return await roles.remove_student_role(session, seed.person_id)
+
+
+async def _remove_tutor_role(session: AsyncSession, seed: Seed) -> Party:
+    session.add(Tutor(person_id=seed.person_id))
+    await session.flush()
+    session.expunge_all()
+    return await roles.remove_tutor_role(session, seed.person_id)
+
+
+async def _create_person_with_roles(session: AsyncSession, seed: Seed) -> Party:
+    return await persons.create_person(
+        session,
+        firstname="Erika",
+        lastname="Musterfrau",
+        contact_infos=CONTACT_INFOS,
+        student=StudentRoleData(PreferredMeetingTool.DISCORD, await _subject_ids(session, "Biology", "art")),
+        tutor=TutorRoleData(await _subject_ids(session, "Latin")),
+    )
+
+
 WRITES = [
     Write(
         persons.create_person,
@@ -112,6 +166,12 @@ WRITES = [
         creates=True,
         label="[with contact infos]",
     ),
+    Write(persons.create_person, _create_person_with_roles, creates=True, label="[with both roles]"),
+    Write(roles.put_student_role, _put_student_role, touches=lambda seed: (seed.person_id,)),
+    Write(roles.put_student_role, _replace_student_role, touches=lambda seed: (seed.person_id,), label="[replace]"),
+    Write(roles.put_tutor_role, _put_tutor_role, touches=lambda seed: (seed.person_id,)),
+    Write(roles.remove_student_role, _remove_student_role, touches=lambda seed: (seed.person_id,)),
+    Write(roles.remove_tutor_role, _remove_tutor_role, touches=lambda seed: (seed.person_id,)),
     Write(
         persons.update_person,
         lambda session, seed: persons.update_person(session, seed.person_id, firstname="Maximilian"),

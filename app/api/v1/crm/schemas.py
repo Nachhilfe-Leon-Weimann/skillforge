@@ -25,7 +25,16 @@ from app.core.db.models import (
     Subject,
     Tutor,
 )
-from app.services.crm.inputs import NewContactInfo, PartyRole, normalize_contact_value, require_storable_text
+from app.services.crm.inputs import (
+    NewContactInfo,
+    PartyRole,
+    StudentRoleData,
+    TutorRoleData,
+    normalize_contact_value,
+    require_storable_text,
+)
+
+from .params import MAX_SUBJECT_ID
 
 # A plain assignment inlines the constraints at the field; a PEP 695 alias would become its own schema.
 Name = Annotated[
@@ -290,6 +299,34 @@ def _subjects(subjects: Iterable[Subject]) -> list[SubjectResponse]:
 # --- Persons and companies: the write side ---
 
 
+# core.subject.id is a Postgres INTEGER: anything outside its range cannot be a subject - nor be bound to a query.
+SubjectIds = Annotated[set[Annotated[int, Field(ge=1, le=MAX_SUBJECT_ID)]], Field(examples=[[1, 2]])]
+
+
+class StudentRoleRequest(ApiModel):
+    """Body of `PUT /persons/{party_id}/student`, and the `student` of `POST /persons`."""
+
+    preferred_meeting_tool: PreferredMeetingTool = Field(examples=[PreferredMeetingTool.DISCORD])
+    """How the student prefers to meet their tutor."""
+    subject_ids: SubjectIds = Field(default_factory=set)
+    """IDs of the subjects the student takes lessons in. Replaces the whole set; duplicates collapse."""
+
+    def to_input(self) -> StudentRoleData:
+        return StudentRoleData(
+            preferred_meeting_tool=self.preferred_meeting_tool, subject_ids=frozenset(self.subject_ids)
+        )
+
+
+class TutorRoleRequest(ApiModel):
+    """Body of `PUT /persons/{party_id}/tutor`, and the `tutor` of `POST /persons`."""
+
+    subject_ids: SubjectIds = Field(default_factory=set)
+    """IDs of the subjects the tutor teaches. Replaces the whole set; duplicates collapse."""
+
+    def to_input(self) -> TutorRoleData:
+        return TutorRoleData(subject_ids=frozenset(self.subject_ids))
+
+
 class PersonCreateRequest(ApiModel):
     """Body of `POST /persons`."""
 
@@ -302,6 +339,12 @@ class PersonCreateRequest(ApiModel):
         examples=[[{"type": "email", "value": "max.mustermann@example.com", "label": "private"}]],
     )
     """Contact infos to create with the person. The same `type` and `value` must not appear twice."""
+    student: StudentRoleRequest | None = Field(
+        None, examples=[{"preferred_meeting_tool": "discord", "subject_ids": [1, 2]}]
+    )
+    """Give the person the student role right away. Omit it or send `null` for none."""
+    tutor: TutorRoleRequest | None = Field(None, examples=[None])
+    """Give the person the tutor role right away. Omit it or send `null` for none."""
 
     def contact_info_inputs(self) -> list[NewContactInfo]:
         return [contact_info.to_input() for contact_info in self.contact_infos]

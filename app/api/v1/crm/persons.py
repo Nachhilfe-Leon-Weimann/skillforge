@@ -3,7 +3,7 @@ from fastapi import APIRouter, Response, status
 from app.api.v1.common import DBSession, error_responses
 from app.core.auth import Scope, require_scopes
 from app.services.crm import persons as persons_service
-from app.services.crm.errors import PersonNotFoundError
+from app.services.crm.errors import PersonNotFoundError, UnknownSubjectError
 
 from .params import PARTY_LOCATION, PartyId
 from .schemas import PersonCreateRequest, PersonDetail, PersonUpdateRequest
@@ -11,18 +11,25 @@ from .schemas import PersonCreateRequest, PersonDetail, PersonUpdateRequest
 router = APIRouter(prefix="/persons")
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[require_scopes(Scope.CRM_WRITE)])
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[require_scopes(Scope.CRM_WRITE)],
+    responses=error_responses(UnknownSubjectError),
+)
 async def create_person(request: PersonCreateRequest, response: Response, session: DBSession) -> PersonDetail:
-    """Create a person, optionally together with contact infos.
+    """Create a person, optionally together with contact infos and the student and tutor roles.
 
-    The `Location` header points to the party. To avoid duplicates, search first:
-    `GET /parties?q=<e-mail>`.
+    All of it is one transaction: an unknown subject creates nothing. The `Location` header points
+    to the party. To avoid duplicates, search first: `GET /parties?q=<e-mail>`.
     """
     party = await persons_service.create_person(
         session,
         firstname=request.firstname,
         lastname=request.lastname,
         contact_infos=request.contact_info_inputs(),
+        student=request.student.to_input() if request.student else None,
+        tutor=request.tutor.to_input() if request.tutor else None,
     )
     response.headers["Location"] = PARTY_LOCATION.format(party_id=party.id)
     return PersonDetail.from_model(party)

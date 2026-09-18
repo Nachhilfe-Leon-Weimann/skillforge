@@ -3,12 +3,13 @@
 The API imports from here, never the reverse: the services stay free of ``app.api``.
 """
 
-from dataclasses import dataclass
+from collections.abc import Set
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from pydantic import validate_email
 
-from app.core.db.models import ContactInfoType
+from app.core.db.models import ContactInfoType, PreferredMeetingTool
 
 
 class PartyRole(StrEnum):
@@ -25,6 +26,21 @@ class NewContactInfo:
     type: ContactInfoType
     value: str
     label: str | None = None
+
+
+@dataclass(frozen=True)
+class StudentRoleData:
+    """The student role to give a person; ``subject_ids`` is the whole set, not a delta."""
+
+    preferred_meeting_tool: PreferredMeetingTool
+    subject_ids: Set[int] = field(default_factory=frozenset)
+
+
+@dataclass(frozen=True)
+class TutorRoleData:
+    """The tutor role to give a person; ``subject_ids`` is the whole set, not a delta."""
+
+    subject_ids: Set[int] = field(default_factory=frozenset)
 
 
 def require_storable_text(value: str) -> str:

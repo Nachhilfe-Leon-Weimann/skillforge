@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Collection
 from contextlib import asynccontextmanager
 
 from sqlalchemy import exists, func, select
@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.models import StudentSubject, Subject, TutorSubject
 
-from .errors import SubjectAlreadyExistsError, SubjectInUseError, SubjectNotFoundError
+from .errors import SubjectAlreadyExistsError, SubjectInUseError, SubjectNotFoundError, UnknownSubjectError
 
 
 async def list_subjects(session: AsyncSession, *, limit: int, offset: int) -> tuple[list[Subject], int]:
@@ -25,6 +25,17 @@ async def get_subject(session: AsyncSession, subject_id: int) -> Subject:
         raise SubjectNotFoundError(f"No subject with id {subject_id}")
 
     return subject
+
+
+async def require_subjects(session: AsyncSession, subject_ids: Collection[int]) -> None:
+    """Raise ``UnknownSubjectError`` naming every ID in ``subject_ids`` that is not a subject."""
+    if not subject_ids:
+        return
+
+    known = await session.scalars(select(Subject.id).where(Subject.id.in_(subject_ids)))
+    unknown = sorted(set(subject_ids) - set(known))
+    if unknown:
+        raise UnknownSubjectError(f"{UnknownSubjectError.message}: {', '.join(map(str, unknown))}")
 
 
 async def create_subject(session: AsyncSession, *, title: str) -> Subject:

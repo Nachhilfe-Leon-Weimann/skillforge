@@ -28,14 +28,18 @@ from app.services.crm.errors import (
     PartyInUseError,
     PartyNotFoundError,
     PersonNotFoundError,
+    RoleNotFoundError,
     SubjectAlreadyExistsError,
     SubjectInUseError,
     SubjectNotFoundError,
+    UnknownSubjectError,
 )
 
 ID = "00000000-0000-0000-0000-0000000000aa"
 INTERNAL = "internal: row 7f3a"
 PARTY_IN_USE = "Party is linked to external systems"
+PERSON = {"firstname": "Max", "lastname": "Mustermann"}
+STUDENT_ROLE = {"preferred_meeting_tool": "discord", "subject_ids": [1]}
 
 
 @dataclass(frozen=True)
@@ -50,6 +54,11 @@ class Endpoint:
 ENDPOINTS = {
     "get_party": Endpoint("GET", f"/parties/{ID}", "parties.load_party"),
     "delete_party": Endpoint("DELETE", f"/parties/{ID}", "parties.delete_party"),
+    "create_person": Endpoint("POST", "/persons", "persons.create_person", json=PERSON),
+    "put_student_role": Endpoint("PUT", f"/persons/{ID}/student", "roles.put_student_role", json=STUDENT_ROLE),
+    "remove_student_role": Endpoint("DELETE", f"/persons/{ID}/student", "roles.remove_student_role"),
+    "put_tutor_role": Endpoint("PUT", f"/persons/{ID}/tutor", "roles.put_tutor_role", json={"subject_ids": [1]}),
+    "remove_tutor_role": Endpoint("DELETE", f"/persons/{ID}/tutor", "roles.remove_tutor_role"),
     "update_person": Endpoint("PATCH", f"/persons/{ID}", "persons.update_person", json={"firstname": "Max"}),
     "update_company": Endpoint("PATCH", f"/companies/{ID}", "companies.update_company", json={"name": "Musterfirma"}),
     "create_subject": Endpoint("POST", "/subjects", "subjects.create_subject", json={"title": "Mathematics"}),
@@ -71,6 +80,16 @@ EXPECTATIONS: list[Expectation] = [
         f"{PARTY_IN_USE}: discord_account, sevdesk_contact",
     ),
     ("delete_party", PartyInUseError(), 409, PARTY_IN_USE),
+    ("create_person", UnknownSubjectError("Unknown subject: 5, 7"), 422, "Unknown subject: 5, 7"),
+    ("create_person", UnknownSubjectError(), 422, "Unknown subject"),
+    ("put_student_role", PersonNotFoundError(INTERNAL), 404, "Person not found"),
+    ("put_student_role", UnknownSubjectError("Unknown subject: 5, 7"), 422, "Unknown subject: 5, 7"),
+    ("remove_student_role", PersonNotFoundError(INTERNAL), 404, "Person not found"),
+    ("remove_student_role", RoleNotFoundError(INTERNAL), 404, "Role not assigned"),
+    ("put_tutor_role", PersonNotFoundError(INTERNAL), 404, "Person not found"),
+    ("put_tutor_role", UnknownSubjectError("Unknown subject: 5, 7"), 422, "Unknown subject: 5, 7"),
+    ("remove_tutor_role", PersonNotFoundError(INTERNAL), 404, "Person not found"),
+    ("remove_tutor_role", RoleNotFoundError(INTERNAL), 404, "Role not assigned"),
     ("update_person", PersonNotFoundError(INTERNAL), 404, "Person not found"),
     ("update_company", CompanyNotFoundError(INTERNAL), 404, "Company not found"),
     ("create_subject", SubjectAlreadyExistsError(INTERNAL), 409, "Subject already exists"),
@@ -86,6 +105,8 @@ CATALOG: dict[type[DomainError], tuple[str, int, str, bool]] = {
     PersonNotFoundError: ("person_not_found", 404, "Person not found", False),
     CompanyNotFoundError: ("company_not_found", 404, "Company not found", False),
     PartyInUseError: ("party_in_use", 409, PARTY_IN_USE, True),
+    RoleNotFoundError: ("role_not_found", 404, "Role not assigned", False),
+    UnknownSubjectError: ("unknown_subject", 422, "Unknown subject", True),
     SubjectNotFoundError: ("subject_not_found", 404, "Subject not found", False),
     SubjectAlreadyExistsError: ("subject_already_exists", 409, "Subject already exists", False),
     SubjectInUseError: ("subject_in_use", 409, "Subject is still assigned to students or tutors", False),

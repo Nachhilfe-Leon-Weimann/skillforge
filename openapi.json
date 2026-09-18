@@ -2280,6 +2280,40 @@
             "minLength": 1,
             "title": "Lastname",
             "type": "string"
+          },
+          "student": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudentRoleRequest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Give the person the student role right away. Omit it or send `null` for none.",
+            "examples": [
+              {
+                "preferred_meeting_tool": "discord",
+                "subject_ids": [
+                  1,
+                  2
+                ]
+              }
+            ]
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TutorRoleRequest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Give the person the tutor role right away. Omit it or send `null` for none.",
+            "examples": [
+              null
+            ]
           }
         },
         "required": [
@@ -2627,6 +2661,40 @@
         "title": "StudentRole",
         "type": "object"
       },
+      "StudentRoleRequest": {
+        "description": "Body of `PUT /persons/{party_id}/student`, and the `student` of `POST /persons`.",
+        "properties": {
+          "preferred_meeting_tool": {
+            "$ref": "#/components/schemas/PreferredMeetingTool",
+            "description": "How the student prefers to meet their tutor.",
+            "examples": [
+              "discord"
+            ]
+          },
+          "subject_ids": {
+            "description": "IDs of the subjects the student takes lessons in. Replaces the whole set; duplicates collapse.",
+            "examples": [
+              [
+                1,
+                2
+              ]
+            ],
+            "items": {
+              "maximum": 2147483647.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "title": "Subject Ids",
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "preferred_meeting_tool"
+        ],
+        "title": "StudentRoleRequest",
+        "type": "object"
+      },
       "SubjectCreateRequest": {
         "description": "Body of `POST /subjects`.",
         "properties": {
@@ -2875,6 +2943,30 @@
           "subjects"
         ],
         "title": "TutorRole",
+        "type": "object"
+      },
+      "TutorRoleRequest": {
+        "description": "Body of `PUT /persons/{party_id}/tutor`, and the `tutor` of `POST /persons`.",
+        "properties": {
+          "subject_ids": {
+            "description": "IDs of the subjects the tutor teaches. Replaces the whole set; duplicates collapse.",
+            "examples": [
+              [
+                1,
+                2
+              ]
+            ],
+            "items": {
+              "maximum": 2147483647.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "title": "Subject Ids",
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "title": "TutorRoleRequest",
         "type": "object"
       },
       "WorkerHealthCheckResponse": {
@@ -9892,7 +9984,7 @@
     },
     "/api/v1/crm/persons": {
       "post": {
-        "description": "Create a person, optionally together with contact infos.\n\nThe `Location` header points to the party. To avoid duplicates, search first:\n`GET /parties?q=<e-mail>`.",
+        "description": "Create a person, optionally together with contact infos and the student and tutor roles.\n\nAll of it is one transaction: an unknown subject creates nothing. The `Location` header points\nto the party. To avoid duplicates, search first: `GET /parties?q=<e-mail>`.",
         "operationId": "crm_create_person",
         "requestBody": {
           "content": {
@@ -9960,26 +10052,36 @@
           "422": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "validation_error",
-                  "detail": "Request validation failed",
-                  "errors": [
-                    {
-                      "loc": [
-                        "query",
-                        "limit"
-                      ],
-                      "message": "Input should be less than or equal to 100",
-                      "type": "less_than_equal"
+                "examples": {
+                  "unknown_subject": {
+                    "value": {
+                      "code": "unknown_subject",
+                      "detail": "Unknown subject"
                     }
-                  ]
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Request validation failed"
+            "description": "Unknown subject"
           }
         },
         "security": [
@@ -10130,6 +10232,560 @@
           }
         ],
         "summary": "Update Person",
+        "tags": [
+          "crm"
+        ]
+      }
+    },
+    "/api/v1/crm/persons/{party_id}/student": {
+      "delete": {
+        "description": "Take the student role away. Relations of the person stay as they are.",
+        "operationId": "crm_remove_student_role",
+        "parameters": [
+          {
+            "description": "ID of the party.",
+            "in": "path",
+            "name": "party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party.",
+              "examples": [
+                "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+              ],
+              "format": "uuid",
+              "title": "Party Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "person_not_found": {
+                    "value": {
+                      "code": "person_not_found",
+                      "detail": "Person not found"
+                    }
+                  },
+                  "role_not_found": {
+                    "value": {
+                      "code": "role_not_found",
+                      "detail": "Role not assigned"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Person not found / Role not assigned"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Remove Student Role",
+        "tags": [
+          "crm"
+        ]
+      },
+      "put": {
+        "description": "Give a person the student role, or replace its data. Idempotent; `subject_ids` replaces the whole set.",
+        "operationId": "crm_put_student_role",
+        "parameters": [
+          {
+            "description": "ID of the party.",
+            "in": "path",
+            "name": "party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party.",
+              "examples": [
+                "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+              ],
+              "format": "uuid",
+              "title": "Party Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentRoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "person_not_found": {
+                    "value": {
+                      "code": "person_not_found",
+                      "detail": "Person not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Person not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "unknown_subject": {
+                    "value": {
+                      "code": "unknown_subject",
+                      "detail": "Unknown subject"
+                    }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown subject"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Put Student Role",
+        "tags": [
+          "crm"
+        ]
+      }
+    },
+    "/api/v1/crm/persons/{party_id}/tutor": {
+      "delete": {
+        "description": "Take the tutor role away. Relations of the person stay as they are.",
+        "operationId": "crm_remove_tutor_role",
+        "parameters": [
+          {
+            "description": "ID of the party.",
+            "in": "path",
+            "name": "party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party.",
+              "examples": [
+                "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+              ],
+              "format": "uuid",
+              "title": "Party Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "person_not_found": {
+                    "value": {
+                      "code": "person_not_found",
+                      "detail": "Person not found"
+                    }
+                  },
+                  "role_not_found": {
+                    "value": {
+                      "code": "role_not_found",
+                      "detail": "Role not assigned"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Person not found / Role not assigned"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Remove Tutor Role",
+        "tags": [
+          "crm"
+        ]
+      },
+      "put": {
+        "description": "Give a person the tutor role, or replace its data. Idempotent; `subject_ids` replaces the whole set.",
+        "operationId": "crm_put_tutor_role",
+        "parameters": [
+          {
+            "description": "ID of the party.",
+            "in": "path",
+            "name": "party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party.",
+              "examples": [
+                "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+              ],
+              "format": "uuid",
+              "title": "Party Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TutorRoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "person_not_found": {
+                    "value": {
+                      "code": "person_not_found",
+                      "detail": "Person not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Person not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "unknown_subject": {
+                    "value": {
+                      "code": "unknown_subject",
+                      "detail": "Unknown subject"
+                    }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown subject"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Put Tutor Role",
         "tags": [
           "crm"
         ]
