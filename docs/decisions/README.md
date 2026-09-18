@@ -15,6 +15,7 @@ do it this way?" doesn't get lost in commit messages and memory. They complement
 | [0004](0004-forge-first-job-queue.md) | Forge-first job queue with at-least-once delivery | Accepted |
 | [0005](0005-multi-schema-db.md) | Multi-schema DB + explicit-DDL Alembic baseline | Accepted |
 | [0006](0006-error-envelope.md) | One error envelope for every non-2xx response | Accepted |
+| [0007](0007-crm-system-of-record.md) | CRM is the system of record; the bot is a consumer | Accepted |
 
 ## When to write an ADR?
 

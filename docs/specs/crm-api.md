@@ -1,0 +1,519 @@
+# Spec: CRM API (parties, roles, contact infos, relations, subjects)
+
+> Status: Draft - implementation-ready | Domain arc `crm`
+> Builds on [`api-conventions.md`](api-conventions.md) (P0-1 to P0-4 and P1 merged) and on
+> [ADR 0007](../decisions/0007-crm-system-of-record.md) (Accepted). **Supersedes P0-5 of `api-conventions.md`.**
+> Written to be executed by coding agents: every requirement names its symbols, files and checkable criteria.
+
+## Problem statement
+
+The `core` schema models the business (parties, persons, companies, the `student` / `tutor` roles, contact infos,
+party relations, subjects), but **nothing in the codebase creates any of it**. Every real student, parent or tutor
+is an out-of-band SQL operation today. The bot can only link a Discord account to a party that already exists
+(`link_discord_account` in [`provisioning.py`](../../app/services/bot/provisioning.py)), so without a CRM API the
+platform cannot be filled with real data.
+
+The first consumer is **the operator working in Swagger UI**: entering people by hand, copying UUIDs between calls,
+correcting mistakes. That shapes the API more than any future UI does.
+
+## Goals
+
+1. **Data gets in through the API.** A complete real-world case - a new student whose mother pays - takes four
+   calls and no database access.
+2. **Flat, typed request bodies.** Polymorphism exists on the read side only; Swagger UI renders `oneOf` request
+   bodies poorly and PATCH on a union is awkward.
+3. **One read model, many small write commands.** Every party write answers with the same detail representation
+   `GET /parties/{party_id}` returns.
+4. **Exactly one target party per route.** Later object-level authorization (delegation via `PARENT_OF` /
+   `PAYS_FOR`) becomes a single dependency instead of a redesign.
+5. **The CRM leads** (ADR 0007): CRM writes are validated against CRM rules only, never against Discord state.
+6. **No new cross-cutting mechanism.** Everything is built from the conventions vocabulary (`Page`, `PageParams`,
+   `ApiModel`, `error_responses`, the error taxonomy, `require_scopes`).
+
+## Non-goals
+
+- **A composite onboarding endpoint.** Nested create (decision C) covers the need; revisit with a real UI.
+- **User principals, delegation, object-level authorization, `/users/me`.** Only application clients exist today.
+- **Addresses.** `geo.plz_ort` is reference data; there is no address model yet.
+- **Archiving, soft delete, GDPR erasure or anonymization.** Needs its own spec (minors' data, sevDesk retention).
+- **Optimistic concurrency** (`version` / `If-Match`).
+- **Managing `ext` links** (sevDesk, Clockodo, Microsoft, Discord) through the CRM, including showing them in the
+  party detail. They belong to the integrations (ADR 0007).
+- **Change feed / eventing / an `updated_since` filter.** `updated_at` on the aggregate root is the only signal.
+- **A `sort` parameter, fuzzy search, `pg_trgm`.** Fixed order and `ILIKE` are enough at this size.
+- **Phone number normalization to E.164** and **global duplicate prevention** (a parent's e-mail may legitimately
+  appear on the child too).
+- **Any change to the bot domain.** Follow-ups are listed under P1.
+
+## Decided defaults
+
+| Topic                             | Decision                                                                                                                                                                                                                                                                                                      | Rationale                                                                                                                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A - Route form**                | Polymorphic read side under `/parties`; typed write side under `/persons` and `/companies`. `party.type` is immutable.                                                                                                                                                                                        | Typed bodies for Swagger and generated clients; one ID space makes both address the same entity.                                                                                              |
+| **B - Roles**                     | Idempotent singleton sub-resource: `PUT` / `DELETE /persons/{party_id}/student` and `/tutor`. No `/students` or `/tutors` collections; `GET /parties?role=` covers lists. A person may hold both roles.                                                                                                       | A role is a fact about a person, keyed by the person's ID.                                                                                                                                    |
+| **C - Nested create**             | `POST /persons` accepts optional `contact_infos`, `student`, `tutor`; `POST /companies` accepts `contact_infos`. Updates stay granular.                                                                                                                                                                       | Owned children may be born with their parent; one transaction per real-world step.                                                                                                            |
+| **D - Children vs. associations** | Owned children with their own ID are nested CRUD (`/parties/{id}/contact-infos`). Associations are addressed by natural key with idempotent `PUT` / `DELETE` (roles, relations).                                                                                                                              | Mirrors the keys in the schema: `contact_info.id` vs. the composite key of `party_relation`.                                                                                                  |
+| **E - Responses**                 | Party writes return `PersonDetail` / `CompanyDetail`; child routes return the child; relation `PUT` returns `RelationResponse`; every `DELETE` is 204; `POST` is 201.                                                                                                                                         | The relation answer shows the other party's name: immediate feedback when pasting UUIDs.                                                                                                      |
+| **F - Detail shape**              | Discriminated union `PartyDetail = PersonDetail \| CompanyDetail` on `type`. It appears in exactly one operation, `GET /parties/{party_id}`.                                                                                                                                                                  | Illegal states (both, neither, a company with a student role) are unrepresentable; fields stay flat.                                                                                          |
+| **G - PATCH**                     | Update models use Pydantic's experimental `MISSING` sentinel.                                                                                                                                                                                                                                                 | Optional but not nullable in the schema, explicit `null` is rejected, unset fields vanish from `model_dump()`. Confined to a handful of classes; trivially replaceable by `model_fields_set`. |
+| **H - Aggregate root**            | `Party` is the aggregate root: every write inside the aggregate sets `party.updated_at`; the detail exposes only that timestamp. Relations touch both parties.                                                                                                                                                | One answer to "what changed since X" for later sync consumers.                                                                                                                                |
+| **I - Error rules**               | (1) Missing thing named in the **path** -> 404; missing thing referenced in the **body** -> 422. (2) What can be checked without the database lives in the Pydantic model (framework 422 with a field path). (3) A new `code` only if a client would branch on it; otherwise one class with `expose_message`. | Keeps the catalog at 15 classes; matches `CommandEnvValidationError` in the bot domain.                                                                                                       |
+| **J - Relation rules**            | Enforced on write only, see the table below. Inverse or cyclic `parent_of` is not checked; removing a role leaves relations in place.                                                                                                                                                                         | Wrong pairs would poison delegation later; more strictness has no consumer.                                                                                                                   |
+| **K - Deleting a party**          | Allowed, guarded: 409 while any `ext` link or Discord account exists. Roles, contact infos and relations cascade.                                                                                                                                                                                             | The operator must be able to undo a mistaken create; external systems must not be orphaned.                                                                                                   |
+| **L - Search**                    | One query model per list; filters never produce errors (an impossible combination is an empty page); fixed order; `q` also matches contact values.                                                                                                                                                            | `q` on e-mail doubles as the duplicate check before creating.                                                                                                                                 |
+| **M - Service layer**             | One loading path (`PARTY_GRAPH` / `load_party`); every write function ends by reloading through it.                                                                                                                                                                                                           | Async SQLAlchemy cannot lazy-load, see verified behavior.                                                                                                                                     |
+| **N - Session scope**             | `DBSession = Annotated[AsyncSession, Depends(get_db_session, scope="function")]`.                                                                                                                                                                                                                             | With the default scope the commit runs after the response is sent; a failed commit would still answer 201.                                                                                    |
+| **O - Shared vocabulary**         | Enums and input dataclasses used by both layers live in `app/services/crm/inputs.py`; the API imports them, never the reverse.                                                                                                                                                                                | Same direction as `views.py` in the bot domain.                                                                                                                                               |
+
+## Verified framework behavior
+
+Checked before writing this spec against the locked versions (FastAPI 0.141.1, Pydantic 2.13.4, SQLAlchemy
+2.0.52, Python 3.14), the last block against the real models in a throwaway Postgres with the production session
+settings (`autoflush=False`, `expire_on_commit=False`). Agents can rely on these:
+
+- **Loading traps.** After create + `flush()`: `party.created_at` is available (`RETURNING`), but a relationship
+  that was never set (`party.company`, `person.student`) raises `MissingGreenlet`. After an update + `flush()`:
+  `person.updated_at` (`onupdate`) and a `party.updated_at` assigned as `func.now()` raise `MissingGreenlet`.
+- **The reload works.** `select(Party).options(*PARTY_GRAPH).execution_options(populate_existing=True)` after a
+  `flush()` returns the same identity with everything accessible. The `flush()` is mandatory (`autoflush=False`).
+- **Polymorphic order and count.** Outer joins to `Person` and `Company`, ordered by
+  `lower(coalesce(company.name, person.lastname || ' ' || person.firstname)), party.id`, sort case-insensitively
+  across both types; `select(count()).select_from(<same statement>.subquery())` yields `total`.
+- **The union in OpenAPI.** `type PartyDetail = Annotated[PersonDetail | CompanyDetail, Field(discriminator="type")]`
+  with `type: Literal[PartyType.PERSON]` works as a return annotation and becomes a named `PartyDetail` schema
+  (`oneOf` + `discriminator` mapping). A typed write route returning `PersonDetail` references that member directly.
+- **The pinned client generator copes.** `openapi-python-client==0.29.0` with `--fail-on-warning` generates
+  cleanly. It ignores the discriminator and tries the variants in order, which works because `PersonDetail` and
+  `CompanyDetail` have different required fields. Keep it that way.
+- **Alias style matters.** A PEP 695 alias (`type Name = Annotated[str, ...]`) becomes its own `$ref` schema; a
+  plain assignment (`Name = Annotated[str, ...]`) inlines the constraints at the field. Use the plain form for
+  scalars, the PEP 695 form for the union.
+- **`MISSING`.** `from pydantic.experimental.missing_sentinel import MISSING` imports without a warning.
+  `field: str | MISSING = MISSING` is optional and non-nullable in the JSON schema, rejects an explicit `null`
+  (422), and is omitted by `model_dump()`; `str | None | MISSING` keeps `null` meaningful. Works end to end through
+  a FastAPI PATCH body; `ty` accepts the `is not MISSING` narrowing.
+- **Small ones.** `set[int]` becomes `uniqueItems` and collapses duplicates silently. `EmailStr` is available
+  (`email-validator` ships with `fastapi[standard]`). `Field(examples=[...])` lands in the schema, which is what
+  Swagger UI builds its sample body from. `StringConstraints(strip_whitespace=True, min_length=1)` turns `"  Max "`
+  into `"Max"` and rejects a blank string.
+- **Commit timing.** A dependency with `yield` runs its exit code after the response is sent. A failing commit
+  behind a 201 route still delivered 201; with `scope="function"` the same failure is a 500, and with the merged
+  handlers of `register_exception_handlers` that 500 is the `internal_error` envelope.
+
+## Route map
+
+All routes live under `/api/v1/crm`, tag `crm`. Reads need `crm:read`, everything else `crm:write`, declared with
+`dependencies=[require_scopes(...)]` on the decorator.
+
+```
+# Parties - polymorphic read side
+GET    /parties                                         list and search
+GET    /parties/{party_id}                              detail (the only union response)
+DELETE /parties/{party_id}                              guarded (decision K)
+
+# Persons and companies - typed write side
+POST   /persons                                         party + person (+ contact_infos, student, tutor)
+PATCH  /persons/{party_id}
+POST   /companies                                       party + company (+ contact_infos)
+PATCH  /companies/{party_id}
+
+# Roles - idempotent singletons
+PUT    /persons/{party_id}/student                      {preferred_meeting_tool, subject_ids}
+DELETE /persons/{party_id}/student
+PUT    /persons/{party_id}/tutor                        {subject_ids}
+DELETE /persons/{party_id}/tutor
+
+# Contact infos - owned children
+POST   /parties/{party_id}/contact-infos
+PATCH  /parties/{party_id}/contact-infos/{contact_info_id}
+DELETE /parties/{party_id}/contact-infos/{contact_info_id}
+
+# Relations - natural key in the URL: {party_id} --type--> {to_party_id}
+GET    /parties/{party_id}/relations
+PUT    /parties/{party_id}/relations/{type}/{to_party_id}
+DELETE /parties/{party_id}/relations/{type}/{to_party_id}
+
+# Subjects - reference data
+GET    /subjects
+POST   /subjects
+PATCH  /subjects/{subject_id}
+DELETE /subjects/{subject_id}
+```
+
+Endpoint function names, and therefore the operation IDs after the `crm_` prefix, are part of the contract and must
+be unique across the CRM routers: `list_parties`, `get_party`, `delete_party`, `create_person`, `update_person`,
+`create_company`, `update_company`, `put_student_role`, `remove_student_role`, `put_tutor_role`, `remove_tutor_role`,
+`add_contact_info`, `update_contact_info`, `remove_contact_info`, `list_relations`, `put_relation`,
+`remove_relation`, `list_subjects`, `create_subject`, `update_subject`, `delete_subject`. Services are imported as
+namespaces (`from app.services.crm import persons as persons_service`) so the names do not clash.
+
+**The reference flow** (goal 1): `POST /persons` (student with contact infos and the `student` role),
+`POST /persons` (mother), `PUT /parties/{mother}/relations/parent_of/{student}`,
+`PUT /parties/{mother}/relations/pays_for/{student}`.
+
+## Representations
+
+Read and write models are different classes. Reads resolve (`subjects` with titles, `display_name`); writes take
+IDs and raw values. Names follow the existing convention (`*ListItem`, `*Detail`, `*CreateRequest`,
+`*UpdateRequest`, `*Response`). All derive from `ApiModel`; field docstrings are the descriptions; create models
+carry `Field(examples=[...])`.
+
+```python
+class PartyListItem:        id, type: PartyType, display_name, roles: list[PartyRole]
+class PersonDetail:         type: Literal[PartyType.PERSON], id, display_name, firstname, lastname,
+                            student: StudentRole | None, tutor: TutorRole | None,
+                            contact_infos: list[ContactInfoResponse], created_at, updated_at
+class CompanyDetail:        type: Literal[PartyType.COMPANY], id, display_name, name,
+                            contact_infos: list[ContactInfoResponse], created_at, updated_at
+type PartyDetail = Annotated[PersonDetail | CompanyDetail, Field(discriminator="type")]
+
+class StudentRole:          preferred_meeting_tool, subjects: list[SubjectResponse]
+class TutorRole:            subjects: list[SubjectResponse]
+class ContactInfoResponse:  id, type: ContactInfoType, value, label
+class SubjectResponse:      id, title
+class RelationResponse:     type: PartyRelationType, direction: RelationDirection, party: PartyListItem, created_at
+```
+
+- `display_name` is `"{firstname} {lastname}"` for a person and `name` for a company. `roles` lists the roles a
+  person holds (`PartyRole`: `student`, `tutor`); it is empty for companies. `updated_at` is `party.updated_at`.
+- `RelationResponse` is relative to the party in the URL: `direction` is `outgoing` when that party is the `from`
+  side, and `party` is always the _other_ side.
+- `party_detail(party: Party) -> PersonDetail | CompanyDetail` dispatches on `party.type` with `match` and
+  `assert_never`, so `ty` proves exhaustiveness. Mapping stays in explicit `from_model` classmethods.
+
+```python
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+
+class PersonCreateRequest:      firstname: Name, lastname: Name, contact_infos: list[ContactInfoCreateRequest] = [],
+                                student: StudentRoleRequest | None = None, tutor: TutorRoleRequest | None = None
+class PersonUpdateRequest:      firstname: Name | MISSING, lastname: Name | MISSING
+class CompanyCreateRequest:     name: Name, contact_infos: list[ContactInfoCreateRequest] = []
+class CompanyUpdateRequest:     name: Name | MISSING
+class StudentRoleRequest:       preferred_meeting_tool: PreferredMeetingTool, subject_ids: set[int] = set()
+class TutorRoleRequest:         subject_ids: set[int] = set()
+class ContactInfoCreateRequest: type: ContactInfoType, value: str, label: Name | None = None
+class ContactInfoUpdateRequest: value: str | MISSING, label: Name | None | MISSING     # type is immutable
+class SubjectCreateRequest:     title: Name
+class SubjectUpdateRequest:     title: Name | MISSING
+```
+
+- Contact values are normalized by one function, `normalize_contact_value(type, value)` in `inputs.py`: an
+  `email` is validated as `EmailStr` and lowercased; a `phone` has all whitespace removed and must not be empty.
+  It raises `ValueError`.
+  - **On create** the type is in the body, so a `model_validator(mode="after")` calls it and Pydantic turns the
+    `ValueError` into the validation 422 with a field path (rule I-2).
+  - **On update** the type is immutable and only known from the stored row, so the check needs the database and
+    belongs to the service: `update_contact_info` calls the same function and raises `InvalidContactValueError`.
+  - The services normalize on every write anyway, so in-process callers (ADR 0007) cannot store a raw value.
+- A create body containing the same `(type, value)` twice is rejected by a model validator (framework 422 with
+  the field path), never by the database.
+
+## Error catalog
+
+All classes live in `app/services/crm/errors.py`, derive from a category of
+[`errors.py`](../../app/core/errors.py), and get their `code` from the class name. There is no `CrmServiceError`
+marker base: the handlers are global, nobody catches by domain.
+
+| Class                           | Category                | Public `message`                                | `expose_message`              |
+| ------------------------------- | ----------------------- | ----------------------------------------------- | ----------------------------- |
+| `PartyNotFoundError`            | `NotFoundError`         | Party not found                                 | no                            |
+| `PersonNotFoundError`           | `NotFoundError`         | Person not found                                | no                            |
+| `CompanyNotFoundError`          | `NotFoundError`         | Company not found                               | no                            |
+| `RoleNotFoundError`             | `NotFoundError`         | Role not assigned                               | no                            |
+| `ContactInfoNotFoundError`      | `NotFoundError`         | Contact info not found                          | no                            |
+| `PartyRelationNotFoundError`    | `NotFoundError`         | Party relation not found                        | no                            |
+| `RelatedPartyNotFoundError`     | `NotFoundError`         | Related party not found                         | no                            |
+| `SubjectNotFoundError`          | `NotFoundError`         | Subject not found                               | no                            |
+| `ContactInfoAlreadyExistsError` | `ConflictError`         | Contact info already exists for this party      | no                            |
+| `SubjectAlreadyExistsError`     | `ConflictError`         | Subject already exists                          | no                            |
+| `SubjectInUseError`             | `ConflictError`         | Subject is still assigned to students or tutors | no                            |
+| `PartyInUseError`               | `ConflictError`         | Party is linked to external systems             | yes - names the link kinds    |
+| `UnknownSubjectError`           | `DomainValidationError` | Unknown subject                                 | yes - lists the unknown IDs   |
+| `InvalidPartyRelationError`     | `DomainValidationError` | Invalid party relation                          | yes - names the violated rule |
+| `InvalidContactValueError`      | `DomainValidationError` | Value is not valid for this contact info type   | no                            |
+
+Per route (401 / 403 / the validation 422 are derived and never declared):
+
+| Route                                    | 404                                          | 409                           | 422 (domain)             |
+| ---------------------------------------- | -------------------------------------------- | ----------------------------- | ------------------------ |
+| `GET /parties/{id}`, `GET .../relations` | `party_not_found`                            |                               |                          |
+| `DELETE /parties/{id}`                   | `party_not_found`                            | `party_in_use`                |                          |
+| `POST /persons`                          |                                              |                               | `unknown_subject`        |
+| `PATCH /persons/{id}`                    | `person_not_found`                           |                               |                          |
+| `PATCH /companies/{id}`                  | `company_not_found`                          |                               |                          |
+| `PUT .../student`, `PUT .../tutor`       | `person_not_found`                           |                               | `unknown_subject`        |
+| `DELETE .../student`, `DELETE .../tutor` | `person_not_found`, `role_not_found`         |                               |                          |
+| `POST .../contact-infos`                 | `party_not_found`                            | `contact_info_already_exists` |                          |
+| `PATCH .../contact-infos/{cid}`          | `contact_info_not_found`                     | `contact_info_already_exists` | `invalid_contact_value`  |
+| `DELETE .../contact-infos/{cid}`         | `contact_info_not_found`                     |                               |                          |
+| `PUT .../relations/{type}/{to}`          | `party_not_found`, `related_party_not_found` |                               | `invalid_party_relation` |
+| `DELETE .../relations/{type}/{to}`       | `party_relation_not_found`                   |                               |                          |
+| `POST /subjects`                         |                                              | `subject_already_exists`      |                          |
+| `PATCH /subjects/{id}`                   | `subject_not_found`                          | `subject_already_exists`      |                          |
+| `DELETE /subjects/{id}`                  | `subject_not_found`                          | `subject_in_use`              |                          |
+
+- A company's ID under `/persons/{party_id}` is `person_not_found` (and vice versa): from that collection's point
+  of view it does not exist. This also answers "a role on a company".
+- A contact info is looked up by `(party_id, contact_info_id)` in one query, so an ID belonging to another party is
+  a plain 404 and leaks nothing.
+- Uniqueness is decided by the database constraint, not by check-then-insert: `begin_nested()` + `flush()` +
+  translating `IntegrityError`, exactly as `upsert_command_env` and `link_discord_account` do. The explicit `flush()`
+  forces the violation inside the service instead of at commit.
+
+**Relation rules** (`invalid_party_relation`; additionally `from != to` for every type):
+
+| `type`      | `from` (party in the path)    | `to`                            |
+| ----------- | ----------------------------- | ------------------------------- |
+| `parent_of` | person                        | person                          |
+| `tutor_of`  | person holding the tutor role | person holding the student role |
+| `pays_for`  | person or company             | person                          |
+
+## List and search
+
+```python
+class PartyListParams(PageParams):
+    type: PartyType | None = None
+    role: PartyRole | None = None
+    subject_id: int | None = None
+    q: str | None = Field(None, min_length=2)
+
+class RelationListParams(PageParams):
+    direction: RelationDirection | None = None
+    type: PartyRelationType | None = None
+```
+
+- `q` is split on whitespace; **every** token must match, case-insensitively as a substring, **any** of
+  `firstname`, `lastname`, the company `name`, or a contact info `value`.
+- `subject_id` without `role` means "has the subject in any role"; with `role` it is restricted to that role.
+- Filters never error: `type=company&role=student` or an unknown `subject_id` is an empty page.
+- Fixed order as verified above. `GET /subjects` takes the bare `PageQuery` and orders by `lower(title), id`.
+  Relations order by `created_at, type, other party id`.
+- All query parameters of an endpoint live in its one model (the query-model trap of `api-conventions.md`).
+
+## Service layer
+
+```
+app/api/v1/common/dependencies.py    DBSession with scope="function"                                  (new)
+app/api/v1/crm/
+  __init__.py                        router: prefix /crm, tag crm
+  params.py                          PartyId, SubjectId, ContactInfoId, PartyListQuery, RelationListQuery
+  schemas.py                         read and write models, from_model mappers, party_detail()
+  subjects.py  parties.py  persons.py  companies.py  roles.py  contact_infos.py  relations.py
+app/services/crm/
+  inputs.py                          PartyRole, RelationDirection, NewContactInfo, StudentRoleData, TutorRoleData, UNSET,
+                                     normalize_contact_value
+  errors.py
+  parties.py                         PARTY_GRAPH, load_party, list_parties, delete_party, saved
+  persons.py  companies.py  roles.py  contact_infos.py  relations.py  subjects.py
+```
+
+- **Shape.** Function modules as in the bot domain: `session` first, the rest keyword-only, no commits, no imports
+  from `app.api`. Party writes return the reloaded `Party`; child writes return the child.
+- **One loading path.** `PARTY_GRAPH` is the tuple of `selectinload` options covering person -> student/tutor ->
+  subjects, company and contact infos. `load_party(session, party_id)` applies it with `populate_existing=True` and
+  raises `PartyNotFoundError`. `list_parties` applies the same options. **`from_model` may touch only what
+  `PARTY_GRAPH` loads.**
+- **Every write ends the same way:** mutate, `await saved(session, party_id)` (one `UPDATE core.party SET
+updated_at = now()` for the given IDs, then `flush()`), `return await load_party(session, party_id)`. Relations
+  call `saved(session, from_id, to_id)`.
+- **The PATCH bridge.** The endpoint calls `update_person(session, party_id, **request.model_dump())`. `MISSING`
+  fields are absent from the dump, so only sent fields arrive; the service signature uses `None` for "unchanged",
+  which is unambiguous because those columns are `NOT NULL`. The single nullable field, `contact_info.label`, uses
+  the service-level `UNSET` sentinel (an `Enum` member) instead of a boolean flag like `update_description`.
+- **Subject sets.** Compute the difference (add the missing rows, delete the surplus ones) instead of reassigning the
+  collection, which would delete and re-insert unchanged rows with the same composite key. `unknown_subject` is one
+  `select(Subject.id).where(Subject.id.in_(ids))` plus a set difference; the `detail` lists the unknown IDs sorted.
+- **Transactions.** The request-scoped transaction of `get_db_session` makes every route atomic, including the
+  nested `POST /persons`.
+
+## Schema change
+
+`core.subject.title` gets a unique functional index `uq_subject_title_lower` on `lower(title)` (model
+`__table_args__`, an explicit Alembic revision, and the entry in
+[`DATABASE_SCHEMA.md`](../DATABASE_SCHEMA.md)). No other schema change.
+
+## Requirements
+
+### Must-have (P0)
+
+**Standing criteria - they hold for every slice and are ticked with P0-6.** They carry over the acceptance
+criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
+
+- [ ] Under `app/api/v1/crm/` there is no `HTTPException`, no `try/except` around a service call, no inline
+      `Annotated[...]` in an endpoint signature and no parameter named `_`. Path and query vocabulary comes from
+      `params.py`; its path parameters carry a description and `examples=[...]`.
+- [ ] Every property of every CRM schema and every CRM path and query parameter has a description in
+      `openapi.json` (a test over `app.openapi()`).
+
+**P0-1 - Foundation and subjects.** _The whole stack once, on the simplest resource._
+
+- _Technique:_ `Scope.CRM_READ` / `Scope.CRM_WRITE` as `(value, description)`; the `crm` entry in `OPENAPI_TAGS`
+  (it already exists); the
+  CRM router included in [`router.py`](../../app/api/v1/router.py); the `DBSession` alias (decision N);
+  `app/services/crm/errors.py`; the four subject routes with `SubjectResponse`, `Page[SubjectResponse]`, the
+  `MISSING`-based update model, and the schema change above.
+- _Acceptance criteria:_
+  - [ ] Both scopes appear with their description in `components.securitySchemes`; every CRM operation ID matches
+        `^crm_[a-z_]+$`; reads require `crm:read`, writes `crm:write` (asserted over `app.openapi()`).
+  - [ ] Given a session dependency whose exit raises, when a CRM write route is called, then the client receives
+        the 500 envelope, not a 2xx.
+  - [ ] `POST /subjects` with a title differing only in case or surrounding whitespace from an existing one is 409
+        `subject_already_exists`; the same holds for `PATCH`.
+  - [ ] `PATCH /subjects/{id}` with `{}` is 200 and changes nothing; with `{"title": null}` it is the validation 422.
+  - [ ] `DELETE /subjects/{id}` is 409 `subject_in_use` while a `student_subject` or `tutor_subject` row references
+        it, and 204 otherwise.
+  - [ ] `GET /subjects` returns `Page[SubjectResponse]` ordered by `lower(title), id`.
+  - [ ] An architecture test asserts that nothing under `app/services/crm` or `app/api/v1/crm` imports
+        `app.services.bot` or `app.api.v1.bot` (ADR 0007).
+  - [ ] An error-contract test pins status, `code` and `detail` of every catalog row for the subject routes,
+        following [`test_bot_error_contract.py`](../../tests/api/test_bot_error_contract.py). Every later slice
+        extends it with its own rows.
+  - [ ] At runtime a CRM route answers 401 without a token and 403 with a token that lacks the scope, both in the
+        error envelope.
+  - [ ] `just check-all` is green, `openapi.json` is regenerated, and `just test-clients` passes.
+
+**P0-2 - Party aggregate: create, read, update.**
+
+- _Technique:_ `inputs.py`; `PARTY_GRAPH`, `load_party`, `saved`; `create_person` / `create_company` with nested
+  `contact_infos`; `update_person` / `update_company`; the read and write models including the union;
+  `POST /persons`, `POST /companies`, `GET /parties/{party_id}`, `PATCH /persons/{party_id}`,
+  `PATCH /companies/{party_id}`. `POST` answers 201 with `Location: /api/v1/crm/parties/{id}`. The `student` and
+  `tutor` fields of `PersonCreateRequest` arrive with P0-4; until then the detail shows both roles as `null`.
+- _Technique:_ `PartyNotFoundError` is defined in `app/services/crm/errors.py`; the bot's own class is deleted and
+  [`errors.py`](../../app/services/bot/errors.py) imports the CRM one. The class thereby loses `BotServiceError` as a
+  base, which nothing relies on: the only `except BotServiceError` is `requeue` in the dead-letter CLI, which
+  never sees it. Status, `code` and `detail` ("Party not found") stay identical, so the bot's contract test keeps
+  passing unchanged. This closes the open checkbox of P1-1 in
+  `api-conventions.md`. In the same PR, mark P0-5 there as superseded by this spec and repoint its other mentions
+  (the "reference implementation" note under P1-6, the boilerplate metric, the phasing list) to `crm-api.md`.
+- _Acceptance criteria:_
+  - [ ] In `openapi.json`, `PartyDetail` is `oneOf` `PersonDetail` / `CompanyDetail` with a `type` discriminator and
+        is referenced by exactly one operation, `crm_get_party`.
+  - [ ] **Reload rule:** for every write service function, a DB test calls it and maps the result with
+        `party_detail()` without `MissingGreenlet` - including a freshly created person without roles and a
+        person right after an update.
+  - [ ] Given a party whose `updated_at` lies in the past, when any write service touches its aggregate, then
+        `party.updated_at` moves forward, and the detail's `updated_at` equals it.
+  - [ ] `PATCH /persons/{company_id}` is 404 `person_not_found`; `PATCH /companies/{person_id}` is 404
+        `company_not_found`; `GET /parties/{unknown}` is 404 `party_not_found`.
+  - [ ] Names are stripped; a blank name and an explicit `null` on update are the validation 422.
+  - [ ] A create body with the same `(type, value)` contact info twice is the validation 422 with a field path.
+        An e-mail is stored lowercased, an invalid one is 422; a phone value is stored without whitespace.
+  - [ ] The create request schemas carry `examples`; `just test-clients` still passes with the union in place.
+  - [ ] [`test_error_taxonomy.py`](../../tests/api/test_error_taxonomy.py) passes with a single `party_not_found`.
+
+**P0-3 - List, search and guarded delete.**
+
+- _Technique:_ `list_parties` and `PartyListParams` as specified under "List and search"; `delete_party` with the
+  guard of decision K, checking `ext.discord_account`, `ext.sevdesk_contact`, `ext.clockodo_customer`,
+  `ext.clockodo_project`, `ext.microsoft_account` and `ext.microsoft_contact`.
+- _Acceptance criteria:_
+  - [ ] `q=max muster` finds "Max Mustermann" and not "Max Meier"; `q=<part of an e-mail>` finds the owner.
+  - [ ] `type=company&role=student` and an unknown `subject_id` return an empty page with `total == 0`, not an error;
+        an unknown query parameter is the validation 422.
+  - [ ] Items are ordered case-insensitively across persons and companies; `total` counts the filtered set.
+  - [ ] `limit` and `offset` page through that order without gaps or repeats, and the page echoes both values.
+  - [ ] `roles` is correct for a person with none, one and both roles; the number of SQL statements for a page does
+        not grow with the page size (asserted with a statement counter).
+  - [ ] `DELETE` is 409 `party_in_use` with a `detail` naming the link kinds while any of the six links exists, and
+        204 otherwise, after which roles, contact infos and relations of the party are gone.
+
+**P0-4 - Roles.**
+
+- _Technique:_ `put_student_role`, `remove_student_role`, `put_tutor_role`, `remove_tutor_role` in `roles.py`; the
+  nested `student` / `tutor` of `POST /persons` reuse the same service functions.
+- _Acceptance criteria:_
+  - [ ] `PUT` creates the role or replaces its data; sending the same body twice answers 200 twice with the same
+        representation. A person can hold both roles at once.
+  - [ ] `subject_ids` replaces the set; an unknown ID is 422 `unknown_subject` whose `detail` lists the unknown IDs,
+        and nothing is written (also for the nested create, which then creates no party at all).
+  - [ ] `DELETE` of a role that is not assigned is 404 `role_not_found`; a company's ID is 404 `person_not_found`.
+  - [ ] Removing a role never inspects bot state (ADR 0007) and leaves relations untouched.
+
+**P0-5 - Contact infos.**
+
+- _Technique:_ `add_contact_info`, `update_contact_info`, `remove_contact_info`; the savepoint pattern for
+  `uq_contact_info`; `normalize_contact_value` shared by the create validator and the services (see
+  "Representations"). The update model only requires a non-empty `value`; `update_contact_info` normalizes it
+  against the stored `type` and raises `InvalidContactValueError` when that fails.
+- _Acceptance criteria:_
+  - [ ] `POST` answers 201 with `ContactInfoResponse`; a duplicate `(type, value)` for the party is 409
+        `contact_info_already_exists`, also when an update changes the value into an existing one.
+  - [ ] `PATCH` cannot change `type`; `{"label": null}` clears the label; `{}` changes nothing.
+  - [ ] `PATCH` of an e-mail contact info with a non-e-mail `value` is 422 `invalid_contact_value`; with a valid,
+        differently cased one it is 200 and the stored value is lowercased. On `POST`, the same invalid value is
+        the validation 422 with a field path instead.
+  - [ ] A `contact_info_id` belonging to another party is 404 `contact_info_not_found` for `PATCH` and `DELETE`.
+  - [ ] Every contact info write moves the party's `updated_at`.
+
+**P0-6 - Relations and the reference flow.**
+
+- _Technique:_ `list_relations`, `put_relation`, `remove_relation`; the rules table; `RelationResponse` built
+  relative to the party in the path; `saved(session, from_id, to_id)`.
+- _Acceptance criteria:_
+  - [ ] Each rule of the table has a passing and a failing case; a failing one is 422 `invalid_party_relation` with a
+        `detail` naming the rule. `from == to` is rejected for every type.
+  - [ ] An unknown `party_id` is 404 `party_not_found`, an unknown `to_party_id` is 404 `related_party_not_found`.
+  - [ ] `PUT` is idempotent (200 twice); `DELETE` of a missing relation is 404 `party_relation_not_found`.
+  - [ ] `GET .../relations` returns both directions by default; from the child's side a `parent_of` relation shows
+        `direction == "incoming"` and the parent as `party`.
+  - [ ] **End to end:** an API test performs the four-call reference flow and then reads the student's detail and
+        relations.
+  - [ ] Docs: a CRM section in [`ARCHITECTURE.md`](../ARCHITECTURE.md), the layout in
+        [`CLAUDE.md`](../../CLAUDE.md), and this spec's checkboxes ticked.
+
+### Nice-to-have (P1)
+
+- **P1-1 - `GET /api/v1/auth/me`.** Client ID and granted scopes of the calling token; useful to verify a token in
+  Swagger. Belongs to the `auth` domain, not to the CRM.
+- **P1-2 - Bot follow-ups of ADR 0007.** `prepare_student_activation` validates the pair against `TUTOR_OF`;
+  `load_parties_for_discord_ids` reuses `PARTY_GRAPH`; `Party.discord_account` becomes a collection.
+- **P1-3 - `updated_since` filter** on `GET /parties`, once a consumer polls for changes.
+- **P1-4 - Phone normalization** to E.164.
+
+### Future considerations (P2)
+
+- Addresses; archiving, GDPR erasure and anonymization; optimistic concurrency.
+- Object-level authorization for user principals: one dependency over the target party of every route.
+- Eventing / outbox for consumers; `ext` links in the party detail; `pg_trgm`; role-specific list endpoints.
+
+## Success metrics
+
+- _Operator flow:_ a new student with a paying parent is entered in **4 calls** without database access.
+- _Out-of-band SQL to create people:_ **0**.
+- _Boilerplate:_ `HTTPException` and `try/except` under `app/api/v1/crm/`: **0**.
+- _Contract:_ every row of the error catalog is pinned by a test on status, `code` and `detail`.
+
+## Decided (formerly open questions)
+
+- **First consumer:** the operator in Swagger UI.
+- **`MISSING`** over `model_fields_set`, accepting that it is experimental.
+- **The CRM leads;** the bot is a special consumer (ADR 0007). `tutor_of` is writable here.
+- **Relations are not embedded** in the party detail: they are two-sided and have their own route.
+- **Deleting a party** is guarded by `ext` links only; relations cascade.
+- **No `CrmServiceError` marker base,** and role "not found" is one class for both roles.
+- **An invalid contact value on update is a domain error** (`invalid_contact_value`): the type is only known from
+  the stored row, so the check needs the database (rule I-2). On create it stays a Pydantic validation error.
+
+## Timeline / phasing
+
+`api-conventions` (P0 and P1) is merged to `main`; the CRM branch is created from `main`. The old
+`feat/crm` exploration is reference material, not a base. One PR per requirement in the order above, or one branch
+that keeps requirement boundaries at its `docs(specs): tick P0-x` commits. The first PR also adds the row for
+ADR 0007 to the [decisions index](../decisions/README.md), below the 0006 row that `main` has by then.
+
+1. **P0-1** proves the stack on subjects, which P0-4 needs anyway.
+2. **P0-2**, then **P0-3**: from here the operator can create and find people.
+3. **P0-4**, **P0-5**, **P0-6** complete the reference flow.
+
+**Dependency:** none open - `api-conventions` is on `main` and ADR 0007 is accepted.
+
+## Rules for implementing agents
+
+- The rules of [`api-conventions.md`](api-conventions.md) apply unchanged (English only, symbol references in docs,
+  never hand-edit `openapi.json`, `just check` green before every commit, conventional commits).
+- Never import the bot domain from the CRM. Never add a check against Discord state to a CRM write.
+- Every write service function ends with `saved(...)` and `load_party(...)`; `from_model` touches only what
+  `PARTY_GRAPH` loads. If a representation needs more, extend `PARTY_GRAPH`, never add an ad-hoc load.
+- The error catalog is closed. If a requirement seems to need a new class or `code`, stop and report.
+- Do not touch `ext` tables beyond reading them in the delete guard.
