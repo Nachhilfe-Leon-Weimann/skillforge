@@ -397,20 +397,34 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
   `api-conventions.md`. In the same PR, mark P0-5 there as superseded by this spec and repoint its other mentions
   (the "reference implementation" note under P1-6, the boilerplate metric, the phasing list) to `crm-api.md`.
 - _Acceptance criteria:_
-  - [ ] In `openapi.json`, `PartyDetail` is `oneOf` `PersonDetail` / `CompanyDetail` with a `type` discriminator and
+  - [x] In `openapi.json`, `PartyDetail` is `oneOf` `PersonDetail` / `CompanyDetail` with a `type` discriminator and
         is referenced by exactly one operation, `crm_get_party`.
-  - [ ] **Reload rule:** for every write service function, a DB test calls it and maps the result with
+  - [x] **Reload rule:** for every write service function, a DB test calls it and maps the result with
         `party_detail()` without `MissingGreenlet` - including a freshly created person without roles and a
         person right after an update.
-  - [ ] Given a party whose `updated_at` lies in the past, when any write service touches its aggregate, then
+  - [x] Given a party whose `updated_at` lies in the past, when any write service touches its aggregate, then
         `party.updated_at` moves forward, and the detail's `updated_at` equals it.
-  - [ ] `PATCH /persons/{company_id}` is 404 `person_not_found`; `PATCH /companies/{person_id}` is 404
+  - [x] `PATCH /persons/{company_id}` is 404 `person_not_found`; `PATCH /companies/{person_id}` is 404
         `company_not_found`; `GET /parties/{unknown}` is 404 `party_not_found`.
-  - [ ] Names are stripped; a blank name and an explicit `null` on update are the validation 422.
-  - [ ] A create body with the same `(type, value)` contact info twice is the validation 422 with a field path.
+  - [x] Names are stripped; a blank name and an explicit `null` on update are the validation 422.
+  - [x] A create body with the same `(type, value)` contact info twice is the validation 422 with a field path.
         An e-mail is stored lowercased, an invalid one is 422; a phone value is stored without whitespace.
-  - [ ] The create request schemas carry `examples`; `just test-clients` still passes with the union in place.
-  - [ ] [`test_error_taxonomy.py`](../../tests/api/test_error_taxonomy.py) passes with a single `party_not_found`.
+  - [x] The create request schemas carry `examples`; `just test-clients` still passes with the union in place.
+  - [x] [`test_error_taxonomy.py`](../../tests/api/test_error_taxonomy.py) passes with a single `party_not_found`.
+- _Deviations:_
+  - The contact value is normalized by a `field_validator("value")` reading the already validated `type`, not by a
+    `model_validator(mode="after")`: the error then points at `["body", "contact_infos", 0, "value"]` instead of
+    at the whole item. The duplicate check is an `AfterValidator` on the list (`["body", "contact_infos"]`).
+  - **An update with nothing to change is not a write:** `PATCH` with `{}` leaves `party.updated_at` alone, so
+    "`{}` changes nothing" holds literally. Every real write still ends with `saved(...)` and `load_party(...)`.
+  - The row for `PartyNotFoundError` moved from the class table in `tests/test_bot_errors.py` (which asserts
+    `BotServiceError` as a base) to the CRM catalog in `tests/api/test_crm_error_contract.py`; the bot's route
+    contract test is unchanged.
+  - `contact_infos` in the detail are ordered by `(type, value)`, role `subjects` by `lower(title), id`: the
+    relationships have no order of their own.
+  - Outside the CRM packages: the engine runs with `hide_parameters=True`, so a logged database error does not
+    repeat names or contact values. Postgres' own `DETAIL` of a unique violation still names the key; the services
+    translate those inside a SAVEPOINT, so only an untranslated `IntegrityError` would show it.
 
 **P0-3 - List, search and guarded delete.**
 
