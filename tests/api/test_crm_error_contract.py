@@ -25,6 +25,7 @@ from app.core.errors import DomainError
 from app.main import app
 from app.services.crm.errors import (
     CompanyNotFoundError,
+    PartyInUseError,
     PartyNotFoundError,
     PersonNotFoundError,
     SubjectAlreadyExistsError,
@@ -34,6 +35,7 @@ from app.services.crm.errors import (
 
 ID = "00000000-0000-0000-0000-0000000000aa"
 INTERNAL = "internal: row 7f3a"
+PARTY_IN_USE = "Party is linked to external systems"
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,7 @@ class Endpoint:
 
 ENDPOINTS = {
     "get_party": Endpoint("GET", f"/parties/{ID}", "parties.load_party"),
+    "delete_party": Endpoint("DELETE", f"/parties/{ID}", "parties.delete_party"),
     "update_person": Endpoint("PATCH", f"/persons/{ID}", "persons.update_person", json={"firstname": "Max"}),
     "update_company": Endpoint("PATCH", f"/companies/{ID}", "companies.update_company", json={"name": "Musterfirma"}),
     "create_subject": Endpoint("POST", "/subjects", "subjects.create_subject", json={"title": "Mathematics"}),
@@ -59,6 +62,15 @@ type Expectation = tuple[str, DomainError, int, str]
 
 EXPECTATIONS: list[Expectation] = [
     ("get_party", PartyNotFoundError(INTERNAL), 404, "Party not found"),
+    ("delete_party", PartyNotFoundError(INTERNAL), 404, "Party not found"),
+    # expose_message: the service writes the detail for the client and names the kinds of links.
+    (
+        "delete_party",
+        PartyInUseError(f"{PARTY_IN_USE}: discord_account, sevdesk_contact"),
+        409,
+        f"{PARTY_IN_USE}: discord_account, sevdesk_contact",
+    ),
+    ("delete_party", PartyInUseError(), 409, PARTY_IN_USE),
     ("update_person", PersonNotFoundError(INTERNAL), 404, "Person not found"),
     ("update_company", CompanyNotFoundError(INTERNAL), 404, "Company not found"),
     ("create_subject", SubjectAlreadyExistsError(INTERNAL), 409, "Subject already exists"),
@@ -73,6 +85,7 @@ CATALOG: dict[type[DomainError], tuple[str, int, str, bool]] = {
     PartyNotFoundError: ("party_not_found", 404, "Party not found", False),
     PersonNotFoundError: ("person_not_found", 404, "Person not found", False),
     CompanyNotFoundError: ("company_not_found", 404, "Company not found", False),
+    PartyInUseError: ("party_in_use", 409, PARTY_IN_USE, True),
     SubjectNotFoundError: ("subject_not_found", 404, "Subject not found", False),
     SubjectAlreadyExistsError: ("subject_already_exists", 409, "Subject already exists", False),
     SubjectInUseError: ("subject_in_use", 409, "Subject is still assigned to students or tutors", False),

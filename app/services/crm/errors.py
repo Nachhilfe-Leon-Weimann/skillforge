@@ -27,6 +27,14 @@ class CompanyNotFoundError(NotFoundError):
     message = "Company not found"
 
 
+class PartyInUseError(ConflictError):
+    """The party is linked to an external system or a Discord account and must not be orphaned there."""
+
+    message = "Party is linked to external systems"
+    # Raised with a client-ready message only: it names the kinds of links, never their identifiers.
+    expose_message = True
+
+
 class SubjectNotFoundError(NotFoundError):
     """No subject exists for the requested subject_id."""
 
