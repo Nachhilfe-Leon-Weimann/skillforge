@@ -277,6 +277,7 @@ class PartyListParams(PageParams):
     subject_id: int | None = None
     q: str | None = Field(None, min_length=2)
 
+
 class RelationListParams(PageParams):
     direction: RelationDirection | None = None
     type: PartyRelationType | None = None
