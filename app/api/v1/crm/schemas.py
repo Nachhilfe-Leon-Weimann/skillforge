@@ -25,10 +25,14 @@ from app.core.db.models import (
     Subject,
     Tutor,
 )
-from app.services.crm.inputs import NewContactInfo, normalize_contact_value
+from app.services.crm.inputs import NewContactInfo, normalize_contact_value, require_storable_text
 
 # A plain assignment inlines the constraints at the field; a PEP 695 alias would become its own schema.
-Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+Name = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
+    AfterValidator(require_storable_text),
+]
 
 
 class SubjectResponse(ApiModel):
