@@ -441,15 +441,28 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
   guard of decision K, checking `ext.discord_account`, `ext.sevdesk_contact`, `ext.clockodo_customer`,
   `ext.clockodo_project`, `ext.microsoft_account` and `ext.microsoft_contact`.
 - _Acceptance criteria:_
-  - [ ] `q=max muster` finds "Max Mustermann" and not "Max Meier"; `q=<part of an e-mail>` finds the owner.
-  - [ ] `type=company&role=student` and an unknown `subject_id` return an empty page with `total == 0`, not an error;
+  - [x] `q=max muster` finds "Max Mustermann" and not "Max Meier"; `q=<part of an e-mail>` finds the owner.
+  - [x] `type=company&role=student` and an unknown `subject_id` return an empty page with `total == 0`, not an error;
         an unknown query parameter is the validation 422.
-  - [ ] Items are ordered case-insensitively across persons and companies; `total` counts the filtered set.
-  - [ ] `limit` and `offset` page through that order without gaps or repeats, and the page echoes both values.
-  - [ ] `roles` is correct for a person with none, one and both roles; the number of SQL statements for a page does
+  - [x] Items are ordered case-insensitively across persons and companies; `total` counts the filtered set.
+  - [x] `limit` and `offset` page through that order without gaps or repeats, and the page echoes both values.
+  - [x] `roles` is correct for a person with none, one and both roles; the number of SQL statements for a page does
         not grow with the page size (asserted with a statement counter).
-  - [ ] `DELETE` is 409 `party_in_use` with a `detail` naming the link kinds while any of the six links exists, and
+  - [x] `DELETE` is 409 `party_in_use` with a `detail` naming the link kinds while any of the six links exists, and
         204 otherwise, after which roles, contact infos and relations of the party are gone.
+- _Deviations:_
+  - `subject_id` is bounded to the Postgres `INTEGER` range like `SubjectId`, and `q` rejects unstorable text
+    (`require_storable_text`): both are the validation 422 instead of a driver error behind a 500. An *unknown* but
+    well-formed `subject_id` is still an empty page. `LIKE` wildcards in `q` are matched literally (`autoescape`).
+  - `delete_party` locks the party row (`FOR UPDATE`) before the guard looks for links. All six foreign keys into
+    `core.party` are `ON DELETE CASCADE`, so without the lock a link created between check and delete would be
+    deleted silently. The delete itself is one Core `DELETE`; the ORM cascade would have loaded - and thereby
+    touched - the `ext` relationships.
+  - Deleting a party calls `saved(...)` for the parties on the other side of its relations: their aggregate
+    changed (decision H, "relations touch both parties").
+  - The order and the `lower(...)` of the list are asserted on the emitted SQL as well as on the data: the test
+    database collates case-insensitively, so the data alone cannot prove it.
+  - The role rows of these tests are built through the ORM; the role routes arrive with P0-4.
 
 **P0-4 - Roles.**
 
