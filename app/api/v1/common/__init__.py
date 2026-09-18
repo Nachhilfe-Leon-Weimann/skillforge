@@ -1,3 +1,4 @@
+from .dependencies import DBSession
 from .errors import STATUS_BY_ERROR, ApiError, register_exception_handlers, status_for
 from .openapi import OPENAPI_TAGS, customize_openapi, operation_id
 from .pagination import Page, PageParams, PageQuery
@@ -9,6 +10,7 @@ __all__ = [
     "STATUS_BY_ERROR",
     "ApiError",
     "ApiModel",
+    "DBSession",
     "ErrorResponse",
     "FieldError",
     "Page",
