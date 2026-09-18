@@ -495,14 +495,25 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
   "Representations"). The update model only requires a non-empty `value`; `update_contact_info` normalizes it
   against the stored `type` and raises `InvalidContactValueError` when that fails.
 - _Acceptance criteria:_
-  - [ ] `POST` answers 201 with `ContactInfoResponse`; a duplicate `(type, value)` for the party is 409
+  - [x] `POST` answers 201 with `ContactInfoResponse`; a duplicate `(type, value)` for the party is 409
         `contact_info_already_exists`, also when an update changes the value into an existing one.
-  - [ ] `PATCH` cannot change `type`; `{"label": null}` clears the label; `{}` changes nothing.
-  - [ ] `PATCH` of an e-mail contact info with a non-e-mail `value` is 422 `invalid_contact_value`; with a valid,
+  - [x] `PATCH` cannot change `type`; `{"label": null}` clears the label; `{}` changes nothing.
+  - [x] `PATCH` of an e-mail contact info with a non-e-mail `value` is 422 `invalid_contact_value`; with a valid,
         differently cased one it is 200 and the stored value is lowercased. On `POST`, the same invalid value is
         the validation 422 with a field path instead.
-  - [ ] A `contact_info_id` belonging to another party is 404 `contact_info_not_found` for `PATCH` and `DELETE`.
-  - [ ] Every contact info write moves the party's `updated_at`.
+  - [x] A `contact_info_id` belonging to another party is 404 `contact_info_not_found` for `PATCH` and `DELETE`.
+  - [x] Every contact info write moves the party's `updated_at`.
+- _Deviations:_
+  - The savepoint makes its change **inside** `begin_nested()` (`_unique_per_party`), as `_unique_title` does since
+    the first review gate; see the deviation under P0-1.
+  - "`PATCH` cannot change `type`": the field is not part of `ContactInfoUpdateRequest`, and FastAPI ignores unknown
+    body fields, so a `type` that is sent has no effect (asserted); it is not a 422.
+  - "`{}` changes nothing" includes `updated_at` (the rule of P0-2); a refused write leaves it alone as well.
+  - The services translate a `ValueError` of `normalize_contact_value` into `InvalidContactValueError` on every
+    path, and `new_contact_infos` rejects duplicates of a nested create with `ContactInfoAlreadyExistsError`. Both
+    are unreachable over HTTP on the create routes (the request models catch them first, as the validation 422) and
+    therefore not declared there; they are what in-process callers get instead of a driver error.
+  - The update model's `value` also rejects unstorable text as the validation 422 (see P0-2).
 
 **P0-6 - Relations and the reference flow.**
 
