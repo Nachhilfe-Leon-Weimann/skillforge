@@ -322,7 +322,9 @@ updated_at = now()` for the given IDs, then `flush()`), `return await load_party
   which is unambiguous because those columns are `NOT NULL`. The single nullable field, `contact_info.label`, uses
   the service-level `UNSET` sentinel (an `Enum` member) instead of a boolean flag like `update_description`.
 - **Subject sets.** Compute the difference (add the missing rows, delete the surplus ones) instead of reassigning the
-  collection, which would delete and re-insert unchanged rows with the same composite key. `unknown_subject` is one
+  collection: the difference is what tells a write from a `PUT` that changes nothing. (The original rationale - a
+  reassigned collection would delete and re-insert unchanged rows - does not hold for a loaded collection:
+  SQLAlchemy turns a deleted and a pending object with the same key into no statement.) `unknown_subject` is one
   `select(Subject.id).where(Subject.id.in_(ids))` plus a set difference; the `detail` lists the unknown IDs sorted.
 - **Transactions.** The request-scoped transaction of `get_db_session` makes every route atomic, including the
   nested `POST /persons`.
@@ -474,6 +476,8 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
     int64 could not be bound and was a 500 on every list, including the bot's and the auth clients' (the class came
     from `main` unbounded). `openapi.json` gains a `maximum` on `offset` for all six paged operations. Found by the
     second review gate.
+  - `q` is at most 200 characters: every word becomes four bind parameters and a statement takes 32767 of them, so
+    an unbounded `q` was a 500 (and a megabyte-sized log line). Found by the second review gate.
 
 **P0-4 - Roles.**
 
@@ -496,6 +500,12 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
   - The roles service finds its person through `load_party` (the one loading path) and turns a missing party or a
     company into `person_not_found`; it needs the roles and their subject rows loaded to compute the difference.
   - `subject_ids` are bounded to the Postgres `INTEGER` range (validation 422), like `SubjectId`.
+  - **Role writes are serialized per person:** `_load_person` locks the party row (`FOR NO KEY UPDATE`, the lock
+    `saved` takes anyway) before it loads. Without it two overlapping `PUT`s of the same role - a client retrying -
+    both found no role, both inserted it, and the loser's primary-key violation was a 500. Now the second one
+    waits, sees the role and changes nothing. Proven with two real transactions in
+    `test_crm_roles_concurrency.py`. Found by the second review gate.
+  - `subject_ids` holds at most 100 IDs (validation 422): each becomes a bind parameter.
   - `require_subjects` lives in `subjects.py`; "never inspects bot state" is asserted on the emitted SQL (no
     statement names the `bot` or `ext` schema or `party_relation`).
 
@@ -525,6 +535,15 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
     are unreachable over HTTP on the create routes (the request models catch them first, as the validation 422) and
     therefore not declared there; they are what in-process callers get instead of a driver error.
   - The update model's `value` also rejects unstorable text as the validation 422 (see P0-2).
+  - **`normalize_contact_value` is a fixed point:** it lowercases *before* validating, so what it returns is the
+    validated, NFC-normalized form. The first version lowercased afterwards, and because the create routes
+    normalize twice (request model, then service) the second pass could differ: `J` + caron became U+01F0 (two
+    spellings the model saw as distinct collided in the service - an undeclared 409), and U+0130 grows when
+    lowercased (an undeclared 422). That made the "unreachable over HTTP" sentence above false; with the fixed
+    point it holds, and `POST` and `PATCH` store the same form. Found by the second review gate.
+  - A contact value is at most 254 characters (`MAX_CONTACT_VALUE_LENGTH`, the longest e-mail address): it sits in
+    the index of `uq_contact_info`, whose rows Postgres limits, so an unbounded value was a 500 on all three
+    write routes.
 
 **P0-6 - Relations and the reference flow.**
 
