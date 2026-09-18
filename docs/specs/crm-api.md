@@ -469,12 +469,24 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
 - _Technique:_ `put_student_role`, `remove_student_role`, `put_tutor_role`, `remove_tutor_role` in `roles.py`; the
   nested `student` / `tutor` of `POST /persons` reuse the same service functions.
 - _Acceptance criteria:_
-  - [ ] `PUT` creates the role or replaces its data; sending the same body twice answers 200 twice with the same
+  - [x] `PUT` creates the role or replaces its data; sending the same body twice answers 200 twice with the same
         representation. A person can hold both roles at once.
-  - [ ] `subject_ids` replaces the set; an unknown ID is 422 `unknown_subject` whose `detail` lists the unknown IDs,
+  - [x] `subject_ids` replaces the set; an unknown ID is 422 `unknown_subject` whose `detail` lists the unknown IDs,
         and nothing is written (also for the nested create, which then creates no party at all).
-  - [ ] `DELETE` of a role that is not assigned is 404 `role_not_found`; a company's ID is 404 `person_not_found`.
-  - [ ] Removing a role never inspects bot state (ADR 0007) and leaves relations untouched.
+  - [x] `DELETE` of a role that is not assigned is 404 `role_not_found`; a company's ID is 404 `person_not_found`.
+  - [x] Removing a role never inspects bot state (ADR 0007) and leaves relations untouched.
+- _Deviations:_
+  - **A `PUT` that changes nothing is not a write** (same rule as the empty `PATCH` of P0-2): `updated_at` stays,
+    so "200 twice with the same representation" also holds when the two requests are two transactions.
+  - The nested create reuses `apply_student_role` / `apply_tutor_role` and `require_subjects` - the functions the
+    `PUT` services are built from - rather than calling `put_student_role` itself, which needs a stored person.
+    The subjects of both roles are checked together before the party is added, so the `detail` lists the unknown
+    IDs of both.
+  - The roles service finds its person through `load_party` (the one loading path) and turns a missing party or a
+    company into `person_not_found`; it needs the roles and their subject rows loaded to compute the difference.
+  - `subject_ids` are bounded to the Postgres `INTEGER` range (validation 422), like `SubjectId`.
+  - `require_subjects` lives in `subjects.py`; "never inspects bot state" is asserted on the emitted SQL (no
+    statement names the `bot` or `ext` schema or `party_relation`).
 
 **P0-5 - Contact infos.**
 
