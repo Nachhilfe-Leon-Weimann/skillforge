@@ -113,7 +113,17 @@ async def _put_student_role(session: AsyncSession, seed: Seed) -> Party:
 
 
 async def _replace_student_role(session: AsyncSession, seed: Seed) -> Party:
-    await _put_student_role(session, seed)
+    # Built through the ORM: a role created through the service would already have moved updated_at,
+    # and the replacing PUT could no longer be told apart.
+    old = await _subject_ids(session, "Mathematics", "Art")
+    session.add(
+        Student(
+            person_id=seed.person_id,
+            preferred_meeting_tool=PreferredMeetingTool.DISCORD,
+            student_subjects=[StudentSubject(subject_id=subject_id) for subject_id in sorted(old)],
+        )
+    )
+    await session.flush()
     session.expunge_all()
     return await roles.put_student_role(
         session,
@@ -121,6 +131,21 @@ async def _replace_student_role(session: AsyncSession, seed: Seed) -> Party:
         preferred_meeting_tool=PreferredMeetingTool.PHONE,
         subject_ids=await _subject_ids(session, "Physics"),
     )
+
+
+async def _change_only_the_meeting_tool(session: AsyncSession, seed: Seed) -> Party:
+    session.add(Student(person_id=seed.person_id, preferred_meeting_tool=PreferredMeetingTool.DISCORD))
+    await session.flush()
+    session.expunge_all()
+    return await roles.put_student_role(session, seed.person_id, preferred_meeting_tool=PreferredMeetingTool.PHONE)
+
+
+async def _replace_tutor_role(session: AsyncSession, seed: Seed) -> Party:
+    old = await _subject_ids(session, "Chemistry")
+    session.add(Tutor(person_id=seed.person_id, tutor_subjects=[TutorSubject(subject_id=i) for i in old]))
+    await session.flush()
+    session.expunge_all()
+    return await roles.put_tutor_role(session, seed.person_id, subject_ids=await _subject_ids(session, "Latin"))
 
 
 async def _put_tutor_role(session: AsyncSession, seed: Seed) -> Party:
@@ -212,7 +237,14 @@ WRITES = [
     Write(persons.create_person, _create_person_with_roles, creates=True, label="[with both roles]"),
     Write(roles.put_student_role, _put_student_role, touches=lambda seed: (seed.person_id,)),
     Write(roles.put_student_role, _replace_student_role, touches=lambda seed: (seed.person_id,), label="[replace]"),
+    Write(
+        roles.put_student_role,
+        _change_only_the_meeting_tool,
+        touches=lambda seed: (seed.person_id,),
+        label="[tool only]",
+    ),
     Write(roles.put_tutor_role, _put_tutor_role, touches=lambda seed: (seed.person_id,)),
+    Write(roles.put_tutor_role, _replace_tutor_role, touches=lambda seed: (seed.person_id,), label="[replace]"),
     Write(roles.remove_student_role, _remove_student_role, touches=lambda seed: (seed.person_id,)),
     Write(roles.remove_tutor_role, _remove_tutor_role, touches=lambda seed: (seed.person_id,)),
     # A relation belongs to both aggregates.

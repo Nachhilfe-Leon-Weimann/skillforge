@@ -195,16 +195,24 @@ def test_the_catalog_is_closed_at_the_fifteen_classes_of_the_spec():
     assert len({code for code, *_ in CATALOG.values()}) == 15
 
 
+# Codes the conventions derive for every route; a route never declares them.
+DERIVED_CODES = {"validation_error", "missing_token", "invalid_token", "forbidden"}
+CRM_PACKAGES = ("app.services.crm", "app.api.v1.crm")
+
+
+def _subclasses(error_type: type[DomainError]) -> set[type[DomainError]]:
+    found = set(error_type.__subclasses__())
+    return found.union(*(_subclasses(subclass) for subclass in found))
+
+
 def test_every_catalog_class_is_pinned():
     from app.services.crm import errors
 
-    defined = {
-        error
-        for error in vars(errors).values()
-        if isinstance(error, type) and issubclass(error, DomainError) and error.__module__ == errors.__name__
-    }
+    # Importing the app has imported every CRM module, so a class defined outside errors.py shows up.
+    defined = {error for error in _subclasses(DomainError) if error.__module__.startswith(CRM_PACKAGES)}
 
     assert defined == set(CATALOG)
+    assert {error.__module__ for error in defined} == {errors.__name__}
     assert {type(error) for _, error, _, _ in EXPECTATIONS} == set(CATALOG)
 
 
@@ -215,32 +223,39 @@ def test_every_pinned_error_is_documented_on_its_route():
         assert type(error).code in examples, f"{name}: {type(error).__name__}"
 
 
+def _documented_codes(operation: dict[str, Any]) -> set[str]:
+    """Every error example of an operation, minus the derived ones."""
+    return {
+        code
+        for response in operation["responses"].values()
+        for code in response.get("content", {}).get("application/json", {}).get("examples", {})
+    } - DERIVED_CODES
+
+
 def test_no_route_documents_a_domain_error_that_is_not_pinned():
     pinned = {(name, type(error).code) for name, error, _, _ in EXPECTATIONS}
-    catalog_codes = {code for code, *_ in CATALOG.values()}
 
     for name, endpoint in ENDPOINTS.items():
-        for response in _operation(endpoint)["responses"].values():
-            examples = response.get("content", {}).get("application/json", {}).get("examples", {})
-            for code in set(examples) & catalog_codes:
-                assert (name, code) in pinned, f"{name} documents {code} without a pinned expectation"
+        for code in _documented_codes(_operation(endpoint)):
+            assert (name, code) in pinned, f"{name} documents {code} without a pinned expectation"
 
 
-def test_every_crm_operation_that_documents_a_domain_error_is_in_the_table():
+def test_every_crm_operation_that_documents_an_error_is_in_the_table_and_uses_catalog_codes_only():
     catalog_codes = {code for code, *_ in CATALOG.values()}
     covered = {_operation(endpoint)["operationId"] for endpoint in ENDPOINTS.values()}
+    documenting = 0
 
     for path, item in app.openapi()["paths"].items():
         if not path.startswith("/api/v1/crm/"):
             continue
         for operation in item.values():
-            examples = {
-                code
-                for response in operation["responses"].values()
-                for code in response.get("content", {}).get("application/json", {}).get("examples", {})
-            }
-            if examples & catalog_codes:
+            codes = _documented_codes(operation)
+            assert codes <= catalog_codes, f"{operation['operationId']} documents {codes - catalog_codes}"
+            if codes:
+                documenting += 1
                 assert operation["operationId"] in covered, operation["operationId"]
+
+    assert documenting == len(ENDPOINTS)
 
 
 def _operation(endpoint: Endpoint) -> dict[str, Any]:
