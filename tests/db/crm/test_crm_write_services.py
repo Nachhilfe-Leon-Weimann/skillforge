@@ -10,7 +10,9 @@ fails when a slice adds a function without adding it here.
 
 from __future__ import annotations
 
+import importlib
 import inspect
+import pkgutil
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -18,18 +20,40 @@ from types import FunctionType
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.crm.schemas import party_detail
-from app.core.db.models import ContactInfoType, Party
-from app.services.crm import companies, parties, persons
+from app.api.v1.crm.schemas import PersonDetail, party_detail
+from app.core.db.models import (
+    ContactInfo,
+    ContactInfoType,
+    Party,
+    PreferredMeetingTool,
+    Student,
+    StudentSubject,
+    Tutor,
+    TutorSubject,
+)
+from app.services import crm as crm_services
+from app.services.crm import companies, parties, persons, subjects
 from app.services.crm.inputs import NewContactInfo
 
 pytestmark = pytest.mark.db
 
-WRITE_MODULES = (persons, companies)
-# Public functions of the write modules that do not write.
-READS = {persons.get_person, companies.get_company}
+# Public service functions that are not writes inside the party aggregate. Every other public
+# coroutine of ``app.services.crm`` - in whatever module a slice adds - needs a scenario in WRITES.
+NOT_AGGREGATE_WRITES = {
+    parties.load_party,  # the loading path itself
+    parties.saved,  # the bookkeeping every write ends with
+    persons.get_person,
+    companies.get_company,
+    # Subjects are reference data outside the aggregate: no party, no updated_at.
+    subjects.list_subjects,
+    subjects.get_subject,
+    subjects.create_subject,
+    subjects.update_subject,
+    subjects.delete_subject,
+}
 
 
 @dataclass(frozen=True)
@@ -130,6 +154,54 @@ async def test_write_moves_updated_at_of_every_party_it_touches(
         assert party_detail(result).updated_at == await updated_at(result.id)
 
 
+@pytest.mark.parametrize("create", ["person", "company"])
+async def test_create_stores_normalized_contact_values_whatever_the_caller_passes(session: AsyncSession, create: str):
+    """In-process callers bypass the request models, so the services normalize on their own."""
+    if create == "person":
+        party = await persons.create_person(session, firstname="Max", lastname="M", contact_infos=CONTACT_INFOS)
+    else:
+        party = await companies.create_company(session, name="Musterfirma GmbH", contact_infos=CONTACT_INFOS)
+
+    stored = await session.execute(
+        select(ContactInfo.type, ContactInfo.value, ContactInfo.label).where(ContactInfo.party_id == party.id)
+    )
+    assert sorted((type.value, value, label) for type, value, label in stored) == [
+        ("email", "max.mustermann@example.com", "private"),
+        ("phone", "0151234567", None),
+    ]
+    assert [info.value for info in party_detail(party).contact_infos] == ["max.mustermann@example.com", "0151234567"]
+
+
+async def test_the_detail_maps_both_roles_with_their_subjects_in_title_order(session: AsyncSession, seed: Seed):
+    """The roles get their routes with P0-4, but PARTY_GRAPH and the role mappers ship with the detail."""
+    titles = ["physics", "Biology", "art"]
+    created = {title: await subjects.create_subject(session, title=title) for title in titles}
+    session.add(
+        Student(
+            person_id=seed.person_id,
+            preferred_meeting_tool=PreferredMeetingTool.MICROSOFT_TEAMS,
+            student_subjects=[StudentSubject(subject_id=created[title].id) for title in titles],
+        )
+    )
+    session.add(
+        Tutor(person_id=seed.person_id, tutor_subjects=[TutorSubject(subject_id=created["physics"].id)]),
+    )
+    await session.flush()
+    session.expunge_all()
+
+    detail = party_detail(await parties.load_party(session, seed.person_id))
+
+    assert isinstance(detail, PersonDetail)
+    assert detail.student is not None and detail.tutor is not None
+    assert detail.student.preferred_meeting_tool is PreferredMeetingTool.MICROSOFT_TEAMS
+    assert [subject.title for subject in detail.student.subjects] == ["art", "Biology", "physics"]
+    assert [(subject.id, subject.title) for subject in detail.tutor.subjects] == [(created["physics"].id, "physics")]
+    # A write on a person holding roles reloads them as well.
+    updated = party_detail(await persons.update_person(session, seed.person_id, firstname="Maximilian"))
+    assert isinstance(updated, PersonDetail)
+    assert updated.student == detail.student and updated.tutor == detail.tutor
+
+
 async def test_a_write_leaves_the_other_parties_alone(session: AsyncSession, seed: Seed, updated_at):
     before = await updated_at(seed.company_id)
 
@@ -154,12 +226,22 @@ async def test_an_update_with_nothing_to_change_is_not_a_write(
     assert party_detail(party).updated_at == before
 
 
-def test_every_write_service_has_a_scenario():
-    public = {
+def _public_service_coroutines() -> set[FunctionType]:
+    modules = [
+        importlib.import_module(module.name)
+        for module in pkgutil.walk_packages(crm_services.__path__, prefix=f"{crm_services.__name__}.")
+    ]
+    return {
         function
-        for module in WRITE_MODULES
+        for module in modules
         for name, function in vars(module).items()
         if inspect.iscoroutinefunction(function) and not name.startswith("_") and function.__module__ == module.__name__
     }
 
-    assert public - READS == {write.service for write in WRITES}
+
+def test_every_write_service_has_a_scenario():
+    public = _public_service_coroutines()
+
+    assert {persons.create_person, subjects.create_subject} <= public, "the discovery found the service modules"
+    assert NOT_AGGREGATE_WRITES <= public, "the exclusion list names only functions that exist"
+    assert public - NOT_AGGREGATE_WRITES == {write.service for write in WRITES}
