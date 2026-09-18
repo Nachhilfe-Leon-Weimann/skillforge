@@ -349,7 +349,9 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
   [`test_crm_architecture.py`](../../tests/api/test_crm_architecture.py) (an AST check over all 21 endpoints, with a
   probe that it catches each kind) and the description and `examples` tests in
   [`test_crm_openapi.py`](../../tests/api/test_crm_openapi.py), which walk every schema reachable from a CRM
-  operation. "No inline `Annotated[...]`" is checked as: every endpoint parameter is typed by an alias.
+  operation. "No inline `Annotated[...]`" is checked positively: every endpoint parameter is a bare name imported
+  from `params.py`, `schemas.py` or `app.api.v1.common` (plus FastAPI's `Response`) and has no default - so an
+  inline `= Path(...)` or a `Depends(get_db_session)` that bypasses `DBSession` (decision N) fails the check too.
 
 **P0-1 - Foundation and subjects.** _The whole stack once, on the simplest resource._
 
@@ -468,6 +470,10 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
   - The order and the `lower(...)` of the list are asserted on the emitted SQL as well as on the data: the test
     database collates case-insensitively, so the data alone cannot prove it.
   - The role rows of these tests are built through the ORM; the role routes arrive with P0-4.
+  - `offset` got an upper bound (`MAX_PAGE_OFFSET`, the `INTEGER` range) in the shared `PageParams`: a value beyond
+    int64 could not be bound and was a 500 on every list, including the bot's and the auth clients' (the class came
+    from `main` unbounded). `openapi.json` gains a `maximum` on `offset` for all six paged operations. Found by the
+    second review gate.
 
 **P0-4 - Roles.**
 
