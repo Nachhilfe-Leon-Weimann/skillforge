@@ -6,6 +6,7 @@ Each case stubs the service function an endpoint calls, makes it raise the domai
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -155,6 +156,19 @@ EXPECTATIONS: list[Expectation] = [
     ("cancel_operation", OperationNotFoundError(INTERNAL), 404, "Operation not found"),
     ("cancel_operation", OperationNotPendingError("Operation has expired"), 409, "Operation has expired"),
     ("cancel_operation", OperationNotPendingError(), 409, OPERATION_NOT_PENDING),
+    # Only these two commits re-check the student workspace, which may have vanished since prepare.
+    (
+        "commit_student_stash",
+        TransitionValidationError("Student workspace not found"),
+        422,
+        "Student workspace not found",
+    ),
+    (
+        "commit_student_pop",
+        TransitionValidationError("Student workspace not found"),
+        422,
+        "Student workspace not found",
+    ),
 ]
 
 # Transition messages are written for clients ("Tutor student capacity reached") and shown as-is.
@@ -203,6 +217,26 @@ async def test_bot_domain_error_status_and_detail(expectation: Expectation, monk
     # The code values themselves are pinned per class in ``tests/test_bot_errors.py``.
     assert response.json() == {"detail": detail, "code": type(error).code}
     assert INTERNAL not in response.text
+
+
+def test_every_pinned_error_is_documented_on_its_route():
+    for name, error, status, _ in ALL_EXPECTATIONS:
+        responses = _operation(ALL_ENDPOINTS[name])["responses"]
+        examples = responses[str(status)]["content"]["application/json"]["examples"]
+        assert type(error).code in examples, f"{name}: {type(error).__name__}"
+
+
+def _operation(endpoint: Endpoint) -> dict[str, Any]:
+    """Find the OpenAPI operation whose path template matches the endpoint's concrete path."""
+    concrete = f"/api/v1/bot{endpoint.path}"
+    matches = [
+        item[endpoint.method.lower()]
+        for template, item in app.openapi()["paths"].items()
+        if endpoint.method.lower() in item and re.fullmatch(re.sub(r"\{[^/]+\}", "[^/]+", template), concrete)
+    ]
+    exact = [item for template, item in app.openapi()["paths"].items() if template == concrete]
+    assert exact or len(matches) == 1, concrete
+    return exact[0][endpoint.method.lower()] if exact else matches[0]
 
 
 def test_every_endpoint_of_the_table_is_exercised():

@@ -93,7 +93,10 @@ async def prepare_student_stash_endpoint(
 @router.post(
     "/{guild_id}/{student_discord_id}/stash/{operation_id}/commit",
     response_model=TransitionCommitResponse,
-    responses=error_responses(OperationNotFoundError, OperationNotPendingError, TransitionConflictError),
+    # Unlike the other commits, this one re-checks the student workspace (TransitionValidationError).
+    responses=error_responses(
+        OperationNotFoundError, OperationNotPendingError, TransitionConflictError, TransitionValidationError
+    ),
 )
 async def commit_student_stash_endpoint(
     guild_id: GuildId,
@@ -127,7 +130,10 @@ async def prepare_student_pop_endpoint(
 @router.post(
     "/{guild_id}/{student_discord_id}/pop/{operation_id}/commit",
     response_model=TransitionCommitResponse,
-    responses=error_responses(OperationNotFoundError, OperationNotPendingError, TransitionConflictError),
+    # Unlike the other commits, this one re-checks the student workspace (TransitionValidationError).
+    responses=error_responses(
+        OperationNotFoundError, OperationNotPendingError, TransitionConflictError, TransitionValidationError
+    ),
 )
 async def commit_student_pop_endpoint(
     guild_id: GuildId,
