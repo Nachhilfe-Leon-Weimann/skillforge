@@ -117,12 +117,24 @@ async def test_create_application_client_lists_client_and_writes_audit(session):
         name="Integration",
         description="External integration",
     )
-    clients = await list_application_clients(session)
+    clients, total = await list_application_clients(session)
     audit_logs = (await session.execute(select(AuthAuditLog))).scalars().all()
 
     assert client.client_id == "integration"
     assert [client.client_id for client in clients] == ["integration"]
+    assert total == 1
     assert [(log.event_type, log.success) for log in audit_logs] == [("application_client.created", True)]
+
+
+@pytest.mark.db
+async def test_list_application_clients_pages_by_client_id_and_counts_all(session):
+    for client_id in ("delta", "alpha", "charlie", "bravo"):
+        await create_application_client(session, client_id=client_id, name=client_id.title())
+
+    page, total = await list_application_clients(session, limit=2, offset=1)
+
+    assert [client.client_id for client in page] == ["bravo", "charlie"]
+    assert total == 4
 
 
 @pytest.mark.db

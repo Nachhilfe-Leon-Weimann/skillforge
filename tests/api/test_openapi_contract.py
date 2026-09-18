@@ -132,7 +132,21 @@ def test_every_documented_error_body_is_the_envelope(schema: dict[str, Any]):
 PAGED_ENDPOINTS = {
     "/api/v1/bot/jobs": ("Page_JobListItem_", {"status", "kind"}),
     "/api/v1/bot/operations": ("Page_OperationSummary_", {"guild_id", "subject_discord_id", "status", "kind"}),
+    "/api/v1/auth/clients": ("Page_ApplicationClientResponse_", set()),
 }
+
+
+def test_no_operation_returns_a_bare_array(schema: dict[str, Any]):
+    bare = [
+        f"{method} {path}"
+        for method, path, operation in _operations(schema)
+        for status, response in operation["responses"].items()
+        if status.startswith("2")
+        and response.get("content", {}).get("application/json", {}).get("schema", {}).get("type") == "array"
+    ]
+
+    # The job claim hands out a batch of work, not a page of a list.
+    assert bare == ["POST /api/v1/bot/jobs/claim"]
 
 
 @pytest.mark.parametrize("path", PAGED_ENDPOINTS)

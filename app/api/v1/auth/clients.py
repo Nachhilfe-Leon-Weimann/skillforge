@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.common import error_responses
+from app.api.v1.common import Page, PageQuery, error_responses
 from app.core.auth import (
     ApplicationClientAlreadyExistsError,
     ApplicationClientNotFoundError,
@@ -40,13 +40,15 @@ router = APIRouter(prefix="/clients")
 ManageAuthClients = Annotated[Principal, require_scopes(Scope.AUTH_CLIENTS_MANAGE)]
 
 
-@router.get("", response_model=list[ApplicationClientResponse])
+@router.get("")
 async def read_application_clients(
+    params: PageQuery,
     session: Annotated[AsyncSession, Depends(get_db_session)],
     _: ManageAuthClients,
-) -> list[ApplicationClientResponse]:
-    clients = await list_application_clients(session)
-    return [ApplicationClientResponse.from_model(client) for client in clients]
+) -> Page[ApplicationClientResponse]:
+    """List application clients ordered by `client_id`."""
+    clients, total = await list_application_clients(session, **params.model_dump())
+    return Page.of([ApplicationClientResponse.from_model(client) for client in clients], total=total, params=params)
 
 
 @router.post(

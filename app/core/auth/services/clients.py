@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,16 +12,28 @@ from ..audit import AuditEventType, write_auth_audit_log
 from .errors import ApplicationClientAlreadyExistsError, ApplicationClientNotFoundError
 
 
-async def list_application_clients(session: AsyncSession) -> list[ApplicationClient]:
+async def list_application_clients(
+    session: AsyncSession,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[ApplicationClient], int]:
+    """List application clients ordered by their unique ``client_id``, with the total count.
+
+    Returns ``(page, total)`` where ``page`` is at most ``limit`` clients starting at ``offset``.
+    """
+    total = (await session.execute(select(func.count()).select_from(ApplicationClient))).scalar_one()
     result = await session.execute(
         select(ApplicationClient)
         .order_by(ApplicationClient.client_id)
+        .limit(limit)
+        .offset(offset)
         .options(
             selectinload(ApplicationClient.secrets),
             selectinload(ApplicationClient.scope_grants).selectinload(ApplicationClientScopeGrant.permission_scope),
         )
     )
-    return list(result.scalars().all())
+    return list(result.scalars().all()), total
 
 
 async def get_application_client(session: AsyncSession, *, client_id: str) -> ApplicationClient:
