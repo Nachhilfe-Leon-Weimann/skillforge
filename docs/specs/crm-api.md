@@ -354,24 +354,33 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
   `app/services/crm/errors.py`; the four subject routes with `SubjectResponse`, `Page[SubjectResponse]`, the
   `MISSING`-based update model, and the schema change above.
 - _Acceptance criteria:_
-  - [ ] Both scopes appear with their description in `components.securitySchemes`; every CRM operation ID matches
+  - [x] Both scopes appear with their description in `components.securitySchemes`; every CRM operation ID matches
         `^crm_[a-z_]+$`; reads require `crm:read`, writes `crm:write` (asserted over `app.openapi()`).
-  - [ ] Given a session dependency whose exit raises, when a CRM write route is called, then the client receives
+  - [x] Given a session dependency whose exit raises, when a CRM write route is called, then the client receives
         the 500 envelope, not a 2xx.
-  - [ ] `POST /subjects` with a title differing only in case or surrounding whitespace from an existing one is 409
+  - [x] `POST /subjects` with a title differing only in case or surrounding whitespace from an existing one is 409
         `subject_already_exists`; the same holds for `PATCH`.
-  - [ ] `PATCH /subjects/{id}` with `{}` is 200 and changes nothing; with `{"title": null}` it is the validation 422.
-  - [ ] `DELETE /subjects/{id}` is 409 `subject_in_use` while a `student_subject` or `tutor_subject` row references
+  - [x] `PATCH /subjects/{id}` with `{}` is 200 and changes nothing; with `{"title": null}` it is the validation 422.
+  - [x] `DELETE /subjects/{id}` is 409 `subject_in_use` while a `student_subject` or `tutor_subject` row references
         it, and 204 otherwise.
-  - [ ] `GET /subjects` returns `Page[SubjectResponse]` ordered by `lower(title), id`.
-  - [ ] An architecture test asserts that nothing under `app/services/crm` or `app/api/v1/crm` imports
+  - [x] `GET /subjects` returns `Page[SubjectResponse]` ordered by `lower(title), id`.
+  - [x] An architecture test asserts that nothing under `app/services/crm` or `app/api/v1/crm` imports
         `app.services.bot` or `app.api.v1.bot` (ADR 0007).
-  - [ ] An error-contract test pins status, `code` and `detail` of every catalog row for the subject routes,
+  - [x] An error-contract test pins status, `code` and `detail` of every catalog row for the subject routes,
         following [`test_bot_error_contract.py`](../../tests/api/test_bot_error_contract.py). Every later slice
         extends it with its own rows.
-  - [ ] At runtime a CRM route answers 401 without a token and 403 with a token that lacks the scope, both in the
+  - [x] At runtime a CRM route answers 401 without a token and 403 with a token that lacks the scope, both in the
         error envelope.
-  - [ ] `just check-all` is green, `openapi.json` is regenerated, and `just test-clients` passes.
+  - [x] `just check-all` is green, `openapi.json` is regenerated, and `just test-clients` passes.
+- _Deviations:_
+  - `SubjectId` is bounded to the Postgres `INTEGER` range (`ge=1`, `le=2**31 - 1`): a larger ID could not be
+    bound to the query and would surface as a 500 instead of the validation 422.
+  - `errors.py` starts with the three subject classes; every later slice adds the classes of its own routes, so
+    `party_not_found` stays unique until P0-2 replaces the bot's class.
+  - Tests that run the real app against the database live in `tests/db/crm/` (the `session` fixture is only
+    visible under `tests/db/`); its `client` fixture wraps every request in a SAVEPOINT that rolls back on failure,
+    mirroring the request-scoped transaction. Stubbed API tests stay in `tests/api/test_crm_*.py`.
+  - The 401 / 403 criterion is asserted for **every** CRM operation of the OpenAPI document, not for one route.
 
 **P0-2 - Party aggregate: create, read, update.**
 
