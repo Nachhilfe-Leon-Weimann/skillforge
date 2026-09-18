@@ -16,6 +16,9 @@ from .schemas import ApiModel
 
 DEFAULT_PAGE_LIMIT = 50
 MAX_PAGE_LIMIT = 100
+# The largest value Postgres takes as an INTEGER. Beyond int64 the driver cannot even bind the value,
+# which would surface as a 500 instead of the validation 422.
+MAX_PAGE_OFFSET = 2**31 - 1
 
 
 class PageParams(BaseModel):
@@ -24,7 +27,9 @@ class PageParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     limit: int = Field(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT, description="Maximum number of items to return.")
-    offset: int = Field(0, ge=0, description="Number of items to skip before the first returned item.")
+    offset: int = Field(
+        0, ge=0, le=MAX_PAGE_OFFSET, description="Number of items to skip before the first returned item."
+    )
 
 
 type PageQuery = Annotated[PageParams, Query()]

@@ -156,8 +156,17 @@ async def test_filters_never_fail_an_impossible_combination_is_an_empty_page(
         ({"subject_id": "maths"}, ["query", "subject_id"]),
         ({"subject_id": 2**31}, ["query", "subject_id"]),
         ({"limit": 0}, ["query", "limit"]),
+        ({"offset": 2**63}, ["query", "offset"]),
     ],
-    ids=["unknown parameter", "unknown role", "unknown type", "non-numeric subject", "subject out of range", "limit"],
+    ids=[
+        "unknown parameter",
+        "unknown role",
+        "unknown type",
+        "non-numeric subject",
+        "subject out of range",
+        "limit",
+        "offset beyond int64",
+    ],
 )
 async def test_a_malformed_query_is_the_validation_422(client: AsyncClient, params: dict, loc: list):
     response = await client.get("/parties", params=params)
