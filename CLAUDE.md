@@ -26,17 +26,22 @@ app/
   main.py            FastAPI entry point (root route + app wiring)
   api/system/        health.py (/health + /health/live, /health/dependencies[/{name}], /health/workers[/{name}])
   api/v1/            endpoints: auth/ (token, clients), bot/ (runtime, jobs, operations,
-                     command_envs, students, tutors, users, authz); common/ (shared API vocabulary:
-                     error envelope + handlers, error_responses, Page/PageParams, OpenAPI hooks)
+                     command_envs, students, tutors, users, authz), crm/ (parties, persons, companies,
+                     roles, contact_infos, relations, subjects; params + schemas); common/ (shared API
+                     vocabulary: error envelope + handlers, error_responses, Page/PageParams, DBSession,
+                     OpenAPI hooks)
   services/bot/      business logic: transitions, operations, jobs, principals, provisioning,
                      authz, command_envs, contexts, profile, reaper, views, errors
+  services/crm/      system of record: parties (PARTY_GRAPH, load_party, saved), persons, companies,
+                     roles, contact_infos, relations, subjects, inputs, errors
   services/system/   health aggregation + worker heartbeats (backs /health)
   workers/           reaper.py (lifecycle guardian: job reaper + operation sweeper)
   cli/               deadletters.py (dead-letter list/requeue operator commands)
   core/              auth/ (OAuth2, JWT, scopes), db/ (engine, models/<schema>/), logging/, config.py,
                      errors.py (HTTP-agnostic error taxonomy)
 migrations/          Alembic (env.py creates schemas; baseline = explicit DDL)
-tests/               api/, auth/, db/, workers/  (DB tests via @pytest.mark.db)
+tests/               api/, auth/, db/ (db/crm/: the CRM app against Postgres), workers/
+                     (DB tests via @pytest.mark.db)
 scripts/             coverage_summary.py, dump_openapi.py, version.py
 ```
 
@@ -60,6 +65,11 @@ DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
   nor raise `HTTPException` - declare them with `responses=error_responses(...)`; lists take a
   `PageParams` subclass and return `Page[T]`; new schemas derive from `ApiModel`. Never hand-write
   401/403 docs or an `operation_id`.
+- **The CRM is the system of record** ([spec](docs/specs/crm-api.md),
+  [ADR 0007](docs/decisions/0007-crm-system-of-record.md)): nothing under `app/services/crm` or
+  `app/api/v1/crm` imports the bot domain, and no CRM write looks at Discord state. Every write
+  service ends with `saved(...)` and `load_party(...)`; a `from_model` mapper touches only what
+  `PARTY_GRAPH` loads - extend the graph, never add an ad-hoc load. The error catalog is closed.
 - **Discord state changes** run in two phases (`prepare`/`commit`) - Forge never touches the
   Discord API itself ([ADR 0003](docs/decisions/0003-two-phase-transitions.md)).
 - **Jobs** are at-least-once; handlers must be idempotent

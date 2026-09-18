@@ -21,6 +21,7 @@ Forge **never touches the Discord API itself** - only SkillBot does.
 HTTP -> app/api/system    liveness + health probes (dependencies, workers)
         app/api/v1        endpoints, request/response schemas, scope checks
         app/services/bot  business logic (transitions, jobs, permissions, views)
+        app/services/crm  system of record: parties, roles, contact infos, relations, subjects
         app/services/system  health aggregation + worker heartbeats
         app/core          cross-cutting: auth, db, logging, config
                           `-> Postgres (schemas: core/geo/ext/bot/auth/system)
@@ -32,7 +33,7 @@ HTTP -> app/api/system    liveness + health probes (dependencies, workers)
 - **`app/api/system/`** - `health.py`: `GET /health` (aggregate over all dependencies **and**
   workers; `200` healthy / `503` unhealthy / `500` on error), plus `/health/live`,
   `/health/dependencies[/{name}]`, and `/health/workers[/{name}]`.
-- **`app/api/v1/`** - `router.py` with prefix `/api/v1` aggregates two areas, which share the
+- **`app/api/v1/`** - `router.py` with prefix `/api/v1` aggregates three areas, which share the
   vocabulary in `common/` (see [API conventions](#api-conventions)):
   - `auth/` - `token.py` (OAuth2 token endpoint), `clients.py` (client management).
   - `bot/` - `runtime.py` (read: principals, contexts, command envs), `operations.py` (operation
@@ -41,10 +42,19 @@ HTTP -> app/api/system    liveness + health probes (dependencies, workers)
     `users.py` (provisioning: register users, link/deactivate accounts, group membership),
     `authz.py` (delegated authorization check). `dependencies.py` wires the scope gates. Endpoints
     do not catch domain errors: the handlers in `app/api/v1/common/errors.py` map them to HTTP.
+  - `crm/` - one module per resource: `parties.py` (list, detail, guarded delete), `persons.py` &
+    `companies.py` (typed create and update), `roles.py`, `contact_infos.py`, `relations.py`,
+    `subjects.py`. `params.py` holds the path and query vocabulary, `schemas.py` the read and write
+    models with their `from_model` mappers (see [CRM](#crm)).
 - **`app/services/bot/`** - the actual logic, free of HTTP concerns: `transitions.py`,
   `operations.py` (operation reads), `jobs.py`, `principals.py`, `provisioning.py`, `authz.py`,
   `command_envs.py`, `contexts.py`, `profile.py`, `reaper.py`, `views.py` (immutable view models for
   responses), `errors.py` (service error hierarchy).
+- **`app/services/crm/`** - the CRM services, same shape as the bot's (function modules, `session`
+  first, no commits, no `app.api` imports): `parties.py` (`PARTY_GRAPH`, `load_party`, `saved`,
+  list, delete), `persons.py`, `companies.py`, `roles.py`, `contact_infos.py`, `relations.py`,
+  `subjects.py`, `inputs.py` (enums, input dataclasses and `normalize_contact_value`, shared with the
+  API), `errors.py` (the error catalog). Never imports the bot domain.
 - **`app/services/system/`** - health aggregation (`health_service.py`) and worker liveness
   (`heartbeat_service.py`), backing the `/health` tree.
 - **`app/core/`** - `auth/` (OAuth2, JWT, scopes, bootstrap), `db/` (async engine, sessions,
@@ -107,6 +117,43 @@ Dead-lettered (`FAILED`) jobs have an operator path: `just dead-jobs` lists them
 ([`app/cli/deadletters.py`](../app/cli/deadletters.py)). Rationale & scope:
 [ADR 0004](decisions/0004-forge-first-job-queue.md),
 [lifecycle guardian spec](specs/lifecycle-guardian.md).
+
+## CRM
+
+The CRM is the **system of record** for who exists and how people relate
+([ADR 0007](decisions/0007-crm-system-of-record.md)): `core` holds the intended state, the `bot`
+schema mirrors what is true in Discord. The dependency is one-way - `app/services/bot` may import
+`app/services/crm`, never the reverse - and a CRM write is validated against CRM rules only, never
+against Discord state. The full design is in the [CRM API spec](specs/crm-api.md).
+
+- **Route form.** A polymorphic read side (`GET /parties`, `GET /parties/{party_id}`, whose
+  `PartyDetail` is a discriminated union of `PersonDetail` and `CompanyDetail`) and a typed write
+  side (`/persons`, `/companies`) over one ID space. Roles are idempotent singletons
+  (`PUT` / `DELETE /persons/{party_id}/student|tutor`), contact infos owned children with their own
+  ID, relations associations addressed by their natural key
+  (`/parties/{party_id}/relations/{type}/{to_party_id}`). Every route has exactly one target party.
+- **Aggregate root.** `Party` is the root: every write inside the aggregate ends with `saved(...)`,
+  which moves `party.updated_at` - the one change signal consumers get - and a relation touches
+  both parties. A request that changes nothing (an empty `PATCH`, a repeated `PUT`) is not a write.
+- **One loading path.** Async SQLAlchemy cannot lazy-load, so `PARTY_GRAPH` in `parties.py` names
+  everything a representation may touch, `load_party` applies it with `populate_existing`, and every
+  write returns through it. A `from_model` mapper touches only what `PARTY_GRAPH` loads.
+- **Uniqueness by constraint.** Subject titles (`uq_subject_title_lower`) and contact infos
+  (`uq_contact_info`) are decided by the database: the change is made and flushed *inside* a
+  SAVEPOINT and an `IntegrityError` becomes the domain error (`_unique_title`,
+  `_unique_per_party`). `begin_nested()` flushes pending state first, so a change made before it
+  would fail in the enclosing transaction.
+- **Errors.** A missing thing named in the path is a 404, one referenced in the body a 422; what
+  needs no database is checked by the request model. The catalog is closed at 15 classes in
+  `app/services/crm/errors.py`, each pinned per route by `tests/api/test_crm_error_contract.py`.
+- **Personal data stays out of logs.** Validation and domain messages never repeat a name or a
+  contact value, text Postgres cannot store is rejected by the request models
+  (`require_storable_text`), and the engine runs with `hide_parameters=True`.
+- **Deleting a party** is refused (`party_in_use`) while a Discord account or an `ext` link exists:
+  all foreign keys into `core.party` cascade, so the guard - taken under a row lock - is what keeps
+  external systems from being orphaned. The CRM reads the `ext` tables there and nowhere else.
+- **Commit before the response.** The CRM routes use `DBSession`, whose `scope="function"` ends the
+  request transaction before the response is sent: a failing commit is a 500, not a 201.
 
 ## Database
 
@@ -194,3 +241,4 @@ The platform grows along four arcs that build on each other (details in the
 | What is planned / design sketches? | [`specs/`](specs/) |
 | Which commands exist? | [`../justfile`](../justfile), [`../CLAUDE.md`](../CLAUDE.md) |
 | What does the API look like? | [`../openapi.json`](../openapi.json) |
+| How do people get into the system? | [`specs/crm-api.md`](specs/crm-api.md), [CRM](#crm) |
