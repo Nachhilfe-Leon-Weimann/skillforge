@@ -112,6 +112,23 @@ class ContactInfoCreateRequest(ApiModel):
         return NewContactInfo(type=self.type, value=self.value, label=self.label)
 
 
+# The type of a stored contact info is only known from the database, so the update model checks
+# what needs none (error rule I-2) and the service checks the value against the stored type.
+ContactValue = Annotated[str, StringConstraints(min_length=1), AfterValidator(require_storable_text)]
+
+
+class ContactInfoUpdateRequest(ApiModel):
+    """Body of `PATCH /parties/{party_id}/contact-infos/{contact_info_id}`: only the fields that are sent change.
+
+    `type` is immutable and not part of this body; delete the contact info and add another one instead.
+    """
+
+    value: ContactValue | MISSING = MISSING
+    """New value. It must fit the stored type (422 `invalid_contact_value` otherwise) and is normalized as on create."""
+    label: Name | None | MISSING = MISSING
+    """New label; `null` clears it."""
+
+
 def _reject_duplicate_contact_infos(contact_infos: list[ContactInfoCreateRequest]) -> list[ContactInfoCreateRequest]:
     keys = [(contact_info.type, contact_info.value) for contact_info in contact_infos]
     if len(set(keys)) != len(keys):

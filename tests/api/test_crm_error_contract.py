@@ -25,6 +25,9 @@ from app.core.errors import DomainError
 from app.main import app
 from app.services.crm.errors import (
     CompanyNotFoundError,
+    ContactInfoAlreadyExistsError,
+    ContactInfoNotFoundError,
+    InvalidContactValueError,
     PartyInUseError,
     PartyNotFoundError,
     PersonNotFoundError,
@@ -39,6 +42,9 @@ ID = "00000000-0000-0000-0000-0000000000aa"
 INTERNAL = "internal: row 7f3a"
 PARTY_IN_USE = "Party is linked to external systems"
 PERSON = {"firstname": "Max", "lastname": "Mustermann"}
+EMAIL = {"type": "email", "value": "max.mustermann@example.com"}
+CONTACT_INFO_EXISTS = "Contact info already exists for this party"
+INVALID_CONTACT_VALUE = "Value is not valid for this contact info type"
 STUDENT_ROLE = {"preferred_meeting_tool": "discord", "subject_ids": [1]}
 
 
@@ -59,6 +65,11 @@ ENDPOINTS = {
     "remove_student_role": Endpoint("DELETE", f"/persons/{ID}/student", "roles.remove_student_role"),
     "put_tutor_role": Endpoint("PUT", f"/persons/{ID}/tutor", "roles.put_tutor_role", json={"subject_ids": [1]}),
     "remove_tutor_role": Endpoint("DELETE", f"/persons/{ID}/tutor", "roles.remove_tutor_role"),
+    "add_contact_info": Endpoint("POST", f"/parties/{ID}/contact-infos", "contact_infos.add_contact_info", json=EMAIL),
+    "update_contact_info": Endpoint(
+        "PATCH", f"/parties/{ID}/contact-infos/{ID}", "contact_infos.update_contact_info", json={"value": "a@b.example"}
+    ),
+    "remove_contact_info": Endpoint("DELETE", f"/parties/{ID}/contact-infos/{ID}", "contact_infos.remove_contact_info"),
     "update_person": Endpoint("PATCH", f"/persons/{ID}", "persons.update_person", json={"firstname": "Max"}),
     "update_company": Endpoint("PATCH", f"/companies/{ID}", "companies.update_company", json={"name": "Musterfirma"}),
     "create_subject": Endpoint("POST", "/subjects", "subjects.create_subject", json={"title": "Mathematics"}),
@@ -90,6 +101,12 @@ EXPECTATIONS: list[Expectation] = [
     ("put_tutor_role", UnknownSubjectError("Unknown subject: 5, 7"), 422, "Unknown subject: 5, 7"),
     ("remove_tutor_role", PersonNotFoundError(INTERNAL), 404, "Person not found"),
     ("remove_tutor_role", RoleNotFoundError(INTERNAL), 404, "Role not assigned"),
+    ("add_contact_info", PartyNotFoundError(INTERNAL), 404, "Party not found"),
+    ("add_contact_info", ContactInfoAlreadyExistsError(INTERNAL), 409, CONTACT_INFO_EXISTS),
+    ("update_contact_info", ContactInfoNotFoundError(INTERNAL), 404, "Contact info not found"),
+    ("update_contact_info", ContactInfoAlreadyExistsError(INTERNAL), 409, CONTACT_INFO_EXISTS),
+    ("update_contact_info", InvalidContactValueError(INTERNAL), 422, INVALID_CONTACT_VALUE),
+    ("remove_contact_info", ContactInfoNotFoundError(INTERNAL), 404, "Contact info not found"),
     ("update_person", PersonNotFoundError(INTERNAL), 404, "Person not found"),
     ("update_company", CompanyNotFoundError(INTERNAL), 404, "Company not found"),
     ("create_subject", SubjectAlreadyExistsError(INTERNAL), 409, "Subject already exists"),
@@ -105,6 +122,9 @@ CATALOG: dict[type[DomainError], tuple[str, int, str, bool]] = {
     PersonNotFoundError: ("person_not_found", 404, "Person not found", False),
     CompanyNotFoundError: ("company_not_found", 404, "Company not found", False),
     PartyInUseError: ("party_in_use", 409, PARTY_IN_USE, True),
+    ContactInfoNotFoundError: ("contact_info_not_found", 404, "Contact info not found", False),
+    ContactInfoAlreadyExistsError: ("contact_info_already_exists", 409, CONTACT_INFO_EXISTS, False),
+    InvalidContactValueError: ("invalid_contact_value", 422, INVALID_CONTACT_VALUE, False),
     RoleNotFoundError: ("role_not_found", 404, "Role not assigned", False),
     UnknownSubjectError: ("unknown_subject", 422, "Unknown subject", True),
     SubjectNotFoundError: ("subject_not_found", 404, "Subject not found", False),

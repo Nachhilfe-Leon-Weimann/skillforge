@@ -5,7 +5,7 @@ The API imports from here, never the reverse: the services stay free of ``app.ap
 
 from collections.abc import Set
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum, StrEnum
 
 from pydantic import validate_email
 
@@ -17,6 +17,15 @@ class PartyRole(StrEnum):
 
     STUDENT = "student"
     TUTOR = "tutor"
+
+
+class Unset(Enum):
+    """Type of ``UNSET``: "leave this nullable field as it is", where ``None`` already means "clear it"."""
+
+    UNSET = "unset"
+
+
+UNSET = Unset.UNSET
 
 
 @dataclass(frozen=True)

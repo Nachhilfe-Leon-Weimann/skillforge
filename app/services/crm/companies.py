@@ -3,10 +3,11 @@ from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.models import Company, ContactInfo, Party, PartyType
+from app.core.db.models import Company, Party, PartyType
 
+from .contact_infos import new_contact_infos
 from .errors import CompanyNotFoundError
-from .inputs import NewContactInfo, normalize_contact_value
+from .inputs import NewContactInfo
 from .parties import load_party, saved
 
 
@@ -21,10 +22,7 @@ async def create_company(
         id=uuid.uuid4(),
         type=PartyType.COMPANY,
         company=Company(name=name),
-        contact_infos=[
-            ContactInfo(type=info.type, value=normalize_contact_value(info.type, info.value), label=info.label)
-            for info in contact_infos
-        ],
+        contact_infos=new_contact_infos(contact_infos),
     )
     session.add(party)
 
