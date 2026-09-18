@@ -105,18 +105,27 @@ async def test_get_party_of_an_unknown_id_is_404(client: AsyncClient):
 # --- update ---
 
 
-async def test_update_person_changes_only_the_fields_that_are_sent(client: AsyncClient):
+@pytest.mark.parametrize(
+    ("body", "changed"),
+    [
+        ({"lastname": "  Musterfrau "}, {"lastname": "Musterfrau", "display_name": "Max Musterfrau"}),
+        ({"firstname": " Erika\t"}, {"firstname": "Erika", "display_name": "Erika Mustermann"}),
+        (
+            {"firstname": "Erika", "lastname": "Musterfrau"},
+            {"firstname": "Erika", "lastname": "Musterfrau", "display_name": "Erika Musterfrau"},
+        ),
+    ],
+    ids=["lastname", "firstname", "both"],
+)
+async def test_update_person_changes_only_the_fields_that_are_sent(client: AsyncClient, body: dict, changed: dict):
     person = await _create_person(client, contact_infos=[EMAIL])
 
-    response = await client.patch(f"/persons/{person['id']}", json={"lastname": "  Musterfrau "})
+    response = await client.patch(f"/persons/{person['id']}", json=body)
 
     assert response.status_code == 200
-    assert response.json() == {
-        **person,
-        "lastname": "Musterfrau",
-        "display_name": "Max Musterfrau",
-        "updated_at": response.json()["updated_at"],
-    }
+    expected = {**person, **changed, "updated_at": response.json()["updated_at"]}
+    assert response.json() == expected
+    assert (await client.get(f"/parties/{person['id']}")).json() == expected
 
 
 async def test_update_company_changes_the_name(client: AsyncClient):
@@ -197,29 +206,51 @@ async def test_names_are_stripped_on_create(client: AsyncClient):
     assert company["name"] == "Musterfirma GmbH"
 
 
-@pytest.mark.parametrize("name", ["", "   ", None, "x" * 201])
-async def test_create_rejects_a_blank_missing_or_oversized_name(client: AsyncClient, session: AsyncSession, name):
-    person = await client.post("/persons", json={"firstname": name, "lastname": "Mustermann"})
-    company = await client.post("/companies", json={"name": name})
+PERSON_NAMES = {"firstname": "Max", "lastname": "Mustermann"}
+NAME_FIELDS = [("persons", "firstname"), ("persons", "lastname"), ("companies", "name")]
 
-    assert _validation_locs(person) == [["body", "firstname"]]
-    assert _validation_locs(company) == [["body", "name"]]
+
+@pytest.mark.parametrize("name", ["", "   ", None, "x" * 201], ids=["empty", "blank", "null", "oversized"])
+@pytest.mark.parametrize(
+    ("collection", "field"), [("persons", "firstname"), ("persons", "lastname"), ("companies", "name")]
+)
+async def test_create_rejects_a_blank_null_or_oversized_name(
+    client: AsyncClient, session: AsyncSession, collection: str, field: str, name
+):
+    names = PERSON_NAMES if collection == "persons" else {}
+
+    response = await client.post(f"/{collection}", json={**names, field: name})
+
+    assert _validation_locs(response) == [["body", field]]
     assert await _party_count(session) == 0
 
 
-@pytest.mark.parametrize("name", ["", "   ", None])
-async def test_update_rejects_a_blank_name_and_an_explicit_null(client: AsyncClient, name):
-    person = await _create_person(client)
-    company = await _create_company(client)
+@pytest.mark.parametrize(
+    ("collection", "field"), [("persons", "firstname"), ("persons", "lastname"), ("companies", "name")]
+)
+async def test_create_rejects_a_missing_name(client: AsyncClient, session: AsyncSession, collection: str, field: str):
+    names = {key: value for key, value in PERSON_NAMES.items() if key != field} if collection == "persons" else {}
 
-    patched_person = await client.patch(f"/persons/{person['id']}", json={"firstname": name})
-    patched_company = await client.patch(f"/companies/{company['id']}", json={"name": name})
+    response = await client.post(f"/{collection}", json=names)
+
+    assert _validation_locs(response) == [["body", field]]
+    assert await _party_count(session) == 0
+
+
+@pytest.mark.parametrize("name", ["", "   ", None, "x" * 201], ids=["empty", "blank", "null", "oversized"])
+@pytest.mark.parametrize(
+    ("collection", "field"), [("persons", "firstname"), ("persons", "lastname"), ("companies", "name")]
+)
+async def test_update_rejects_a_blank_oversized_or_explicitly_null_name(
+    client: AsyncClient, collection: str, field: str, name
+):
+    created = await (_create_person if collection == "persons" else _create_company)(client)
+
+    response = await client.patch(f"/{collection}/{created['id']}", json={field: name})
 
     # The `Name | MISSING` union reports one error per member, all under the same field.
-    assert {tuple(loc[:2]) for loc in _validation_locs(patched_person)} == {("body", "firstname")}
-    assert {tuple(loc[:2]) for loc in _validation_locs(patched_company)} == {("body", "name")}
-    assert (await client.get(f"/parties/{person['id']}")).json() == person
-    assert (await client.get(f"/parties/{company['id']}")).json() == company
+    assert {tuple(loc[:2]) for loc in _validation_locs(response)} == {("body", field)}
+    assert (await client.get(f"/parties/{created['id']}")).json() == created
 
 
 # --- nested contact infos ---
@@ -284,13 +315,24 @@ async def test_create_rejects_the_same_type_and_value_twice_with_a_field_path(
     assert await _party_count(session) == 0
 
 
-async def test_the_same_value_may_appear_with_another_type_and_on_another_party(client: AsyncClient):
+async def test_the_same_value_may_appear_on_another_party(client: AsyncClient):
     """No global duplicate prevention: a parent's e-mail may legitimately appear on the child too."""
     parent = await _create_person(client, contact_infos=[EMAIL])
     child = await _create_person(client, firstname="Mia", contact_infos=[EMAIL])
 
     assert parent["contact_infos"][0]["value"] == child["contact_infos"][0]["value"]
     assert parent["contact_infos"][0]["id"] != child["contact_infos"][0]["id"]
+
+
+async def test_the_same_value_may_appear_under_both_types_of_one_party(client: AsyncClient):
+    """The duplicate key is ``(type, value)``, not the value alone."""
+    value = "max.mustermann@example.com"
+
+    person = await _create_person(
+        client, contact_infos=[{"type": "email", "value": value}, {"type": "phone", "value": value}]
+    )
+
+    assert [(info["type"], info["value"]) for info in person["contact_infos"]] == [("email", value), ("phone", value)]
 
 
 async def test_a_validation_error_never_echoes_the_rejected_contact_value(client: AsyncClient):
