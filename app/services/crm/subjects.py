@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from sqlalchemy import exists, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,8 +29,8 @@ async def get_subject(session: AsyncSession, subject_id: int) -> Subject:
 
 async def create_subject(session: AsyncSession, *, title: str) -> Subject:
     subject = Subject(title=title)
-    session.add(subject)
-    await _flush_unique_title(session)
+    async with _unique_title(session):
+        session.add(subject)
     return subject
 
 
@@ -35,8 +38,8 @@ async def update_subject(session: AsyncSession, subject_id: int, *, title: str |
     """Change the given fields; ``None`` means unchanged (the column is ``NOT NULL``)."""
     subject = await get_subject(session, subject_id)
     if title is not None:
-        subject.title = title
-        await _flush_unique_title(session)
+        async with _unique_title(session):
+            subject.title = title
 
     return subject
 
@@ -57,11 +60,18 @@ async def delete_subject(session: AsyncSession, subject_id: int) -> None:
     await session.flush()
 
 
-async def _flush_unique_title(session: AsyncSession) -> None:
-    # Uniqueness is decided by uq_subject_title_lower, not by check-then-insert. Flushing inside a
-    # SAVEPOINT forces the violation here and leaves the surrounding transaction usable.
+@asynccontextmanager
+async def _unique_title(session: AsyncSession) -> AsyncIterator[None]:
+    """Write the change made inside the block in a SAVEPOINT and translate a title conflict.
+
+    Uniqueness is decided by uq_subject_title_lower, not by check-then-insert; the flush forces the
+    violation here instead of at commit. The change must happen *inside* the block:
+    ``begin_nested()`` first flushes whatever is pending into the enclosing transaction, so a change
+    made before it would fail out there and take the whole transaction down.
+    """
     try:
         async with session.begin_nested():
+            yield
             await session.flush()
     except IntegrityError as exc:
         raise SubjectAlreadyExistsError("Subject title is already taken") from exc
