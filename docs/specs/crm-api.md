@@ -1,6 +1,6 @@
 # Spec: CRM API (parties, roles, contact infos, relations, subjects)
 
-> Status: Draft - implementation-ready | Domain arc `crm`
+> Status: P0 implemented on `feat/crm-api` (2026-09), P1 open | Domain arc `crm`
 > Builds on [`api-conventions.md`](api-conventions.md) (P0-1 to P0-4 and P1 merged) and on
 > [ADR 0007](../decisions/0007-crm-system-of-record.md) (Accepted). **Supersedes P0-5 of `api-conventions.md`.**
 > Written to be executed by coding agents: every requirement names its symbols, files and checkable criteria.
@@ -340,11 +340,16 @@ updated_at = now()` for the given IDs, then `flush()`), `return await load_party
 **Standing criteria - they hold for every slice and are ticked with P0-6.** They carry over the acceptance
 criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
 
-- [ ] Under `app/api/v1/crm/` there is no `HTTPException`, no `try/except` around a service call, no inline
+- [x] Under `app/api/v1/crm/` there is no `HTTPException`, no `try/except` around a service call, no inline
       `Annotated[...]` in an endpoint signature and no parameter named `_`. Path and query vocabulary comes from
       `params.py`; its path parameters carry a description and `examples=[...]`.
-- [ ] Every property of every CRM schema and every CRM path and query parameter has a description in
+- [x] Every property of every CRM schema and every CRM path and query parameter has a description in
       `openapi.json` (a test over `app.openapi()`).
+- _Proven by:_ `test_the_crm_endpoints_carry_no_boilerplate` in
+  [`test_crm_architecture.py`](../../tests/api/test_crm_architecture.py) (an AST check over all 21 endpoints, with a
+  probe that it catches each kind) and the description and `examples` tests in
+  [`test_crm_openapi.py`](../../tests/api/test_crm_openapi.py), which walk every schema reachable from a CRM
+  operation. "No inline `Annotated[...]`" is checked as: every endpoint parameter is typed by an alias.
 
 **P0-1 - Foundation and subjects.** _The whole stack once, on the simplest resource._
 
@@ -520,16 +525,33 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
 - _Technique:_ `list_relations`, `put_relation`, `remove_relation`; the rules table; `RelationResponse` built
   relative to the party in the path; `saved(session, from_id, to_id)`.
 - _Acceptance criteria:_
-  - [ ] Each rule of the table has a passing and a failing case; a failing one is 422 `invalid_party_relation` with a
+  - [x] Each rule of the table has a passing and a failing case; a failing one is 422 `invalid_party_relation` with a
         `detail` naming the rule. `from == to` is rejected for every type.
-  - [ ] An unknown `party_id` is 404 `party_not_found`, an unknown `to_party_id` is 404 `related_party_not_found`.
-  - [ ] `PUT` is idempotent (200 twice); `DELETE` of a missing relation is 404 `party_relation_not_found`.
-  - [ ] `GET .../relations` returns both directions by default; from the child's side a `parent_of` relation shows
+  - [x] An unknown `party_id` is 404 `party_not_found`, an unknown `to_party_id` is 404 `related_party_not_found`.
+  - [x] `PUT` is idempotent (200 twice); `DELETE` of a missing relation is 404 `party_relation_not_found`.
+  - [x] `GET .../relations` returns both directions by default; from the child's side a `parent_of` relation shows
         `direction == "incoming"` and the parent as `party`.
-  - [ ] **End to end:** an API test performs the four-call reference flow and then reads the student's detail and
+  - [x] **End to end:** an API test performs the four-call reference flow and then reads the student's detail and
         relations.
-  - [ ] Docs: a CRM section in [`ARCHITECTURE.md`](../ARCHITECTURE.md), the layout in
+  - [x] Docs: a CRM section in [`ARCHITECTURE.md`](../ARCHITECTURE.md), the layout in
         [`CLAUDE.md`](../../CLAUDE.md), and this spec's checkboxes ticked.
+- _Deviations:_
+  - `put_relation` is one `INSERT ... ON CONFLICT DO NOTHING`: idempotent also for two racing requests, without a
+    savepoint. **An existing relation is not a write** (the rule of P0-2 and P0-4), so the repeated `PUT` leaves
+    both `updated_at` alone and answers with the same representation.
+  - The services return `PartyRelationView` (defined in `relations.py`, like the bot's `views.py`): the relation
+    relative to one party, with the other side loaded through `PARTY_GRAPH`. `RelationResponse.from_view` maps it;
+    a page loads all other sides in one statement.
+  - The rule messages: "a party cannot be related to itself", "parent_of must start at / point to a person",
+    "tutor_of must start at a person holding the tutor role", "tutor_of must point to a person holding the
+    student role", "pays_for must point to a person" - each prefixed with "Invalid party relation: ".
+  - `DELETE` looks only for the relation: unknown parties are `party_relation_not_found` too, as the route table
+    says.
+  - The order `created_at, type, other party id` is asserted on the emitted SQL: inside one test transaction all
+    `created_at` are equal.
+  - Now that the surface is complete, the closed items are pinned by tests: the route map with its operation IDs
+    and success statuses (`test_crm_openapi.py`) and the 15 catalog classes (`test_crm_error_contract.py`).
+
 
 ### Nice-to-have (P1)
 
