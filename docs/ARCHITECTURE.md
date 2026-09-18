@@ -171,7 +171,9 @@ declaration. The full rules, with the *why*, are in the
   *returns* the error (`ApiError.response()`) instead of raising it - the token endpoint does, to
   keep its `TOKEN_DENIED` audit entry.
 - **Lists** take a `PageParams` subclass (`limit`, `offset`, filters; unknown parameters are a
-  `422`) and return `Page[Item]` - never a bare array.
+  `422`) and return `Page[Item]` - never a bare array. One exception is left: `GET /auth/clients`
+  still returns an array; changing it alters the response shape and is an open decision in the
+  spec (P1-5).
 - **Schemas** derive from `ApiModel`: a docstring under a field becomes its OpenAPI description.
 
 ## Roadmap: capability arcs
