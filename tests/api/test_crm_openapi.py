@@ -105,3 +105,69 @@ def test_every_crm_path_parameter_has_examples(schema: dict[str, Any]):
                 assert parameter.get("examples") or parameter["schema"].get("examples"), (
                     f"{method} {path}: {parameter['name']}"
                 )
+
+
+def test_party_detail_is_a_discriminated_union_of_person_and_company(schema: dict[str, Any]):
+    assert schema["components"]["schemas"]["PartyDetail"] == {
+        "oneOf": [
+            {"$ref": "#/components/schemas/PersonDetail"},
+            {"$ref": "#/components/schemas/CompanyDetail"},
+        ],
+        "discriminator": {
+            "propertyName": "type",
+            "mapping": {
+                "person": "#/components/schemas/PersonDetail",
+                "company": "#/components/schemas/CompanyDetail",
+            },
+        },
+    }
+
+
+def test_party_detail_is_referenced_by_exactly_one_operation(schema: dict[str, Any]):
+    referencing = [
+        operation["operationId"]
+        for path_item in schema["paths"].values()
+        for method, operation in path_item.items()
+        if method in HTTP_METHODS and "PartyDetail" in _refs(operation)
+    ]
+    other_schemas = [
+        name for name, definition in schema["components"]["schemas"].items() if "PartyDetail" in _refs(definition)
+    ]
+
+    assert referencing == ["crm_get_party"]
+    assert other_schemas == []
+
+
+def test_the_typed_write_routes_reference_their_union_member_directly(schema: dict[str, Any]):
+    paths = schema["paths"]
+
+    for path, method, status, member in [
+        ("/api/v1/crm/persons", "post", "201", "PersonDetail"),
+        ("/api/v1/crm/persons/{party_id}", "patch", "200", "PersonDetail"),
+        ("/api/v1/crm/companies", "post", "201", "CompanyDetail"),
+        ("/api/v1/crm/companies/{party_id}", "patch", "200", "CompanyDetail"),
+    ]:
+        response = paths[path][method]["responses"][status]
+        assert response["content"]["application/json"]["schema"] == {"$ref": f"#/components/schemas/{member}"}
+
+
+def test_the_union_members_differ_in_their_required_fields(schema: dict[str, Any]):
+    """The generated client ignores the discriminator and tries the members in order."""
+    person = set(schema["components"]["schemas"]["PersonDetail"]["required"])
+    company = set(schema["components"]["schemas"]["CompanyDetail"]["required"])
+
+    assert person - company
+    assert company - person
+
+
+def test_every_property_of_a_create_request_carries_examples(schema: dict[str, Any]):
+    create_requests = {
+        name: definition
+        for name, definition in schema["components"]["schemas"].items()
+        if name.endswith("CreateRequest") and name in _crm_schema_names(schema)
+    }
+
+    assert {"PersonCreateRequest", "CompanyCreateRequest", "ContactInfoCreateRequest"} <= set(create_requests)
+    for name, definition in create_requests.items():
+        for property_name, property_schema in definition["properties"].items():
+            assert property_schema.get("examples"), f"{name}.{property_name}"
