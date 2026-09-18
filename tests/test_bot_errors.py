@@ -27,7 +27,6 @@ CONTRACT = [
         "Owner already owns a command env of this kind in the guild",
         False,
     ),
-    (errors.PartyNotFoundError, 404, "party_not_found", "Party not found", False),
     (
         errors.AccountLinkConflictError,
         409,
@@ -69,3 +68,11 @@ def test_contract_table_covers_every_bot_error():
 
 def test_bot_service_error_stays_a_plain_base_without_a_contract_of_its_own():
     assert not issubclass(BotServiceError, DomainError)
+
+
+def test_party_not_found_is_the_crm_error_not_a_bot_one():
+    """The CRM owns parties (ADR 0007); its contract is pinned in ``tests/api/test_crm_error_contract.py``."""
+    from app.services.crm.errors import PartyNotFoundError
+
+    assert errors.PartyNotFoundError is PartyNotFoundError
+    assert not issubclass(PartyNotFoundError, BotServiceError)

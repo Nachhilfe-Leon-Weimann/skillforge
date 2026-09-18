@@ -8,6 +8,9 @@ raises with (``JobNotFoundError(f"No job with id {job_id}")``) stays internal un
 
 from app.core.errors import ConflictError, DomainValidationError, NotFoundError
 
+# The CRM owns parties (ADR 0007): linking a Discord account to an unknown party raises the CRM's error.
+from app.services.crm.errors import PartyNotFoundError as PartyNotFoundError
+
 
 class BotServiceError(Exception):
     """Base class for bot service-layer domain errors."""
@@ -47,12 +50,6 @@ class CommandEnvConflictError(BotServiceError, ConflictError):
     """The command env violates a uniqueness rule (e.g. owner already owns one of this kind)."""
 
     message = "Owner already owns a command env of this kind in the guild"
-
-
-class PartyNotFoundError(BotServiceError, NotFoundError):
-    """No party exists for the requested party_id when linking a Discord account."""
-
-    message = "Party not found"
 
 
 class AccountLinkConflictError(BotServiceError, ConflictError):

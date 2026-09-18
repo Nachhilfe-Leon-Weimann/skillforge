@@ -9,6 +9,24 @@ client sees; the instance message a service raises with stays internal unless th
 from app.core.errors import ConflictError, NotFoundError
 
 
+class PartyNotFoundError(NotFoundError):
+    """No party exists for the requested party_id."""
+
+    message = "Party not found"
+
+
+class PersonNotFoundError(NotFoundError):
+    """No person exists for the requested party_id; a company's ID counts as missing here."""
+
+    message = "Person not found"
+
+
+class CompanyNotFoundError(NotFoundError):
+    """No company exists for the requested party_id; a person's ID counts as missing here."""
+
+    message = "Company not found"
+
+
 class SubjectNotFoundError(NotFoundError):
     """No subject exists for the requested subject_id."""
 
