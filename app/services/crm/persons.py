@@ -6,8 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.models import ContactInfo, Party, PartyType, Person
 
 from .errors import PersonNotFoundError
-from .inputs import NewContactInfo, normalize_contact_value
+from .inputs import NewContactInfo, StudentRoleData, TutorRoleData, normalize_contact_value
 from .parties import load_party, saved
+from .roles import apply_student_role, apply_tutor_role
+from .subjects import require_subjects
 
 
 async def create_person(
@@ -16,12 +18,27 @@ async def create_person(
     firstname: str,
     lastname: str,
     contact_infos: Sequence[NewContactInfo] = (),
+    student: StudentRoleData | None = None,
+    tutor: TutorRoleData | None = None,
 ) -> Party:
-    """Create a party of type person together with its contact infos."""
+    """Create a party of type person together with its contact infos and roles."""
+    # Checked before anything is added: an unknown subject creates no party at all.
+    await require_subjects(
+        session,
+        (student.subject_ids if student else frozenset()) | (tutor.subject_ids if tutor else frozenset()),
+    )
+
+    person = Person(firstname=firstname, lastname=lastname)
+    if student is not None:
+        apply_student_role(
+            person, preferred_meeting_tool=student.preferred_meeting_tool, subject_ids=student.subject_ids
+        )
+    if tutor is not None:
+        apply_tutor_role(person, subject_ids=tutor.subject_ids)
     party = Party(
         id=uuid.uuid4(),
         type=PartyType.PERSON,
-        person=Person(firstname=firstname, lastname=lastname),
+        person=person,
         contact_infos=[
             ContactInfo(type=info.type, value=normalize_contact_value(info.type, info.value), label=info.label)
             for info in contact_infos
