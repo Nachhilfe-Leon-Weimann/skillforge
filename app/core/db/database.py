@@ -28,6 +28,9 @@ class Database:
             normalized_url,
             echo=echo,
             pool_pre_ping=True,
+            # A failing statement is logged with its traceback. Without this the message repeats the
+            # bound parameters - names, e-mail addresses, phone numbers of the CRM.
+            hide_parameters=True,
             **engine_options,
         )
 
