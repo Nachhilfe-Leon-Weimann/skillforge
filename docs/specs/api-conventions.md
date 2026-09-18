@@ -138,7 +138,7 @@ app/api/v1/common/
   responses.py                   error_responses(*error_types); legacy error_response stays until P1-1
   pagination.py                  PageParams, PageQuery, Page[T]                                      (new)
   openapi.py                     operation_id, OPENAPI_TAGS, customize_openapi                       (new)
-app/services/crm/errors.py       CrmServiceError, PartyNotFoundError                                  (new)
+app/services/crm/errors.py       PartyNotFoundError and the CRM error catalog (crm-api.md)            (new)
 ```
 
 Domain-specific vocabulary (`PartyId`, `PartyListParams`) lives in the domain package, not in `common/`.
@@ -263,7 +263,9 @@ Domain-specific vocabulary (`PartyId`, `PartyListParams`) lives in the domain pa
   - [x] `?limit=0`, `?limit=101`, `?offset=-1` and an unknown query parameter each return 422 in the envelope.
   - [x] A subclass with one filter field documents and parses all three parameters.
 
-**P0-5 - CRM `parties` as the reference implementation.**
+**P0-5 - CRM `parties` as the reference implementation.** *Superseded by [`crm-api.md`](crm-api.md): the CRM
+surface is specified there as a whole, and its standing criteria carry over the acceptance criteria below. The
+text stays as the record of what was planned; nothing here is implemented or ticked separately.*
 - *Technique:* bring [`parties.py`](../../app/api/v1/crm/parties.py) to the target shape. `get_party` in the
   service raises `PartyNotFoundError(NotFoundError)` from `app/services/crm/errors.py` instead of returning
   `None`; the list endpoint returns `Page[PartyResponse]` and takes `PartyListQuery`, the alias of a
@@ -291,10 +293,10 @@ the CRM one (CRM owns parties).
       approved 2026-09-18:* `PrincipalNotFoundError` surfaced as three endpoint-specific strings ("Discord
       principal not found", "Discord user not found", "Actor principal not found"); one class has one `code` and
       now one `detail`, "Discord principal not found".
-- [ ] *Open until P0-5:* the bot's `PartyNotFoundError` still lives in `app/services/bot/errors.py` (re-parented
-      onto `NotFoundError`), because `app/services/crm/errors.py` does not exist yet. Both classes derive the code
-      `party_not_found`, so the uniqueness guard in
-      [`test_error_taxonomy.py`](../../tests/api/test_error_taxonomy.py) fails until the bot one is replaced.
+- [x] Closed by P0-2 of [`crm-api.md`](crm-api.md): `PartyNotFoundError` is defined once, in
+      `app/services/crm/errors.py`; the bot's class is deleted and `app/services/bot/errors.py` imports the CRM one.
+      Status, `code` and `detail` are unchanged, and
+      [`test_error_taxonomy.py`](../../tests/api/test_error_taxonomy.py) passes with a single `party_not_found`.
 
 **P1-2 - Bot lists adopt the vocabulary.** `JobPage` and `OperationPage` are deleted in favor of
 `Page[JobListItem]` / `Page[...]` (the schema rename is free pre-launch, decision L); the list endpoints move to
@@ -337,8 +339,9 @@ keeps a local 400 mapping (non-goal: changing status codes).
 
 **P1-6 - Record the conventions.** Add a bullet to `CLAUDE.md` (Conventions) and a short section to
 `docs/ARCHITECTURE.md` pointing here, once P0 is merged.
-- [x] Done ahead of P0-5: the conventions are in force for `auth` and `bot`, and new CRM endpoints should be
-      written against them. Once P0-5 lands, `parties.py` is the reference implementation to point at.
+- [x] Done ahead of the CRM: the conventions are in force for `auth` and `bot`, and new CRM endpoints are
+      written against them. The reference implementation to point at is the CRM API
+      ([`crm-api.md`](crm-api.md)), starting with [`subjects.py`](../../app/api/v1/crm/subjects.py).
 
 ### Future considerations (P2)
 
@@ -371,8 +374,8 @@ jumps once either side is live, which is why the rename happens first.
 - *Undocumented auth responses:* operations with `security` but without 401/403 in `openapi.json`.
   **Target: 0** (today: 8).
 - *Error shapes in the contract:* distinct error body schemas. **Target: 1** (today: 2).
-- *Boilerplate:* `HTTPException` occurrences under `app/api/v1/`. **Target: 0 in `crm/`** after P0-5; trending to
-  0 in `bot/` with P1-1.
+- *Boilerplate:* `HTTPException` occurrences under `app/api/v1/`. **Target: 0 in `crm/`** (a standing criterion
+  of [`crm-api.md`](crm-api.md)); trending to 0 in `bot/` with P1-1.
 - *Endpoint cost:* a new CRUD read endpoint is decorator + signature + at most three body lines.
 
 ## Decided (formerly open questions)
@@ -395,7 +398,8 @@ One PR per requirement, in this order; each keeps `just check` green and regener
    regenerates the client.
 2. **P0-2** - security declaration + derived 401/403.
 3. **P0-3** - envelope, handlers, docs helper (ADR 0006).
-4. **P0-4 + P0-5** together - pagination is only proven by its first user, the CRM reference endpoints.
+4. **P0-4** - pagination; P0-5 is superseded by [`crm-api.md`](crm-api.md), whose list endpoints use the
+   vocabulary (the bot lists of P1-2 were its first real users).
 5. **P1-1 .. P1-6** as independent follow-ups, bot migration first.
 
 **Dependency:** none open - ADR 0006 is accepted. **Blocks:** every further CRM endpoint should be
