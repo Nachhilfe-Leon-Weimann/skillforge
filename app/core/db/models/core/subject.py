@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Integer, String
+from sqlalchemy import Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import CoreBase
@@ -28,4 +28,9 @@ class Subject(CoreBase):
         "StudentSubject",
         back_populates="subject",
         cascade="all, delete-orphan",
+    )
+
+    __table_args__ = CoreBase.extend_table_args(
+        # Titles are unique regardless of case: "Mathe" and "mathe" are the same subject.
+        Index("uq_subject_title_lower", func.lower(title), unique=True),
     )

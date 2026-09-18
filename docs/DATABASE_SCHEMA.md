@@ -74,6 +74,7 @@ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 -- core.subject
 id INTEGER PRIMARY KEY AUTOINCREMENT
 title TEXT NOT NULL
+UNIQUE INDEX (lower(title))  -- uq_subject_title_lower: titles are unique regardless of case
 
 -- core.student_subject
 student_id UUID REFERENCES core.student(person_id) ON DELETE CASCADE
