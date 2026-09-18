@@ -33,6 +33,18 @@ class RoleNotFoundError(NotFoundError):
     message = "Role not assigned"
 
 
+class ContactInfoNotFoundError(NotFoundError):
+    """The party has no contact info with the requested ID; one of another party counts as missing."""
+
+    message = "Contact info not found"
+
+
+class ContactInfoAlreadyExistsError(ConflictError):
+    """The party already has a contact info with this type and value."""
+
+    message = "Contact info already exists for this party"
+
+
 class PartyInUseError(ConflictError):
     """The party is linked to an external system or a Discord account and must not be orphaned there."""
 
@@ -65,3 +77,9 @@ class UnknownSubjectError(DomainValidationError):
     message = "Unknown subject"
     # Raised with a client-ready message only: it lists the unknown IDs the client sent itself.
     expose_message = True
+
+
+class InvalidContactValueError(DomainValidationError):
+    """The value does not fit the type of the stored contact info (known from the database only)."""
+
+    message = "Value is not valid for this contact info type"

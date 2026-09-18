@@ -773,6 +773,33 @@
         "title": "ContactInfoType",
         "type": "string"
       },
+      "ContactInfoUpdateRequest": {
+        "description": "Body of `PATCH /parties/{party_id}/contact-infos/{contact_info_id}`: only the fields that are sent change.\n\n`type` is immutable and not part of this body; delete the contact info and add another one instead.",
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New label; `null` clears it.",
+            "title": "Label"
+          },
+          "value": {
+            "description": "New value. It must fit the stored type (422 `invalid_contact_value` otherwise) and is normalized as on create.",
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "title": "ContactInfoUpdateRequest",
+        "type": "object"
+      },
       "CreatedClientSecretResponse": {
         "properties": {
           "client_secret": {
@@ -9977,6 +10004,483 @@
           }
         ],
         "summary": "Get Party",
+        "tags": [
+          "crm"
+        ]
+      }
+    },
+    "/api/v1/crm/parties/{party_id}/contact-infos": {
+      "post": {
+        "description": "Add a contact info to a party. The same type and value cannot be added twice.",
+        "operationId": "crm_add_contact_info",
+        "parameters": [
+          {
+            "description": "ID of the party.",
+            "in": "path",
+            "name": "party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party.",
+              "examples": [
+                "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+              ],
+              "format": "uuid",
+              "title": "Party Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactInfoCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactInfoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "party_not_found": {
+                    "value": {
+                      "code": "party_not_found",
+                      "detail": "Party not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Party not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "contact_info_already_exists": {
+                    "value": {
+                      "code": "contact_info_already_exists",
+                      "detail": "Contact info already exists for this party"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Contact info already exists for this party"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Add Contact Info",
+        "tags": [
+          "crm"
+        ]
+      }
+    },
+    "/api/v1/crm/parties/{party_id}/contact-infos/{contact_info_id}": {
+      "delete": {
+        "description": "Remove a contact info from a party.",
+        "operationId": "crm_remove_contact_info",
+        "parameters": [
+          {
+            "description": "ID of the party.",
+            "in": "path",
+            "name": "party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party.",
+              "examples": [
+                "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+              ],
+              "format": "uuid",
+              "title": "Party Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ID of the contact info, as listed in the party detail.",
+            "in": "path",
+            "name": "contact_info_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the contact info, as listed in the party detail.",
+              "examples": [
+                "3f2b8c1e-5a4d-4e6f-8a9b-0c1d2e3f4a5b"
+              ],
+              "format": "uuid",
+              "title": "Contact Info Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "contact_info_not_found": {
+                    "value": {
+                      "code": "contact_info_not_found",
+                      "detail": "Contact info not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Contact info not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Remove Contact Info",
+        "tags": [
+          "crm"
+        ]
+      },
+      "patch": {
+        "description": "Change the value or the label of a contact info; its type is immutable. An empty body changes nothing.",
+        "operationId": "crm_update_contact_info",
+        "parameters": [
+          {
+            "description": "ID of the party.",
+            "in": "path",
+            "name": "party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party.",
+              "examples": [
+                "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+              ],
+              "format": "uuid",
+              "title": "Party Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ID of the contact info, as listed in the party detail.",
+            "in": "path",
+            "name": "contact_info_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the contact info, as listed in the party detail.",
+              "examples": [
+                "3f2b8c1e-5a4d-4e6f-8a9b-0c1d2e3f4a5b"
+              ],
+              "format": "uuid",
+              "title": "Contact Info Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactInfoUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactInfoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "contact_info_not_found": {
+                    "value": {
+                      "code": "contact_info_not_found",
+                      "detail": "Contact info not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Contact info not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "contact_info_already_exists": {
+                    "value": {
+                      "code": "contact_info_already_exists",
+                      "detail": "Contact info already exists for this party"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Contact info already exists for this party"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_contact_value": {
+                    "value": {
+                      "code": "invalid_contact_value",
+                      "detail": "Value is not valid for this contact info type"
+                    }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Value is not valid for this contact info type"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Update Contact Info",
         "tags": [
           "crm"
         ]

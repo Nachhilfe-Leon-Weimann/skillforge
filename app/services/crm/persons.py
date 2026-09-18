@@ -3,10 +3,11 @@ from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.models import ContactInfo, Party, PartyType, Person
+from app.core.db.models import Party, PartyType, Person
 
+from .contact_infos import new_contact_infos
 from .errors import PersonNotFoundError
-from .inputs import NewContactInfo, StudentRoleData, TutorRoleData, normalize_contact_value
+from .inputs import NewContactInfo, StudentRoleData, TutorRoleData
 from .parties import load_party, saved
 from .roles import apply_student_role, apply_tutor_role
 from .subjects import require_subjects
@@ -39,10 +40,7 @@ async def create_person(
         id=uuid.uuid4(),
         type=PartyType.PERSON,
         person=person,
-        contact_infos=[
-            ContactInfo(type=info.type, value=normalize_contact_value(info.type, info.value), label=info.label)
-            for info in contact_infos
-        ],
+        contact_infos=new_contact_infos(contact_infos),
     )
     session.add(party)
 

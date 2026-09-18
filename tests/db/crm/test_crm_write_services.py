@@ -23,7 +23,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.crm.schemas import PersonDetail, party_detail
+from app.api.v1.crm.schemas import ContactInfoResponse, PersonDetail, party_detail
 from app.core.db.models import (
     ContactInfo,
     ContactInfoType,
@@ -37,7 +37,7 @@ from app.core.db.models import (
     TutorSubject,
 )
 from app.services import crm as crm_services
-from app.services.crm import companies, parties, persons, roles, subjects
+from app.services.crm import companies, contact_infos, parties, persons, roles, subjects
 from app.services.crm.inputs import NewContactInfo, StudentRoleData, TutorRoleData
 
 pytestmark = pytest.mark.db
@@ -140,6 +140,34 @@ async def _remove_tutor_role(session: AsyncSession, seed: Seed) -> Party:
     return await roles.remove_tutor_role(session, seed.person_id)
 
 
+async def _first_contact_info_id(session: AsyncSession, party_id: uuid.UUID) -> uuid.UUID:
+    contact_info_id = await session.scalar(
+        select(ContactInfo.id).where(ContactInfo.party_id == party_id, ContactInfo.type == ContactInfoType.EMAIL)
+    )
+    assert contact_info_id is not None
+    return contact_info_id
+
+
+async def _add_contact_info(session: AsyncSession, seed: Seed) -> ContactInfoResponse:
+    contact_info = await contact_infos.add_contact_info(
+        session, seed.company_id, type=ContactInfoType.EMAIL, value="Office@Musterfirma.example", label="office"
+    )
+    return ContactInfoResponse.from_model(contact_info)
+
+
+async def _update_contact_info(session: AsyncSession, seed: Seed) -> ContactInfoResponse:
+    contact_info_id = await _first_contact_info_id(session, seed.person_id)
+    contact_info = await contact_infos.update_contact_info(
+        session, seed.person_id, contact_info_id, value="New@Example.com", label=None
+    )
+    return ContactInfoResponse.from_model(contact_info)
+
+
+async def _remove_contact_info(session: AsyncSession, seed: Seed) -> None:
+    contact_info_id = await _first_contact_info_id(session, seed.person_id)
+    await contact_infos.remove_contact_info(session, seed.person_id, contact_info_id)
+
+
 async def _create_person_with_roles(session: AsyncSession, seed: Seed) -> Party:
     return await persons.create_person(
         session,
@@ -172,6 +200,10 @@ WRITES = [
     Write(roles.put_tutor_role, _put_tutor_role, touches=lambda seed: (seed.person_id,)),
     Write(roles.remove_student_role, _remove_student_role, touches=lambda seed: (seed.person_id,)),
     Write(roles.remove_tutor_role, _remove_tutor_role, touches=lambda seed: (seed.person_id,)),
+    # A child write returns the child: the scenario maps it, which must not lazy-load either.
+    Write(contact_infos.add_contact_info, _add_contact_info, touches=lambda seed: (seed.company_id,)),
+    Write(contact_infos.update_contact_info, _update_contact_info, touches=lambda seed: (seed.person_id,)),
+    Write(contact_infos.remove_contact_info, _remove_contact_info, touches=lambda seed: (seed.person_id,)),
     Write(
         persons.update_person,
         lambda session, seed: persons.update_person(session, seed.person_id, firstname="Maximilian"),

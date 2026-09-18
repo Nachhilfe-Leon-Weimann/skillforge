@@ -15,6 +15,14 @@ PartyId = Annotated[
     Path(description="ID of the party.", examples=["7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"]),
 ]
 
+ContactInfoId = Annotated[
+    uuid.UUID,
+    Path(
+        description="ID of the contact info, as listed in the party detail.",
+        examples=["3f2b8c1e-5a4d-4e6f-8a9b-0c1d2e3f4a5b"],
+    ),
+]
+
 # Where a created party can be read: the target of the `Location` header of `POST /persons` and `POST /companies`.
 PARTY_LOCATION = "/api/v1/crm/parties/{party_id}"
 
