@@ -21,3 +21,5 @@ class Scope(StrEnum):
     BOT_READ = "bot:read", "Read bot API surface."
     BOT_WRITE = "bot:write", "Write bot API surface."
     AUTH_CLIENTS_MANAGE = "auth:clients:manage", "Manage application clients."
+    CRM_READ = "crm:read", "Read parties, relations and subjects."
+    CRM_WRITE = "crm:write", "Create, change and delete parties, relations and subjects."

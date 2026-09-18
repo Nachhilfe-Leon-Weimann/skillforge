@@ -1900,6 +1900,41 @@
         "title": "Page[OperationSummary]",
         "type": "object"
       },
+      "Page_SubjectResponse_": {
+        "properties": {
+          "items": {
+            "description": "The items of this page, in the order of the list.",
+            "items": {
+              "$ref": "#/components/schemas/SubjectResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "The page size that was applied.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Number of items skipped before this page.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Number of items matching the request across all pages.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[SubjectResponse]",
+        "type": "object"
+      },
       "PartyRelationType": {
         "enum": [
           "parent_of",
@@ -2103,6 +2138,61 @@
           "missing"
         ],
         "title": "StudentContextBatch",
+        "type": "object"
+      },
+      "SubjectCreateRequest": {
+        "description": "Body of `POST /subjects`.",
+        "properties": {
+          "title": {
+            "description": "Title of the subject. Surrounding whitespace is stripped; must be unique regardless of case.",
+            "examples": [
+              "Mathematics"
+            ],
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "SubjectCreateRequest",
+        "type": "object"
+      },
+      "SubjectResponse": {
+        "description": "A subject students learn and tutors teach.",
+        "properties": {
+          "id": {
+            "description": "ID of the subject.",
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Title of the subject, unique regardless of case.",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "SubjectResponse",
+        "type": "object"
+      },
+      "SubjectUpdateRequest": {
+        "description": "Body of `PATCH /subjects/{subject_id}`: only the fields that are sent change.",
+        "properties": {
+          "title": {
+            "description": "New title of the subject. Surrounding whitespace is stripped; must be unique regardless of case.",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "title": "SubjectUpdateRequest",
         "type": "object"
       },
       "SystemHealthCheckResponse": {
@@ -2336,7 +2426,9 @@
             "scopes": {
               "auth:clients:manage": "Manage application clients.",
               "bot:read": "Read bot API surface.",
-              "bot:write": "Write bot API surface."
+              "bot:write": "Write bot API surface.",
+              "crm:read": "Read parties, relations and subjects.",
+              "crm:write": "Create, change and delete parties, relations and subjects."
             },
             "tokenUrl": "/api/v1/auth/token"
           }
@@ -8577,6 +8669,550 @@
         "summary": "Add User To Group Endpoint",
         "tags": [
           "bot"
+        ]
+      }
+    },
+    "/api/v1/crm/subjects": {
+      "get": {
+        "description": "List subjects, ordered by title.",
+        "operationId": "crm_list_subjects",
+        "parameters": [
+          {
+            "description": "Maximum number of items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Maximum number of items to return.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip before the first returned item.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip before the first returned item.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_SubjectResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:read"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:read"
+            ]
+          }
+        ],
+        "summary": "List Subjects",
+        "tags": [
+          "crm"
+        ]
+      },
+      "post": {
+        "description": "Create a subject. Titles are unique regardless of case.",
+        "operationId": "crm_create_subject",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubjectCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "subject_already_exists": {
+                    "value": {
+                      "code": "subject_already_exists",
+                      "detail": "Subject already exists"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Subject already exists"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Create Subject",
+        "tags": [
+          "crm"
+        ]
+      }
+    },
+    "/api/v1/crm/subjects/{subject_id}": {
+      "delete": {
+        "description": "Delete a subject that is not assigned to any student or tutor.",
+        "operationId": "crm_delete_subject",
+        "parameters": [
+          {
+            "description": "ID of the subject.",
+            "in": "path",
+            "name": "subject_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the subject.",
+              "examples": [
+                1
+              ],
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Subject Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "subject_not_found": {
+                    "value": {
+                      "code": "subject_not_found",
+                      "detail": "Subject not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Subject not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "subject_in_use": {
+                    "value": {
+                      "code": "subject_in_use",
+                      "detail": "Subject is still assigned to students or tutors"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Subject is still assigned to students or tutors"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Delete Subject",
+        "tags": [
+          "crm"
+        ]
+      },
+      "patch": {
+        "description": "Change a subject. Only the fields that are sent change; an empty body changes nothing.",
+        "operationId": "crm_update_subject",
+        "parameters": [
+          {
+            "description": "ID of the subject.",
+            "in": "path",
+            "name": "subject_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the subject.",
+              "examples": [
+                1
+              ],
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Subject Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubjectUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "subject_not_found": {
+                    "value": {
+                      "code": "subject_not_found",
+                      "detail": "Subject not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Subject not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "subject_already_exists": {
+                    "value": {
+                      "code": "subject_already_exists",
+                      "detail": "Subject already exists"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Subject already exists"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Update Subject",
+        "tags": [
+          "crm"
         ]
       }
     },
