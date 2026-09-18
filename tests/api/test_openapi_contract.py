@@ -78,7 +78,7 @@ def test_bearer_auth_errors_are_documented_exactly_where_a_token_is_required(sch
         if operation.get("security"):
             guarded += 1
             assert _documents_bearer_401(responses), f"{method} {path}"
-            assert "403" in responses, f"{method} {path}"
+            assert _documents_scope_403(responses), f"{method} {path}"
         else:
             # An unguarded operation may own a 401 (the token endpoint's ``invalid_client``), but
             # never the derived bearer-token one, and no 403.
@@ -91,6 +91,12 @@ def test_bearer_auth_errors_are_documented_exactly_where_a_token_is_required(sch
 def _documents_bearer_401(responses: dict[str, Any]) -> bool:
     examples = responses.get("401", {}).get("content", {}).get("application/json", {}).get("examples", {})
     return {"missing_token", "invalid_token"} <= set(examples)
+
+
+def _documents_scope_403(responses: dict[str, Any]) -> bool:
+    forbidden = responses.get("403", {})
+    examples = forbidden.get("content", {}).get("application/json", {}).get("examples", {})
+    return "forbidden" in examples and "Missing required scope" in forbidden.get("description", "")
 
 
 def test_forbidden_response_names_the_required_scope(schema: dict[str, Any]):

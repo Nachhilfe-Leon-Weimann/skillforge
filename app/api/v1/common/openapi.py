@@ -38,7 +38,9 @@ UNAUTHORIZED_EXAMPLES: dict[str, dict[str, Any]] = {
     "missing_token": {"value": {"detail": "Not authenticated", "code": code_for_status(401)}},
     "invalid_token": {"value": {"detail": "Invalid authentication credentials", "code": code_for_status(401)}},
 }
-FORBIDDEN_EXAMPLE: dict[str, Any] = {"detail": "Not enough permissions", "code": code_for_status(403)}
+FORBIDDEN_EXAMPLES: dict[str, dict[str, Any]] = {
+    "forbidden": {"value": {"detail": "Not enough permissions", "code": code_for_status(403)}},
+}
 VALIDATION_ERROR_EXAMPLE: dict[str, Any] = {
     "detail": VALIDATION_ERROR_DETAIL,
     "code": VALIDATION_ERROR_CODE,
@@ -117,8 +119,22 @@ def _document_auth_errors(schema: dict[str, Any]) -> None:
             continue
 
         responses = operation.setdefault("responses", {})
-        responses["401"] = _error_response("Missing or invalid bearer token", examples=UNAUTHORIZED_EXAMPLES)
-        responses["403"] = _error_response(_forbidden_description(operation), example=FORBIDDEN_EXAMPLE)
+        _document(responses, "401", "Missing or invalid bearer token", UNAUTHORIZED_EXAMPLES)
+        _document(responses, "403", _forbidden_description(operation), FORBIDDEN_EXAMPLES)
+
+
+def _document(responses: dict[str, Any], status: str, description: str, examples: dict[str, dict[str, Any]]) -> None:
+    """Set a derived error response; one the route declared via ``error_responses`` is kept next to it."""
+    declared = responses.get(status, {})
+    declared_examples = declared.get("content", {}).get("application/json", {}).get("examples")
+    if declared_examples is None:
+        responses[status] = _error_response(description, examples=examples)
+        return
+
+    responses[status] = _error_response(
+        f"{description} / {declared['description']}",
+        examples={**examples, **declared_examples},
+    )
 
 
 def _unify_validation_errors(schema: dict[str, Any]) -> None:

@@ -2381,9 +2381,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -2455,9 +2459,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -2574,9 +2582,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -2701,9 +2713,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -2848,9 +2864,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -2969,9 +2989,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -3104,9 +3128,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -3226,9 +3254,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -3458,9 +3490,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -3576,9 +3612,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -3717,9 +3757,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -3891,9 +3935,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -3996,9 +4044,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4106,9 +4158,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4209,9 +4265,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4329,9 +4389,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4478,9 +4542,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4708,9 +4776,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4811,9 +4883,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -4932,9 +5008,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5105,9 +5185,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5224,9 +5308,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5326,9 +5414,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5457,9 +5549,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5569,9 +5665,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5700,9 +5800,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5812,9 +5916,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -5930,9 +6038,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6070,9 +6182,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6224,9 +6340,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6374,9 +6494,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6528,9 +6652,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6678,9 +6806,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6832,9 +6964,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -6982,9 +7118,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7124,9 +7264,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7264,9 +7408,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7418,9 +7566,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7568,9 +7720,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7723,9 +7879,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7826,9 +7986,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -7955,9 +8119,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -8097,9 +8265,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
@@ -8226,9 +8398,13 @@
           "403": {
             "content": {
               "application/json": {
-                "example": {
-                  "code": "forbidden",
-                  "detail": "Not enough permissions"
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"

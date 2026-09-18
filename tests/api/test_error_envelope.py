@@ -114,7 +114,7 @@ async def test_documented_auth_error_examples_are_the_bodies_the_api_returns(fai
 def _documented_auth_example(path: str, failure: str) -> dict[str, str]:
     responses = app.openapi()["paths"][path]["get"]["responses"]
     if failure == "missing_scope":
-        return responses["403"]["content"]["application/json"]["example"]
+        return responses["403"]["content"]["application/json"]["examples"]["forbidden"]["value"]
 
     return responses["401"]["content"]["application/json"]["examples"][failure]["value"]
 

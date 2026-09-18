@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 from fastapi import APIRouter, FastAPI
 
-from app.api.v1.common import ErrorResponse, error_responses
+from app.api.v1.common import ApiError, ErrorResponse, error_responses
 from app.api.v1.common.openapi import customize_openapi, operation_id
 from app.core.auth import Scope, require_scopes
 from app.core.errors import DomainValidationError
@@ -13,6 +13,10 @@ ERROR_RESPONSE_REF = {"$ref": "#/components/schemas/ErrorResponse"}
 
 class GadgetRuleError(DomainValidationError):
     message = "Gadget violates a rule"
+
+
+ACCOUNT_LOCKED = ApiError(403, code="account_locked", detail="Account is locked")
+SESSION_EXPIRED = ApiError(401, code="session_expired", detail="Session expired")
 
 
 def _operation_ids(app: FastAPI) -> set[str]:
@@ -80,6 +84,13 @@ def _customized_app() -> FastAPI:
     @app.get("/guarded-twice", dependencies=[require_scopes(Scope.BOT_READ, Scope.BOT_WRITE)])
     async def guarded_twice() -> None: ...
 
+    @app.get(
+        "/guarded-with-own-errors",
+        dependencies=[require_scopes(Scope.BOT_READ)],
+        responses=error_responses(ACCOUNT_LOCKED, SESSION_EXPIRED),
+    )
+    async def guarded_with_own_errors() -> None: ...
+
     @app.get("/open")
     async def unguarded() -> None: ...
 
@@ -142,13 +153,27 @@ def test_auth_error_examples_show_the_envelope_with_detail_and_code():
     responses = _responses(_customized_app(), "/guarded")
 
     unauthorized = responses["401"]["content"]["application/json"]["examples"]
-    forbidden = responses["403"]["content"]["application/json"]["example"]
+    forbidden = responses["403"]["content"]["application/json"]["examples"]
     assert unauthorized["missing_token"]["value"] == {"detail": "Not authenticated", "code": "unauthorized"}
     assert unauthorized["invalid_token"]["value"] == {
         "detail": "Invalid authentication credentials",
         "code": "unauthorized",
     }
-    assert forbidden == {"detail": "Not enough permissions", "code": "forbidden"}
+    assert forbidden == {"forbidden": {"value": {"detail": "Not enough permissions", "code": "forbidden"}}}
+
+
+def test_auth_errors_a_guarded_route_declares_itself_are_kept_next_to_the_derived_ones():
+    responses = _responses(_customized_app(), "/guarded-with-own-errors")
+
+    unauthorized, forbidden = responses["401"], responses["403"]
+    assert list(unauthorized["content"]["application/json"]["examples"]) == [
+        "missing_token",
+        "invalid_token",
+        "session_expired",
+    ]
+    assert list(forbidden["content"]["application/json"]["examples"]) == ["forbidden", "account_locked"]
+    assert unauthorized["description"] == "Missing or invalid bearer token / Session expired"
+    assert forbidden["description"] == "Missing required scope: bot:read / Account is locked"
 
 
 def test_unguarded_operation_documents_no_auth_errors():
