@@ -28,6 +28,8 @@ from app.core.db.models import (
     ContactInfo,
     ContactInfoType,
     Party,
+    PartyRelation,
+    PartyRelationType,
     PreferredMeetingTool,
     Student,
     StudentSubject,
@@ -44,6 +46,7 @@ pytestmark = pytest.mark.db
 # coroutine of ``app.services.crm`` - in whatever module a slice adds - needs a scenario in WRITES.
 NOT_AGGREGATE_WRITES = {
     parties.load_party,  # the loading path itself
+    parties.list_parties,
     parties.saved,  # the bookkeeping every write ends with
     persons.get_person,
     companies.get_company,
@@ -85,6 +88,15 @@ CONTACT_INFOS = [
     NewContactInfo(ContactInfoType.PHONE, "0151 234 567"),
 ]
 
+
+async def _delete_the_company_that_pays_for_the_person(session: AsyncSession, seed: Seed) -> None:
+    session.add(
+        PartyRelation(from_party_id=seed.company_id, to_party_id=seed.person_id, type=PartyRelationType.PAYS_FOR)
+    )
+    await session.flush()
+    await parties.delete_party(session, seed.company_id)
+
+
 WRITES = [
     Write(
         persons.create_person,
@@ -103,6 +115,11 @@ WRITES = [
     Write(
         persons.update_person,
         lambda session, seed: persons.update_person(session, seed.person_id, firstname="Maximilian"),
+        touches=lambda seed: (seed.person_id,),
+    ),
+    Write(
+        parties.delete_party,
+        _delete_the_company_that_pays_for_the_person,
         touches=lambda seed: (seed.person_id,),
     ),
     Write(

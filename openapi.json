@@ -2092,6 +2092,41 @@
         "title": "Page[OperationSummary]",
         "type": "object"
       },
+      "Page_PartyListItem_": {
+        "properties": {
+          "items": {
+            "description": "The items of this page, in the order of the list.",
+            "items": {
+              "$ref": "#/components/schemas/PartyListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "The page size that was applied.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Number of items skipped before this page.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Number of items matching the request across all pages.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[PartyListItem]",
+        "type": "object"
+      },
       "Page_SubjectResponse_": {
         "properties": {
           "items": {
@@ -2144,6 +2179,42 @@
           }
         ]
       },
+      "PartyListItem": {
+        "description": "A party as it appears in lists and on the other side of a relation.",
+        "properties": {
+          "display_name": {
+            "description": "First and last name of a person, or the name of a company.",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "description": "ID of the party.",
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "roles": {
+            "description": "The roles a person holds; always empty for a company.",
+            "items": {
+              "$ref": "#/components/schemas/PartyRole"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "type": {
+            "$ref": "#/components/schemas/PartyType",
+            "description": "Whether the party is a person or a company."
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "display_name",
+          "roles"
+        ],
+        "title": "PartyListItem",
+        "type": "object"
+      },
       "PartyRelationType": {
         "enum": [
           "parent_of",
@@ -2151,6 +2222,23 @@
           "pays_for"
         ],
         "title": "PartyRelationType",
+        "type": "string"
+      },
+      "PartyRole": {
+        "description": "A role a person can hold; companies hold none.",
+        "enum": [
+          "student",
+          "tutor"
+        ],
+        "title": "PartyRole",
+        "type": "string"
+      },
+      "PartyType": {
+        "enum": [
+          "person",
+          "company"
+        ],
+        "title": "PartyType",
         "type": "string"
       },
       "PersonCreateRequest": {
@@ -9334,7 +9422,345 @@
         ]
       }
     },
+    "/api/v1/crm/parties": {
+      "get": {
+        "description": "List and search parties, ordered by name (persons by last name) regardless of case.",
+        "operationId": "crm_list_parties",
+        "parameters": [
+          {
+            "description": "Maximum number of items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Maximum number of items to return.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip before the first returned item.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip before the first returned item.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only parties of this type.",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PartyType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only parties of this type.",
+              "title": "Type"
+            }
+          },
+          {
+            "description": "Only persons holding this role.",
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PartyRole"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only persons holding this role.",
+              "title": "Role"
+            }
+          },
+          {
+            "description": "Only persons having this subject - in the given `role`, or in any role without one.",
+            "in": "query",
+            "name": "subject_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 2147483647,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only persons having this subject - in the given `role`, or in any role without one.",
+              "title": "Subject Id"
+            }
+          },
+          {
+            "description": "Search text, split on whitespace. Every word must appear, ignoring case, in the first name, the last name, the company name or a contact value. Searching for an e-mail address doubles as the duplicate check before creating a party.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 2,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search text, split on whitespace. Every word must appear, ignoring case, in the first name, the last name, the company name or a contact value. Searching for an e-mail address doubles as the duplicate check before creating a party.",
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_PartyListItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:read"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:read"
+            ]
+          }
+        ],
+        "summary": "List Parties",
+        "tags": [
+          "crm"
+        ]
+      }
+    },
     "/api/v1/crm/parties/{party_id}": {
+      "delete": {
+        "description": "Delete a party together with its roles, contact infos and relations.\n\nRefused while a Discord account or an external system (sevDesk, Clockodo, Microsoft) is linked to\nthe party: remove those links first, in the system that owns them.",
+        "operationId": "crm_delete_party",
+        "parameters": [
+          {
+            "description": "ID of the party.",
+            "in": "path",
+            "name": "party_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the party.",
+              "examples": [
+                "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+              ],
+              "format": "uuid",
+              "title": "Party Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: crm:write"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "party_not_found": {
+                    "value": {
+                      "code": "party_not_found",
+                      "detail": "Party not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Party not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "party_in_use": {
+                    "value": {
+                      "code": "party_in_use",
+                      "detail": "Party is linked to external systems"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Party is linked to external systems"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": [
+              "crm:write"
+            ]
+          }
+        ],
+        "summary": "Delete Party",
+        "tags": [
+          "crm"
+        ]
+      },
       "get": {
         "description": "Read a party - a person or a company - with its roles and contact infos.",
         "operationId": "crm_get_party",

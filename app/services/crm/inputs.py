@@ -4,10 +4,18 @@ The API imports from here, never the reverse: the services stay free of ``app.ap
 """
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 from pydantic import validate_email
 
 from app.core.db.models import ContactInfoType
+
+
+class PartyRole(StrEnum):
+    """A role a person can hold; companies hold none."""
+
+    STUDENT = "student"
+    TUTOR = "tutor"
 
 
 @dataclass(frozen=True)

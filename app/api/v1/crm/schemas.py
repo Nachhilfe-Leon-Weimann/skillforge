@@ -25,7 +25,7 @@ from app.core.db.models import (
     Subject,
     Tutor,
 )
-from app.services.crm.inputs import NewContactInfo, normalize_contact_value, require_storable_text
+from app.services.crm.inputs import NewContactInfo, PartyRole, normalize_contact_value, require_storable_text
 
 # A plain assignment inlines the constraints at the field; a PEP 695 alias would become its own schema.
 Name = Annotated[
@@ -114,6 +114,23 @@ NewContactInfos = Annotated[list[ContactInfoCreateRequest], AfterValidator(_reje
 
 
 # --- Parties: the read side ---
+
+
+class PartyListItem(ApiModel):
+    """A party as it appears in lists and on the other side of a relation."""
+
+    id: uuid.UUID
+    """ID of the party."""
+    type: PartyType
+    """Whether the party is a person or a company."""
+    display_name: str
+    """First and last name of a person, or the name of a company."""
+    roles: list[PartyRole]
+    """The roles a person holds; always empty for a company."""
+
+    @classmethod
+    def from_model(cls, party: Party) -> Self:
+        return cls(id=party.id, type=party.type, display_name=_display_name(party), roles=_roles(party))
 
 
 class StudentRole(ApiModel):
@@ -237,6 +254,27 @@ def party_detail(party: Party) -> PersonDetail | CompanyDetail:
 
 def _person_display_name(person: Person) -> str:
     return f"{person.firstname} {person.lastname}"
+
+
+def _display_name(party: Party) -> str:
+    match party.type:
+        case PartyType.PERSON:
+            assert party.person is not None, "a party of type person has a person row"
+            return _person_display_name(party.person)
+        case PartyType.COMPANY:
+            assert party.company is not None, "a party of type company has a company row"
+            return party.company.name
+        case _:
+            assert_never(party.type)
+
+
+def _roles(party: Party) -> list[PartyRole]:
+    person = party.person
+    if person is None:
+        return []
+
+    held = {PartyRole.STUDENT: person.student, PartyRole.TUTOR: person.tutor}
+    return [role for role, row in held.items() if row is not None]
 
 
 def _contact_infos(party: Party) -> list[ContactInfoResponse]:
