@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.models import Party, PartyRelation, PartyRelationType, Student, StudentSubject, Tutor, TutorSubject
@@ -123,25 +123,67 @@ async def test_put_replaces_the_data_of_an_existing_role(client: AsyncClient, su
 
 @pytest.mark.parametrize("role", ["student", "tutor"])
 async def test_subject_ids_replaces_the_set_by_its_difference(
-    client: AsyncClient, session: AsyncSession, subjects: dict[str, int], statements: list[str], role: str
+    client: AsyncClient, session: AsyncSession, subjects: dict[str, int], role: str
 ):
     person = await _person(client)
     url = f"/persons/{person['id']}/{role}"
     tool = {"preferred_meeting_tool": "discord"} if role == "student" else {}
     await client.put(url, json={**tool, "subject_ids": [subjects["Mathematics"], subjects["physics"]]})
     session.expunge_all()
-    statements.clear()
+
+    async def physics_row() -> str:
+        row = await session.execute(
+            text(f"SELECT ctid::text FROM core.{role}_subject WHERE subject_id = :id"), {"id": subjects["physics"]}
+        )
+        return row.scalar_one()
+
+    untouched = await physics_row()
 
     response = await client.put(url, json={**tool, "subject_ids": [subjects["physics"], subjects["Art"]]})
 
     assert _titles(response.json()[role]) == ["Art", "physics"]
-    # The unchanged row (physics) is neither deleted nor re-inserted.
-    table = f"core.{role}_subject"
-    assert len([statement for statement in statements if statement.startswith(f"DELETE FROM {table}")]) == 1
-    assert len([statement for statement in statements if statement.startswith(f"INSERT INTO {table}")]) == 1
+    # The unchanged row is still the same physical row: it was neither deleted nor re-inserted.
+    assert await physics_row() == untouched
     link = StudentSubject if role == "student" else TutorSubject
     stored = (await session.execute(select(link.subject_id))).scalars().all()
     assert sorted(stored) == sorted([subjects["physics"], subjects["Art"]])
+
+
+@pytest.mark.parametrize("role", ["student", "tutor"])
+async def test_a_put_that_only_adds_or_only_removes_subjects_is_a_write(
+    client: AsyncClient, subjects: dict[str, int], backdate, updated_at, role: str
+):
+    person = await _person(client)
+    party_id = uuid.UUID(person["id"])
+    url = f"/persons/{person['id']}/{role}"
+    tool = {"preferred_meeting_tool": "discord"} if role == "student" else {}
+    await client.put(url, json={**tool, "subject_ids": [subjects["Art"]]})
+
+    await backdate(party_id)
+    before_adding = await updated_at(party_id)
+    added = await client.put(url, json={**tool, "subject_ids": [subjects["Art"], subjects["physics"]]})
+    after_adding = await updated_at(party_id)
+
+    await backdate(party_id)
+    before_removing = await updated_at(party_id)
+    removed = await client.put(url, json={**tool, "subject_ids": [subjects["physics"]]})
+
+    assert (_titles(added.json()[role]), _titles(removed.json()[role])) == (["Art", "physics"], ["physics"])
+    assert after_adding > before_adding
+    assert await updated_at(party_id) > before_removing
+    assert _titles((await client.get(f"/parties/{person['id']}")).json()[role]) == ["physics"]
+
+
+async def test_changing_only_the_meeting_tool_is_a_write(client: AsyncClient, backdate, updated_at):
+    person = await _person(client, student={"preferred_meeting_tool": "discord"})
+    party_id = uuid.UUID(person["id"])
+    await backdate(party_id)
+    before = await updated_at(party_id)
+
+    response = await client.put(f"/persons/{person['id']}/student", json={"preferred_meeting_tool": "phone"})
+
+    assert response.json()["student"]["preferred_meeting_tool"] == "phone"
+    assert await updated_at(party_id) > before
 
 
 async def test_duplicate_subject_ids_collapse(client: AsyncClient, subjects: dict[str, int]):
@@ -164,14 +206,15 @@ async def test_an_unknown_subject_is_422_listing_the_unknown_ids_and_nothing_is_
     await client.put(url, json={**tool, "subject_ids": [subjects["Art"]]})
     await backdate(uuid.UUID(person["id"]))
     before = (await client.get(f"/parties/{person['id']}")).json()
-    unknown = [max(subjects.values()) + 20, max(subjects.values()) + 10]
+    # A set of these two iterates as 900008, 900001 - so only sorting puts them in order.
+    assert list({900008, 900001}) == [900008, 900001]
 
     response = await client.put(
-        url, json={"preferred_meeting_tool": "phone", "subject_ids": [unknown[0], subjects["physics"], unknown[1]]}
+        url, json={"preferred_meeting_tool": "phone", "subject_ids": [900008, subjects["physics"], 900001]}
     )
 
     assert response.status_code == 422
-    assert response.json() == {"detail": f"Unknown subject: {unknown[1]}, {unknown[0]}", "code": "unknown_subject"}
+    assert response.json() == {"detail": "Unknown subject: 900001, 900008", "code": "unknown_subject"}
     assert (await client.get(f"/parties/{person['id']}")).json() == before
 
 
@@ -197,8 +240,9 @@ async def test_an_unknown_subject_on_a_person_without_the_role_creates_no_role(
         ({"subject_ids": [2**31]}, ["body", "subject_ids", 0]),
         ({"subject_ids": ["maths"]}, ["body", "subject_ids", 0]),
         ({"subject_ids": None}, ["body", "subject_ids"]),
+        ({"subject_ids": list(range(1, 102))}, ["body", "subject_ids"]),
     ],
-    ids=["zero", "beyond the integer range", "not a number", "null"],
+    ids=["zero", "beyond the integer range", "not a number", "null", "more than a hundred"],
 )
 async def test_malformed_subject_ids_are_the_validation_422(client: AsyncClient, body: dict, loc: list):
     person = await _person(client)
@@ -332,13 +376,13 @@ async def test_post_persons_with_an_unknown_subject_creates_no_party_at_all(
             "firstname": "Max",
             "lastname": "Mustermann",
             "contact_infos": [{"type": "email", "value": "max@example.com"}],
-            "student": {"preferred_meeting_tool": "discord", "subject_ids": [subjects["Art"], 900002]},
+            "student": {"preferred_meeting_tool": "discord", "subject_ids": [subjects["Art"], 900008]},
             "tutor": {"subject_ids": [900001, subjects["physics"]]},
         },
     )
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "Unknown subject: 900001, 900002", "code": "unknown_subject"}
+    assert response.json() == {"detail": "Unknown subject: 900001, 900008", "code": "unknown_subject"}
     assert await _count(session, Party) == 0
     assert await _count(session, Student) == 0
     assert await _count(session, Tutor) == 0
