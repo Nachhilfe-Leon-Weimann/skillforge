@@ -149,7 +149,9 @@ What is identical in every repo; everything else is repo-specific detail behind 
   passes it to `release-please-action`; **no step follows the action in this job**. Outputs: `release_created`,
   `tag_name`, `version`, `sha`.
 - *Technique:* `release-please-config.json` with `release-type: python`, `include-component-in-tag: false`,
-  `bump-minor-pre-major: true` and `extra-files` for `uv.lock` (package `skillforge`) and `openapi.json`;
+  `bump-minor-pre-major: true`, `changelog-sections` that show only `feat`, `fix`, `perf` and `revert` (a dry
+  run on today's history listed 34 documentation entries, mostly spec ticks, next to 26 features and 12
+  fixes) and `extra-files` for `uv.lock` (package `skillforge`) and `openapi.json`;
   `.release-please-manifest.json` starts at the current version (`0.3.0`, tag `v0.3.0` exists).
 - *Acceptance criteria:*
   - [ ] After a `feat`/`fix` commit lands on `main`, a release PR exists whose diff touches exactly
