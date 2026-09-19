@@ -632,23 +632,39 @@ untouched, and the dependency keeps its direction: the bot reads the CRM, never 
   "no synchronous cross-checks" rules out: the CRM asking the bot. The bot validating its own transition against the
   intended state is a consumer reading the CRM.
 - _Acceptance criteria:_
-  - [ ] (a) Given a party with two linked accounts, its profile lists both, the primary one first, and loading it
+  - [x] (a) Given a party with two linked accounts, its profile lists both, the primary one first, and loading it
         raises no SQLAlchemy warning; a party without an account has `external_accounts.discord == []`.
-  - [ ] (a) `party_in_use` still names `discord_account`; the CRM's contract tests pass unchanged.
-  - [ ] (b) The profile of a person holding both roles, and of a company, maps without `MissingGreenlet`; that the
+  - [x] (a) `party_in_use` still names `discord_account`; the CRM's contract tests pass unchanged.
+  - [x] (b) The profile of a person holding both roles, and of a company, maps without `MissingGreenlet`; that the
         loader is built on `PARTY_GRAPH` is asserted on the emitted SQL (it loads `core.company`, which only
         `PARTY_GRAPH` contributes).
-  - [ ] (c) With both accounts linked and `tutor_of` from tutor to student in place, prepare and commit work as
+  - [x] (c) With both accounts linked and `tutor_of` from tutor to student in place, prepare and commit work as
         before; a non-primary active account is enough.
-  - [ ] (c) Without the relation - or with only the inverse one - prepare is 422 "Tutor is not assigned to this
+  - [x] (c) Without the relation - or with only the inverse one - prepare is 422 "Tutor is not assigned to this
         student"; a student or tutor without a link, or with only a deactivated one, is 422 with the message of that
         side. Nothing is written in any of these cases.
-  - [ ] (c) A retried prepare after the relation was removed is the 422, not a replay; a commit after the relation
+  - [x] (c) A retried prepare after the relation was removed is the 422, not a replay; a commit after the relation
         was removed still succeeds.
-  - [ ] (c) The three messages are pinned over HTTP next to the existing rows of
+  - [x] (c) The three messages are pinned over HTTP next to the existing rows of
         [`test_bot_error_contract.py`](../../tests/api/test_bot_error_contract.py); the bot's error catalog does not
         grow.
-  - [ ] The architecture test of P0-1 stays green: nothing under the CRM packages imports the bot.
+  - [x] The architecture test of P0-1 stays green: nothing under the CRM packages imports the bot.
+- _Deviations:_
+  - (a) The order of the collection is part of the relationship (`order_by` on `Party.discord_accounts`), so every
+    loader gets it, not only the bot's.
+  - (b) The `statements` fixture moved from `tests/db/crm/conftest.py` up to `tests/db/conftest.py`: the bot's
+    loader test needs it too.
+  - (c) The check sits between `_require_active_user` and `_lock_tutor_workspace`: a pair the CRM does not know
+    fails before the tutor's workspace row is locked. That it only reads is asserted on the emitted SQL (every
+    statement against `core` or `ext` is a `SELECT` without `FOR ...`).
+  - (c) A relation of another type between the two parties (`pays_for`) does not count, and neither does
+    `tutor_of` in the inverse direction - both have their own test.
+  - (c) Every Discord user of `test_bot_transitions_service.py` is linked to a party now (`_add_user`), and a
+    student that gets activated is assigned to the tutor(s) the test names (`_add_student`). The tests that commit
+    for real delete their parties again; the Discord accounts and relations cascade.
+  - (c) The three messages over HTTP are rows of the stubbed contract test, which proves that the reason reaches
+    the client unchanged (`expose_message`); that the service raises exactly these reasons is pinned by the DB
+    tests (`match=`).
 
 **P1-3 - `updated_since` filter on `GET /parties`.** _The pull-based change signal of decision H. The spec tied it to
 a polling consumer; it is built ahead of one because it is one filter._
