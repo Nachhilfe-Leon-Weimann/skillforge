@@ -7,6 +7,8 @@ from collections.abc import Set
 from dataclasses import dataclass, field
 from enum import Enum, StrEnum
 
+import phonenumbers
+from phonenumbers import NumberParseException, PhoneNumberFormat, ValidationResult
 from pydantic import validate_email
 
 from app.core.db.models import ContactInfoType, PreferredMeetingTool
@@ -64,6 +66,10 @@ class TutorRoleData:
 MAX_CONTACT_VALUE_LENGTH = 254
 
 
+# The region a phone number written in its national form ("0171 ...") is read with.
+DEFAULT_PHONE_REGION = "DE"
+
+
 def require_storable_text(value: str) -> str:
     """Return ``value`` if Postgres can store it as ``text``, or raise ``ValueError``.
 
@@ -83,8 +89,8 @@ def require_storable_text(value: str) -> str:
 def normalize_contact_value(type: ContactInfoType, value: str) -> str:
     """Return the canonical form of a contact value, or raise ``ValueError`` if it is not valid.
 
-    An e-mail is lowercased and validated the way ``EmailStr`` does; a phone number loses all
-    whitespace and must not be empty. The result is a fixed point - normalizing it again changes
+    An e-mail is lowercased and validated the way ``EmailStr`` does; a phone number becomes its
+    E.164 form (``+491711234567``). The result is a fixed point - normalizing it again changes
     nothing - because the create routes normalize in the request model and again in the service.
     The messages never repeat the value: it is personal data.
     """
@@ -98,10 +104,34 @@ def normalize_contact_value(type: ContactInfoType, value: str) -> str:
             except ValueError:
                 raise ValueError("Value is not a valid e-mail address") from None
         case ContactInfoType.PHONE:
-            normalized = "".join(value.split())
-            if not normalized:
-                raise ValueError("Value is not a valid phone number: it must not be empty")
+            normalized = _e164(value)
 
     if len(normalized) > MAX_CONTACT_VALUE_LENGTH:
         raise ValueError(f"Value must not be longer than {MAX_CONTACT_VALUE_LENGTH} characters")
     return normalized
+
+
+def _e164(value: str) -> str:
+    """Return the E.164 form of a phone number; a national form is read with ``DEFAULT_PHONE_REGION``.
+
+    The number must be *possible* for its region, deliberately not *valid*: number ranges are opened
+    faster than metadata ships, and a real number that cannot be stored is worse than a typo that can.
+    What E.164 cannot carry is rejected instead of dropped: the parser would turn letters into digits
+    or skip them, and formatting loses an extension without a word.
+    """
+    invalid = ValueError("Value is not a valid phone number")
+    try:
+        # The parser knows the space but no tab or line break inside a number.
+        number = phonenumbers.parse(" ".join(value.split()), DEFAULT_PHONE_REGION)
+    except NumberParseException:
+        raise invalid from None
+
+    if number.extension:
+        raise ValueError("Value is not a valid phone number: an extension is not supported, put it into the label")
+    if any(char.isalpha() for char in value):
+        raise invalid
+    # IS_POSSIBLE_LOCAL_ONLY is not enough: a number without its area code has no E.164 form.
+    if phonenumbers.is_possible_number_with_reason(number) != ValidationResult.IS_POSSIBLE:
+        raise invalid
+
+    return phonenumbers.format_number(number, PhoneNumberFormat.E164)

@@ -224,3 +224,20 @@ def test_the_lists_return_the_generic_page(schema: dict[str, Any]):
     ]:
         response = schema["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
         assert response == {"$ref": f"#/components/schemas/Page_{item}_"}
+
+
+@pytest.mark.parametrize("name", ["ContactInfoResponse", "ContactInfoCreateRequest", "ContactInfoUpdateRequest"])
+def test_every_contact_value_says_how_a_phone_number_is_stored(schema: dict[str, Any], name: str):
+    description = schema["components"]["schemas"][name]["properties"]["value"]["description"]
+
+    assert "E.164" in description
+    assert "without whitespace" not in description
+
+
+def test_the_search_says_how_to_find_a_phone_number(schema: dict[str, Any]):
+    """The stored form has no national leading zero, and search is a plain substring match."""
+    parameters = schema["paths"]["/api/v1/crm/parties"]["get"]["parameters"]
+    (q,) = [parameter for parameter in parameters if parameter["name"] == "q"]
+
+    assert "E.164" in q["description"]
+    assert "leading zero" in q["description"]

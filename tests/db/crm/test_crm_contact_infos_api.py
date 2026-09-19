@@ -28,6 +28,10 @@ async def _person(client: AsyncClient, *contact_infos: dict, firstname: str = "M
     return response.json()
 
 
+# As long as an address may be: 64 characters before the "@", labels of at most 63 behind it.
+LONGEST_EMAIL = f"{'a' * 64}@{'b' * 63}.{'c' * 63}.{'d' * 57}.com"
+
+
 async def _stored(session: AsyncSession, party_id: str) -> list[tuple[str, str, str | None]]:
     rows = await session.execute(
         select(ContactInfo.type, ContactInfo.value, ContactInfo.label).where(
@@ -82,16 +86,25 @@ async def test_post_of_a_duplicate_type_and_value_is_409_and_writes_nothing(
     assert await _stored(session, person["id"]) == [("email", "max.mustermann@example.com", "private")]
 
 
-async def test_the_same_value_is_fine_under_the_other_type_and_on_another_party(client: AsyncClient):
-    person = await _person(client, EMAIL)
+async def test_the_same_value_is_fine_on_another_party(client: AsyncClient):
+    await _person(client, EMAIL)
     other = await _person(client, firstname="Mia")
 
-    same_value_other_type = await client.post(
-        f"/parties/{person['id']}/contact-infos", json={"type": "phone", "value": EMAIL["value"]}
-    )
     same_on_other_party = await client.post(f"/parties/{other['id']}/contact-infos", json=EMAIL)
 
-    assert (same_value_other_type.status_code, same_on_other_party.status_code) == (201, 201)
+    assert same_on_other_party.status_code == 201
+
+
+async def test_a_value_is_judged_by_its_type(client: AsyncClient):
+    """No string is both: an e-mail address is no phone number, and a phone number is no e-mail address."""
+    person = await _person(client)
+    url = f"/parties/{person['id']}/contact-infos"
+
+    address_as_phone = await client.post(url, json={"type": "phone", "value": EMAIL["value"]})
+    number_as_email = await client.post(url, json={"type": "email", "value": "0171 1234567"})
+
+    assert (address_as_phone.status_code, number_as_email.status_code) == (422, 422)
+    assert [error["loc"] for error in address_as_phone.json()["errors"]] == [["body", "value"]]
 
 
 async def test_post_to_an_unknown_party_is_404_party_not_found(client: AsyncClient):
@@ -137,10 +150,10 @@ async def test_patch_changes_the_value_and_normalizes_it_against_the_stored_type
 
     assert (patched_email.status_code, patched_phone.status_code) == (200, 200)
     assert patched_email.json() == {**email, "value": "max@new.example.com"}
-    assert patched_phone.json() == {**phone, "value": "030123456"}
+    assert patched_phone.json() == {**phone, "value": "+4930123456"}
     assert await _stored(session, person["id"]) == [
         ("email", "max@new.example.com", "private"),
-        ("phone", "030123456", None),
+        ("phone", "+4930123456", None),
     ]
 
 
@@ -167,6 +180,52 @@ async def test_patch_of_a_phone_with_only_whitespace_is_422_invalid_contact_valu
     response = await client.patch(f"/parties/{person['id']}/contact-infos/{phone['id']}", json={"value": " \t "})
 
     assert (response.status_code, response.json()) == (422, INVALID_VALUE)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["max@example.com", "0171 1234567 (Mama)", "112", "0171 1234567 ext. 12"],
+    ids=["e-mail", "a note", "local only", "extension"],
+)
+async def test_patch_of_a_phone_with_what_has_no_e164_form_is_422_invalid_contact_value(
+    client: AsyncClient, session: AsyncSession, value: str
+):
+    person = await _person(client, {"type": "phone", "value": "0151234567"})
+    phone = person["contact_infos"][0]
+
+    response = await client.patch(f"/parties/{person['id']}/contact-infos/{phone['id']}", json={"value": value})
+
+    assert (response.status_code, response.json()) == (422, INVALID_VALUE)
+    assert await _stored(session, person["id"]) == [("phone", "+49151234567", None)]
+
+
+async def test_post_and_patch_store_a_phone_number_in_the_same_form(client: AsyncClient, session: AsyncSession):
+    person = await _person(client, {"type": "phone", "value": "0171 1234567"})
+    posted = person["contact_infos"][0]
+    url = f"/parties/{person['id']}/contact-infos"
+    other = (await client.post(url, json={"type": "phone", "value": "030 1234567"})).json()
+
+    patched = await client.patch(f"{url}/{other['id']}", json={"value": "0049 (0)172 7654321"})
+
+    assert posted["value"] == "+491711234567"
+    assert patched.json()["value"] == "+491727654321"
+    assert [value for _, value, _ in await _stored(session, person["id"])] == ["+491711234567", "+491727654321"]
+
+
+async def test_another_spelling_of_a_phone_number_the_party_has_is_409(client: AsyncClient, session: AsyncSession):
+    """``0171 ...`` and ``+49 171 ...`` are one number, so the unique key of the party sees one value."""
+    person = await _person(client, {"type": "phone", "value": "0171 1234567"})
+    url = f"/parties/{person['id']}/contact-infos"
+    other = (await client.post(url, json={"type": "phone", "value": "030 1234567"})).json()
+
+    posted = await client.post(url, json={"type": "phone", "value": "+49 171 1234567"})
+    patched = await client.patch(f"{url}/{other['id']}", json={"value": "0049 171 123 45 67"})
+
+    assert [(r.status_code, r.json()["code"]) for r in (posted, patched)] == [
+        (409, "contact_info_already_exists"),
+        (409, "contact_info_already_exists"),
+    ]
+    assert [value for _, value, _ in await _stored(session, person["id"])] == ["+491711234567", "+49301234567"]
 
 
 async def test_patch_cannot_change_the_type(client: AsyncClient, session: AsyncSession):
@@ -277,14 +336,15 @@ async def test_an_oversized_contact_value_is_the_validation_422_on_every_write(
     )
     posted = await client.post(url, json={"type": "phone", "value": oversized})
     patched = await client.patch(f"{url}/{person['contact_infos'][0]['id']}", json={"value": huge})
-    fits = await client.post(url, json={"type": "phone", "value": "1" * 254})
+    fits = await client.post(url, json={"type": "email", "value": LONGEST_EMAIL})
 
     assert [error["loc"] for error in nested.json()["errors"]] == [["body", "contact_infos", 0, "value"]]
     assert [error["loc"] for error in posted.json()["errors"]] == [["body", "value"]]
     assert {tuple(error["loc"][:2]) for error in patched.json()["errors"]} == {("body", "value")}
     assert [r.status_code for r in (nested, posted, patched, fits)] == [422, 422, 422, 201]
     assert "11111" not in nested.text + posted.text + patched.text
-    assert [value for _, value, _ in await _stored(session, person["id"])] == ["0151234567", "1" * 254]
+    assert len(LONGEST_EMAIL) == 254
+    assert [value for _, value, _ in await _stored(session, person["id"])] == [LONGEST_EMAIL, "+49151234567"]
 
 
 async def test_two_spellings_of_one_address_are_a_duplicate_on_every_route(client: AsyncClient, session: AsyncSession):
@@ -429,12 +489,12 @@ async def test_a_conflict_leaves_the_surrounding_transaction_usable(session: Asy
         await contact_infos.update_contact_info(session, party.id, second_id, value="a@example.com")
 
     # Without a real SAVEPOINT the session would now answer PendingRollbackError.
-    third = await contact_infos.add_contact_info(session, party.id, type=ContactInfoType.PHONE, value="0151 1")
-    assert third.value == "01511"
+    third = await contact_infos.add_contact_info(session, party.id, type=ContactInfoType.PHONE, value="0151 234 567")
+    assert third.value == "+49151234567"
     assert await _stored(session, str(party.id)) == [
         ("email", "a@example.com", None),
         ("email", "b@example.com", None),
-        ("phone", "01511", None),
+        ("phone", "+49151234567", None),
     ]
     assert first_id != second_id
 

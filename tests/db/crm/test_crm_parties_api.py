@@ -59,7 +59,8 @@ async def test_create_person_answers_201_with_the_detail_and_a_location(client: 
         "tutor": None,
         "contact_infos": [
             {"id": detail["contact_infos"][0]["id"], **EMAIL},
-            {"id": detail["contact_infos"][1]["id"], **PHONE, "label": None},
+            # Sent in its national form, answered - and stored - in E.164.
+            {"id": detail["contact_infos"][1]["id"], "type": "phone", "value": "+49151234567", "label": None},
         ],
         "created_at": detail["created_at"],
         "updated_at": detail["updated_at"],
@@ -324,15 +325,22 @@ async def test_the_same_value_may_appear_on_another_party(client: AsyncClient):
     assert parent["contact_infos"][0]["id"] != child["contact_infos"][0]["id"]
 
 
-async def test_the_same_value_may_appear_under_both_types_of_one_party(client: AsyncClient):
-    """The duplicate key is ``(type, value)``, not the value alone."""
-    value = "max.mustermann@example.com"
-
-    person = await _create_person(
-        client, contact_infos=[{"type": "email", "value": value}, {"type": "phone", "value": value}]
+async def test_two_spellings_of_one_phone_number_in_a_create_body_are_a_duplicate(client: AsyncClient):
+    """Both normalize to the same E.164 form, so the request model sees one value twice."""
+    response = await client.post(
+        "/persons",
+        json={
+            "firstname": "Max",
+            "lastname": "Mustermann",
+            "contact_infos": [
+                {"type": "phone", "value": "0171 1234567"},
+                {"type": "phone", "value": "+49 171 1234567"},
+            ],
+        },
     )
 
-    assert [(info["type"], info["value"]) for info in person["contact_infos"]] == [("email", value), ("phone", value)]
+    assert response.status_code == 422
+    assert [error["loc"] for error in response.json()["errors"]] == [["body", "contact_infos"]]
 
 
 async def test_a_validation_error_never_echoes_the_rejected_contact_value(client: AsyncClient):

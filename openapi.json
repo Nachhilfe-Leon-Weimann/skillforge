@@ -682,7 +682,7 @@
             ]
           },
           "value": {
-            "description": "An e-mail address (stored in lowercase) or a phone number (stored without whitespace), matching `type`.",
+            "description": "An e-mail address (stored in lowercase) or a phone number, matching `type`.\n\nA phone number is stored in E.164 (`+491711234567`); one written in its national form (`0171 1234567`) is read\nas a German number. An extension is not supported - put it into `label`.",
             "examples": [
               "max.mustermann@example.com"
             ],
@@ -752,7 +752,7 @@
             "description": "Kind of the contact info; it never changes."
           },
           "value": {
-            "description": "The normalized value: an e-mail address in lowercase, a phone number without whitespace.",
+            "description": "The normalized value: an e-mail address in lowercase, a phone number in E.164 (`+491711234567`).",
             "title": "Value",
             "type": "string"
           }
@@ -792,7 +792,7 @@
             "title": "Label"
           },
           "value": {
-            "description": "New value. It must fit the stored type (422 `invalid_contact_value` otherwise) and is normalized as on create.",
+            "description": "New value. It must fit the stored type (422 `invalid_contact_value` otherwise) and is normalized as on create:\nan e-mail address to lowercase, a phone number to E.164.",
             "maxLength": 254,
             "minLength": 1,
             "title": "Value",
@@ -9798,7 +9798,7 @@
             }
           },
           {
-            "description": "Search text, split on whitespace. Every word must appear, ignoring case, in the first name, the last name, the company name or a contact value. Searching for an e-mail address doubles as the duplicate check before creating a party.",
+            "description": "Search text, split on whitespace. Every word must appear, ignoring case, in the first name, the last name, the company name or a contact value. Searching for an e-mail address doubles as the duplicate check before creating a party. A phone number is stored in E.164 (`+491711234567`), so search for its digits without the national leading zero: `171 1234567`.",
             "in": "query",
             "name": "q",
             "required": false,
@@ -9813,7 +9813,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Search text, split on whitespace. Every word must appear, ignoring case, in the first name, the last name, the company name or a contact value. Searching for an e-mail address doubles as the duplicate check before creating a party.",
+              "description": "Search text, split on whitespace. Every word must appear, ignoring case, in the first name, the last name, the company name or a contact value. Searching for an e-mail address doubles as the duplicate check before creating a party. A phone number is stored in E.164 (`+491711234567`), so search for its digits without the national leading zero: `171 1234567`.",
               "title": "Q"
             }
           },

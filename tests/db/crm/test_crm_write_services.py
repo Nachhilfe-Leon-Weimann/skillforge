@@ -326,9 +326,9 @@ async def test_create_stores_normalized_contact_values_whatever_the_caller_passe
     )
     assert sorted((type.value, value, label) for type, value, label in stored) == [
         ("email", "max.mustermann@example.com", "private"),
-        ("phone", "0151234567", None),
+        ("phone", "+49151234567", None),
     ]
-    assert [info.value for info in party_detail(party).contact_infos] == ["max.mustermann@example.com", "0151234567"]
+    assert [info.value for info in party_detail(party).contact_infos] == ["max.mustermann@example.com", "+49151234567"]
 
 
 async def test_the_detail_maps_both_roles_with_their_subjects_in_title_order(session: AsyncSession, seed: Seed):

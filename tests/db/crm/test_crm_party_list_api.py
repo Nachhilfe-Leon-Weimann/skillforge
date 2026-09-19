@@ -88,6 +88,15 @@ async def test_q_matches_a_part_of_a_contact_value_and_finds_the_owner(client: A
     assert [item["id"] for item in (await _list(client, q="301234"))["items"]] == [company["id"]]
 
 
+async def test_q_finds_a_phone_number_by_its_stored_e164_digits(client: AsyncClient):
+    """What the description of ``q`` promises: the national leading zero is not part of the stored form."""
+    await _person(client, "Paula", "Phone-Search", {"type": "phone", "value": "0171 1234567"})
+
+    assert _names(await _list(client, q="phone-search 171 1234567")) == ["Paula Phone-Search"]
+    assert _names(await _list(client, q="+491711234567")) == ["Paula Phone-Search"]
+    assert _names(await _list(client, q="phone-search 0171")) == []
+
+
 async def test_q_matches_a_token_in_the_name_and_another_in_a_contact_value(client: AsyncClient):
     owner = await _person(client, "Max", "Mustermann", _email("mm@example.com"))
     await _person(client, "Max", "Meier", _email("meier@other.example"))

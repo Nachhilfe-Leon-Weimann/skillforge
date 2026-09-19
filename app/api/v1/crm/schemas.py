@@ -86,7 +86,7 @@ class ContactInfoResponse(ApiModel):
     type: ContactInfoType
     """Kind of the contact info; it never changes."""
     value: str
-    """The normalized value: an e-mail address in lowercase, a phone number without whitespace."""
+    """The normalized value: an e-mail address in lowercase, a phone number in E.164 (`+491711234567`)."""
     label: str | None
     """Free-text note telling contact infos of the same type apart, e.g. `work`."""
 
@@ -101,7 +101,11 @@ class ContactInfoCreateRequest(ApiModel):
     type: ContactInfoType = Field(examples=[ContactInfoType.EMAIL])
     """Kind of the contact info; it cannot be changed later."""
     value: str = Field(max_length=MAX_CONTACT_VALUE_LENGTH, examples=["max.mustermann@example.com"])
-    """An e-mail address (stored in lowercase) or a phone number (stored without whitespace), matching `type`."""
+    """An e-mail address (stored in lowercase) or a phone number, matching `type`.
+
+    A phone number is stored in E.164 (`+491711234567`); one written in its national form (`0171 1234567`) is read
+    as a German number. An extension is not supported - put it into `label`.
+    """
     label: Name | None = Field(None, examples=["private"])
     """Free-text note telling contact infos of the same type apart, e.g. `work`."""
 
@@ -132,7 +136,8 @@ class ContactInfoUpdateRequest(ApiModel):
     """
 
     value: ContactValue | MISSING = MISSING
-    """New value. It must fit the stored type (422 `invalid_contact_value` otherwise) and is normalized as on create."""
+    """New value. It must fit the stored type (422 `invalid_contact_value` otherwise) and is normalized as on create:
+    an e-mail address to lowercase, a phone number to E.164."""
     label: Name | None | MISSING = MISSING
     """New label; `null` clears it."""
 

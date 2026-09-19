@@ -73,7 +73,8 @@ class PartyListParams(PageParams):
         description=(
             "Search text, split on whitespace. Every word must appear, ignoring case, in the first name, the last "
             "name, the company name or a contact value. Searching for an e-mail address doubles as the duplicate "
-            "check before creating a party."
+            "check before creating a party. A phone number is stored in E.164 (`+491711234567`), so search for its "
+            "digits without the national leading zero: `171 1234567`."
         ),
     )
     updated_since: AwareDatetime | None = Field(
