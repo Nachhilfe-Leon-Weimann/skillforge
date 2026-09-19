@@ -1,6 +1,6 @@
 # Spec: API conventions (shared vocabulary for all `/api/v1` domains)
 
-> Status: Draft - implementation-ready | Cross-domain arc (auth, bot, crm)
+> Status: Implemented - P0-1 to P0-4 and P1 on `main` (2026-09); P0-5 superseded by [`crm-api.md`](crm-api.md) | Cross-domain arc (auth, bot, crm)
 > Error contract decided in [ADR 0006](../decisions/0006-error-envelope.md) (Accepted). Written to be executed
 > by coding agents: every requirement names its symbols, files, and checkable acceptance criteria.
 
@@ -265,7 +265,9 @@ Domain-specific vocabulary (`PartyId`, `PartyListParams`) lives in the domain pa
 
 **P0-5 - CRM `parties` as the reference implementation.** *Superseded by [`crm-api.md`](crm-api.md): the CRM
 surface is specified there as a whole, and its standing criteria carry over the acceptance criteria below. The
-text stays as the record of what was planned; nothing here is implemented or ticked separately.*
+technique stays as the record of what was planned and was not built in this form (there is no `PartyResponse`; the
+read side is `PartyListItem` and the `PartyDetail` union). The criteria are ticked because the CRM API meets them -
+for all 21 CRM operations, not only for two.*
 - *Technique:* bring [`parties.py`](../../app/api/v1/crm/parties.py) to the target shape. `get_party` in the
   service raises `PartyNotFoundError(NotFoundError)` from `app/services/crm/errors.py` instead of returning
   `None`; the list endpoint returns `Page[PartyResponse]` and takes `PartyListQuery`, the alias of a
@@ -274,10 +276,16 @@ text stays as the record of what was planned; nothing here is implemented or tic
   docstrings instead of `Field(..., description=...)`; endpoint functions drop the `_endpoint` suffix and
   import the service as a namespace (`from app.services.crm import parties as parties_service`).
 - *Acceptance criteria:*
-  - [ ] `parties.py` contains no `HTTPException`, no `try/except`, no inline `Annotated[...]` in signatures and
+  - [x] `parties.py` contains no `HTTPException`, no `try/except`, no inline `Annotated[...]` in signatures and
         no parameter named `_`.
-  - [ ] API tests cover: list paging, read hit, read miss (404 with `code == "party_not_found"`), 401, 403.
-  - [ ] Swagger shows for both GET operations: scope, 401/403, parameter docs, field descriptions.
+  - [x] API tests cover: list paging, read hit, read miss (404 with `code == "party_not_found"`), 401, 403.
+  - [x] Swagger shows for both GET operations: scope, 401/403, parameter docs, field descriptions.
+- *Proven by:* `test_the_crm_endpoints_carry_no_boilerplate` in
+  [`test_crm_architecture.py`](../../tests/api/test_crm_architecture.py) (an AST check over every CRM endpoint);
+  [`test_crm_party_list_api.py`](../../tests/db/crm/test_crm_party_list_api.py) and
+  [`test_crm_parties_api.py`](../../tests/db/crm/test_crm_parties_api.py) for paging, hit and miss;
+  [`test_crm_auth.py`](../../tests/api/test_crm_auth.py) for 401 / 403 on every CRM operation; and
+  [`test_crm_openapi.py`](../../tests/api/test_crm_openapi.py) for scopes and descriptions in the contract.
 
 ### Nice-to-have (P1)
 
