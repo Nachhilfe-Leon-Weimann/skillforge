@@ -1,0 +1,55 @@
+name: Deploy
+run-name: Deploy v${{ inputs.version }} to production
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      sha:
+        required: false
+        default: ""
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released version that must be running afterwards, without leading v"
+        required: true
+        type: string
+      dry_run:
+        description: "Only verify Dokploy API access, deploy nothing"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy production via Dokploy API
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # 900 s deployment wait + 180 s health wait, with headroom.
+    timeout-minutes: 25
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Deploy and verify
+        env:
+          DOKPLOY_BASE_URL: ${{ vars.DOKPLOY_BASE_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_COMPOSE_ID: ${{ vars.DOKPLOY_COMPOSE_ID }}
+          HEALTH_URL: ${{ vars.HEALTH_URL }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_SHA: ${{ inputs.sha || github.sha }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: .github/scripts/deploy-dokploy.sh

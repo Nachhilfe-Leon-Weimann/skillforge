@@ -117,25 +117,14 @@ jobs:
       - name: Publish client to PyPI
         run: uv publish --trusted-publishing always dist/python/*
 
-  # Interim transport; replaced by deploy.yml (Dokploy API) in the next PR.
   deploy:
-    name: Trigger deploy webhook
+    name: Deploy
     needs:
       - release-please
       - image
       - python-client
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: Trigger deploy webhook
-        env:
-          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
-        shell: bash
-        run: |
-          if [[ -z "${DEPLOY_WEBHOOK_URL}" ]]; then
-            echo "DEPLOY_WEBHOOK_URL is required to trigger deployment." >&2
-            exit 1
-          fi
-
-          curl --fail --show-error --silent --request POST "${DEPLOY_WEBHOOK_URL}"
+    uses: ./.github/workflows/deploy.yml
+    with:
+      version: ${{ needs.release-please.outputs.version }}
+      sha: ${{ needs.release-please.outputs.sha }}
+    secrets: inherit
