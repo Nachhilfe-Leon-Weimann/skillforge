@@ -1,10 +1,10 @@
 import os
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 
 import pytest
 from docker.errors import DockerException
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import event, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from testcontainers.postgres import PostgresContainer
 
 import app.core.db.models  # noqa
@@ -70,3 +70,20 @@ async def session(db: Database) -> AsyncGenerator[AsyncSession]:
         finally:
             await session.close()
             await trans.rollback()
+
+
+@pytest.fixture
+def statements(session: AsyncSession) -> Iterator[list[str]]:
+    """Every SQL statement the test's connection executes, in order; ``clear()`` it before measuring."""
+    connection = session.bind
+    assert isinstance(connection, AsyncConnection)
+    recorded: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany) -> None:
+        recorded.append(" ".join(statement.split()))
+
+    event.listen(connection.sync_connection, "before_cursor_execute", record)
+    try:
+        yield recorded
+    finally:
+        event.remove(connection.sync_connection, "before_cursor_execute", record)

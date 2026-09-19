@@ -1,14 +1,14 @@
 """Fixtures for CRM tests that run the real app against the test database."""
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
-from sqlalchemy import event, select, update
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthSettings, Scope, create_application_access_token
 from app.core.auth.dependencies import get_auth_settings
@@ -80,20 +80,3 @@ def updated_at(session: AsyncSession) -> Callable[[UUID], Awaitable[datetime]]:
         return value
 
     return _updated_at
-
-
-@pytest.fixture
-def statements(session: AsyncSession) -> Iterator[list[str]]:
-    """Every SQL statement the test's connection executes, in order; ``clear()`` it before measuring."""
-    connection = session.bind
-    assert isinstance(connection, AsyncConnection)
-    recorded: list[str] = []
-
-    def record(conn, cursor, statement, parameters, context, executemany) -> None:
-        recorded.append(" ".join(statement.split()))
-
-    event.listen(connection.sync_connection, "before_cursor_execute", record)
-    try:
-        yield recorded
-    finally:
-        event.remove(connection.sync_connection, "before_cursor_execute", record)
