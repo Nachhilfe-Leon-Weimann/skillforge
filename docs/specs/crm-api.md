@@ -1,6 +1,6 @@
 # Spec: CRM API (parties, roles, contact infos, relations, subjects)
 
-> Status: P0 implemented on `feat/crm-api` (2026-09), P1 in progress on `feat/crm-p1` | Domain arc `crm`
+> Status: P0 implemented on `feat/crm-api`, P1 on `feat/crm-p1` (2026-09) | Domain arc `crm`
 > Builds on [`api-conventions.md`](api-conventions.md) (P0-1 to P0-4 and P1 merged) and on
 > [ADR 0007](../decisions/0007-crm-system-of-record.md) (Accepted). **Supersedes P0-5 of `api-conventions.md`.**
 > Written to be executed by coding agents: every requirement names its symbols, files and checkable criteria.
