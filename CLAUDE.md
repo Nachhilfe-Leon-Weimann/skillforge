@@ -42,7 +42,9 @@ app/
 migrations/          Alembic (env.py creates schemas; baseline = explicit DDL)
 tests/               api/, auth/, db/ (db/crm/: the CRM app against Postgres), workers/
                      (DB tests via @pytest.mark.db)
-scripts/             coverage_summary.py, dump_openapi.py, version.py
+.github/             workflows: ci.yml, build.yml, release.yml (release-please -> build -> publish -> deploy),
+                     deploy.yml; scripts/deploy-dokploy.sh (the only code that talks to Dokploy)
+scripts/             coverage_summary.py, dump_openapi.py
 ```
 
 DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
@@ -78,6 +80,10 @@ DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
   (problem/goals/non-goals/decision table), then implement. Reference:
   [`lifecycle-guardian.md`](docs/specs/lifecycle-guardian.md).
 - **Decisions** with lasting impact go into [`docs/decisions/`](docs/decisions/) as an ADR.
+- **Releases are release-please PRs** ([spec](docs/specs/release-flow.md)): never bump the version, edit
+  `CHANGELOG.md` or create a tag by hand - ship the `chore(main): release X.Y.Z` PR. Commit messages on
+  `main` feed the changelog and the version bump, so conventional types matter (`feat`, `fix`, `!`). Nothing
+  deploys on a plain push to `main`; only prod exists.
 - **Merge via `git ship`** (local fast-forward merge) to keep Leon's signature on `main` - not
   the GitHub rebase/squash button (`main` has a signed-commits ruleset).
 - Commit style: conventional with PR number, e.g. `feat(api): ... (#34)`.
