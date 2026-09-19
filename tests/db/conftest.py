@@ -5,7 +5,7 @@ import pytest
 from docker.errors import DockerException
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
-from testcontainers.postgres import PostgresContainer
+from testcontainers.community.postgres import PostgresContainer
 
 import app.core.db.models  # noqa
 from app.core.db import Database

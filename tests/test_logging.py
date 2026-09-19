@@ -1,10 +1,11 @@
 import json
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
+import httpx
 from fastapi import FastAPI, Response
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from app.api.v1.common import register_exception_handlers
@@ -22,13 +23,13 @@ def test_logging_settings_default_to_skillforge_app_name():
     assert settings.file_path.name == "skillforge.jsonl"
 
 
-def test_request_logging_logs_not_found_with_request_id(capsys):
+async def test_request_logging_logs_not_found_with_request_id(capsys):
     configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
     app = FastAPI()
     register_request_logging(app)
     capsys.readouterr()
 
-    response = TestClient(app).get("/missing")
+    response = await _request(app, "GET", "/missing")
 
     output = capsys.readouterr().out
     event = json.loads(output)
@@ -42,7 +43,7 @@ def test_request_logging_logs_not_found_with_request_id(capsys):
     assert event["status_code"] == 404
 
 
-def test_request_logging_includes_auth_context_for_missing_scopes(capsys):
+async def test_request_logging_includes_auth_context_for_missing_scopes(capsys):
     configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
     app = FastAPI()
     app.dependency_overrides[get_auth_settings] = _settings
@@ -60,7 +61,7 @@ def test_request_logging_includes_auth_context_for_missing_scopes(capsys):
     )
     capsys.readouterr()
 
-    response = TestClient(app).post("/write", headers={"Authorization": f"Bearer {token.access_token}"})
+    response = await _request(app, "POST", "/write", headers={"Authorization": f"Bearer {token.access_token}"})
 
     output = capsys.readouterr().out
     event = json.loads(output)
@@ -73,7 +74,7 @@ def test_request_logging_includes_auth_context_for_missing_scopes(capsys):
     assert event["missing_scopes"] == ["bot:write"]
 
 
-def test_request_logging_stays_silent_for_healthy_probe(capsys):
+async def test_request_logging_stays_silent_for_healthy_probe(capsys):
     configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
     app = FastAPI()
     register_request_logging(app)
@@ -84,13 +85,13 @@ def test_request_logging_stays_silent_for_healthy_probe(capsys):
 
     capsys.readouterr()
 
-    response = TestClient(app).get("/health")
+    response = await _request(app, "GET", "/health")
 
     assert response.status_code == 200
     assert capsys.readouterr().out == ""
 
 
-def test_request_logging_warns_on_unhealthy_probe(capsys):
+async def test_request_logging_warns_on_unhealthy_probe(capsys):
     configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
     app = FastAPI()
     register_request_logging(app)
@@ -102,7 +103,7 @@ def test_request_logging_warns_on_unhealthy_probe(capsys):
 
     capsys.readouterr()
 
-    response = TestClient(app).get("/health")
+    response = await _request(app, "GET", "/health")
 
     event = json.loads(capsys.readouterr().out)
 
@@ -112,7 +113,7 @@ def test_request_logging_warns_on_unhealthy_probe(capsys):
     assert event["status_code"] == 503
 
 
-def test_request_logging_still_errors_on_non_probe_5xx(capsys):
+async def test_request_logging_still_errors_on_non_probe_5xx(capsys):
     configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
     app = FastAPI()
     register_request_logging(app)
@@ -124,7 +125,7 @@ def test_request_logging_still_errors_on_non_probe_5xx(capsys):
 
     capsys.readouterr()
 
-    response = TestClient(app).get("/boom")
+    response = await _request(app, "GET", "/boom")
 
     event = json.loads(capsys.readouterr().out)
 
@@ -133,7 +134,7 @@ def test_request_logging_still_errors_on_non_probe_5xx(capsys):
     assert event["level"] == "error"
 
 
-def test_request_logging_keeps_the_traceback_when_the_500_envelope_handles_the_exception(capsys):
+async def test_request_logging_keeps_the_traceback_when_the_500_envelope_handles_the_exception(capsys):
     configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
     app = FastAPI()
     register_request_logging(app)
@@ -145,7 +146,7 @@ def test_request_logging_keeps_the_traceback_when_the_500_envelope_handles_the_e
 
     capsys.readouterr()
 
-    response = TestClient(app, raise_server_exceptions=False).get("/boom")
+    response = await _request(app, "GET", "/boom", raise_app_exceptions=False)
 
     events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
     failed = [event for event in events if event["event"] == "http_request_failed"]
@@ -158,12 +159,12 @@ def test_request_logging_keeps_the_traceback_when_the_500_envelope_handles_the_e
     assert "kaputt" in json.dumps(failed[0])
 
 
-def test_500_envelope_carries_the_request_id_of_the_logged_failure(capsys):
+async def test_500_envelope_carries_the_request_id_of_the_logged_failure(capsys):
     configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
     app = _failing_app()
     capsys.readouterr()
 
-    response = TestClient(app, raise_server_exceptions=False).get("/boom")
+    response = await _request(app, "GET", "/boom", raise_app_exceptions=False)
 
     events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
     failed = next(event for event in events if event["event"] == "http_request_failed")
@@ -171,14 +172,22 @@ def test_500_envelope_carries_the_request_id_of_the_logged_failure(capsys):
     assert response.headers["x-request-id"] == failed["request_id"]
 
 
-def test_500_envelope_echoes_a_request_id_the_client_sent():
+async def test_500_envelope_echoes_a_request_id_the_client_sent():
     configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
 
-    response = TestClient(_failing_app(), raise_server_exceptions=False).get(
-        "/boom", headers={"x-request-id": "trace-me-42"}
+    response = await _request(
+        _failing_app(), "GET", "/boom", raise_app_exceptions=False, headers={"x-request-id": "trace-me-42"}
     )
 
     assert response.headers["x-request-id"] == "trace-me-42"
+
+
+async def _request(
+    app: FastAPI, method: str, path: str, *, raise_app_exceptions: bool = True, **kwargs: Any
+) -> httpx.Response:
+    transport = ASGITransport(app=app, raise_app_exceptions=raise_app_exceptions)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.request(method, path, **kwargs)
 
 
 def _failing_app() -> FastAPI:

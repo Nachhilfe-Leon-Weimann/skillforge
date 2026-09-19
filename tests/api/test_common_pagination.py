@@ -1,8 +1,9 @@
 from typing import Annotated, Any
 
+import httpx
 import pytest
 from fastapi import FastAPI, Query
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from pydantic import Field
 
 from app.api.v1.common import ApiModel, Page, PageParams, PageQuery, register_exception_handlers
@@ -47,14 +48,14 @@ def test_page_parameters_are_documented_with_defaults_and_bounds():
     assert not parameters["offset"]["required"]
 
 
-def test_page_parameters_default_to_the_first_fifty_items():
-    body = _client().get("/widgets").json()
+async def test_page_parameters_default_to_the_first_fifty_items():
+    body = (await _get("/widgets")).json()
 
     assert body == {"items": [{"name": name} for name in WIDGETS], "total": 7, "limit": 50, "offset": 0}
 
 
-def test_page_echoes_the_applied_window():
-    body = _client().get("/widgets", params={"limit": 2, "offset": 3}).json()
+async def test_page_echoes_the_applied_window():
+    body = (await _get("/widgets", params={"limit": 2, "offset": 3})).json()
 
     assert body == {"items": [{"name": "blue-3"}, {"name": "red-4"}], "total": 7, "limit": 2, "offset": 3}
 
@@ -71,8 +72,10 @@ def test_page_echoes_the_applied_window():
         ({"limt": 7}, "limt"),
     ],
 )
-def test_out_of_bounds_and_unknown_parameters_are_rejected_in_the_envelope(params: dict[str, int], offending: str):
-    response = _client().get("/widgets", params=params)
+async def test_out_of_bounds_and_unknown_parameters_are_rejected_in_the_envelope(
+    params: dict[str, int], offending: str
+):
+    response = await _get("/widgets", params=params)
 
     assert response.status_code == 422
     body = response.json()
@@ -88,14 +91,14 @@ def test_filter_subclass_documents_the_filter_next_to_the_page_parameters():
     assert parameters["limit"]["schema"]["maximum"] == 100
 
 
-def test_filter_subclass_parses_the_filter_and_the_page_parameters():
-    body = _client().get("/filtered-widgets", params={"kind": "red", "limit": 2, "offset": 1}).json()
+async def test_filter_subclass_parses_the_filter_and_the_page_parameters():
+    body = (await _get("/filtered-widgets", params={"kind": "red", "limit": 2, "offset": 1})).json()
 
     assert body == {"items": [{"name": "red-2"}, {"name": "red-4"}], "total": 4, "limit": 2, "offset": 1}
 
 
-def test_filter_subclass_still_rejects_unknown_parameters():
-    response = _client().get("/filtered-widgets", params={"knd": "x"})
+async def test_filter_subclass_still_rejects_unknown_parameters():
+    response = await _get("/filtered-widgets", params={"knd": "x"})
 
     assert response.status_code == 422
 
@@ -120,8 +123,9 @@ def _parameters(path: str) -> dict[str, dict[str, Any]]:
     return {parameter["name"]: parameter for parameter in _app().openapi()["paths"][path]["get"]["parameters"]}
 
 
-def _client() -> TestClient:
-    return TestClient(_app())
+async def _get(path: str, **kwargs: Any) -> httpx.Response:
+    async with AsyncClient(transport=ASGITransport(app=_app()), base_url="http://testserver") as client:
+        return await client.get(path, **kwargs)
 
 
 def _app() -> FastAPI:

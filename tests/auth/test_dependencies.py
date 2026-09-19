@@ -1,8 +1,9 @@
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
+import httpx
 from fastapi import Depends, FastAPI
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from app.core.auth import AuthSettings, Principal, create_application_access_token, require_application, require_scopes
@@ -13,7 +14,7 @@ CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
 ApplicationPrincipal = Annotated[Principal, Depends(require_application)]
 
 
-def test_get_current_principal_returns_principal_for_valid_token():
+async def test_get_current_principal_returns_principal_for_valid_token():
     settings = _settings()
     token = create_application_access_token(
         settings,
@@ -23,7 +24,9 @@ def test_get_current_principal_returns_principal_for_valid_token():
     )
     app = _app(settings)
 
-    response = TestClient(app).get(
+    response = await _request(
+        app,
+        "GET",
         "/me",
         headers={"Authorization": f"Bearer {token.access_token}"},
     )
@@ -36,23 +39,20 @@ def test_get_current_principal_returns_principal_for_valid_token():
     }
 
 
-def test_get_current_principal_rejects_missing_token():
-    response = TestClient(_app(_settings())).get("/me")
+async def test_get_current_principal_rejects_missing_token():
+    response = await _request(_app(_settings()), "GET", "/me")
 
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
 
 
-def test_get_current_principal_rejects_invalid_token():
-    response = TestClient(_app(_settings())).get(
-        "/me",
-        headers={"Authorization": "Bearer not-a-token"},
-    )
+async def test_get_current_principal_rejects_invalid_token():
+    response = await _request(_app(_settings()), "GET", "/me", headers={"Authorization": "Bearer not-a-token"})
 
     assert response.status_code == 401
 
 
-def test_require_scopes_accepts_token_with_required_scope():
+async def test_require_scopes_accepts_token_with_required_scope():
     settings = _settings()
     token = create_application_access_token(
         settings,
@@ -62,7 +62,9 @@ def test_require_scopes_accepts_token_with_required_scope():
     )
     app = _app(settings)
 
-    response = TestClient(app).post(
+    response = await _request(
+        app,
+        "POST",
         "/write",
         headers={"Authorization": f"Bearer {token.access_token}"},
     )
@@ -71,7 +73,7 @@ def test_require_scopes_accepts_token_with_required_scope():
     assert response.json() == {"client_id": "skillbot"}
 
 
-def test_require_scopes_rejects_token_without_required_scope():
+async def test_require_scopes_rejects_token_without_required_scope():
     settings = _settings()
     token = create_application_access_token(
         settings,
@@ -81,7 +83,9 @@ def test_require_scopes_rejects_token_without_required_scope():
     )
     app = _app(settings)
 
-    response = TestClient(app).post(
+    response = await _request(
+        app,
+        "POST",
         "/write",
         headers={"Authorization": f"Bearer {token.access_token}"},
     )
@@ -89,13 +93,13 @@ def test_require_scopes_rejects_token_without_required_scope():
     assert response.status_code == 403
 
 
-def test_require_scopes_guards_a_route_from_the_decorator():
+async def test_require_scopes_guards_a_route_from_the_decorator():
     settings = _settings()
-    client = TestClient(_app(settings))
+    app = _app(settings)
 
-    missing_token = client.post("/guarded")
-    wrong_scope = client.post("/guarded", headers=_bearer(settings, scopes=["bot:read"]))
-    granted = client.post("/guarded", headers=_bearer(settings, scopes=["bot:write"]))
+    missing_token = await _request(app, "POST", "/guarded")
+    wrong_scope = await _request(app, "POST", "/guarded", headers=_bearer(settings, scopes=["bot:read"]))
+    granted = await _request(app, "POST", "/guarded", headers=_bearer(settings, scopes=["bot:write"]))
 
     assert missing_token.status_code == 401
     assert missing_token.headers["www-authenticate"] == 'Bearer scope="bot:write"'
@@ -110,7 +114,7 @@ def test_require_scopes_declares_the_scopes_in_openapi_for_both_positions():
     assert paths["/guarded"]["post"]["security"] == [{"OAuth2ClientCredentialsBearer": ["bot:write"]}]
 
 
-def test_require_application_rejects_non_application_principal():
+async def test_require_application_rejects_non_application_principal():
     app = FastAPI()
 
     async def fake_principal() -> Principal:
@@ -127,9 +131,17 @@ def test_require_application_rejects_non_application_principal():
     async def application_only(principal: ApplicationPrincipal):
         return {"principal_type": principal.principal_type}
 
-    response = TestClient(app).get("/application-only")
+    response = await _request(app, "GET", "/application-only")
 
     assert response.status_code == 403
+
+
+async def _request(
+    app: FastAPI, method: str, path: str, *, raise_app_exceptions: bool = True, **kwargs: Any
+) -> httpx.Response:
+    transport = ASGITransport(app=app, raise_app_exceptions=raise_app_exceptions)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.request(method, path, **kwargs)
 
 
 def _app(settings: AuthSettings) -> FastAPI:

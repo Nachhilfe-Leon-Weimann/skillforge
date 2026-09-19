@@ -1,7 +1,9 @@
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
+import httpx
 import pytest
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from app.api.v1.auth.token import get_issue_client_token
@@ -11,7 +13,7 @@ from app.core.db.dependencies import get_db_session
 from app.main import app
 
 
-def test_auth_token_endpoint_returns_access_token():
+async def test_auth_token_endpoint_returns_access_token():
     captured: dict[str, object] = {}
 
     async def fake_create_token(
@@ -32,7 +34,7 @@ def test_auth_token_endpoint_returns_access_token():
         return _token(scope="bot:read")
 
     with _overrides(fake_create_token):
-        response = TestClient(app).post(
+        response = await _post(
             "/api/v1/auth/token",
             data={
                 "grant_type": "client_credentials",
@@ -55,7 +57,7 @@ def test_auth_token_endpoint_returns_access_token():
     assert captured["requested_scopes"] == "bot:read"
 
 
-def test_auth_token_endpoint_accepts_basic_client_credentials():
+async def test_auth_token_endpoint_accepts_basic_client_credentials():
     captured: dict[str, object] = {}
 
     async def fake_create_token(
@@ -74,7 +76,7 @@ def test_auth_token_endpoint_accepts_basic_client_credentials():
         return _token(scope="bot:read bot:write")
 
     with _overrides(fake_create_token):
-        response = TestClient(app).post(
+        response = await _post(
             "/api/v1/auth/token",
             auth=("skillbot", "secret"),
             data={
@@ -91,12 +93,12 @@ def test_auth_token_endpoint_accepts_basic_client_credentials():
     }
 
 
-def test_auth_token_endpoint_rejects_unsupported_grant_type():
+async def test_auth_token_endpoint_rejects_unsupported_grant_type():
     async def fake_create_token(*args, **kwargs):
         raise AssertionError("service should not be called")
 
     with _overrides(fake_create_token):
-        response = TestClient(app).post(
+        response = await _post(
             "/api/v1/auth/token",
             data={
                 "grant_type": "password",
@@ -109,12 +111,12 @@ def test_auth_token_endpoint_rejects_unsupported_grant_type():
     assert response.json() == {"detail": "Unsupported grant_type", "code": "unsupported_grant_type"}
 
 
-def test_auth_token_endpoint_rejects_invalid_client_credentials():
+async def test_auth_token_endpoint_rejects_invalid_client_credentials():
     async def fake_create_token(*args, **kwargs):
         raise InvalidClientCredentialsError("invalid")
 
     with _overrides(fake_create_token):
-        response = TestClient(app).post(
+        response = await _post(
             "/api/v1/auth/token",
             data={
                 "grant_type": "client_credentials",
@@ -128,12 +130,12 @@ def test_auth_token_endpoint_rejects_invalid_client_credentials():
     assert response.json() == {"detail": "Invalid client credentials", "code": "invalid_client"}
 
 
-def test_auth_token_endpoint_rejects_invalid_scope():
+async def test_auth_token_endpoint_rejects_invalid_scope():
     async def fake_create_token(*args, **kwargs):
         raise InvalidClientScopeError("invalid scope")
 
     with _overrides(fake_create_token):
-        response = TestClient(app).post(
+        response = await _post(
             "/api/v1/auth/token",
             data={
                 "grant_type": "client_credentials",
@@ -148,7 +150,7 @@ def test_auth_token_endpoint_rejects_invalid_scope():
 
 
 @pytest.mark.parametrize("denial", [InvalidClientCredentialsError("invalid"), InvalidClientScopeError("invalid scope")])
-def test_auth_token_denial_commits_the_session_so_the_audit_entry_survives(denial: Exception):
+async def test_auth_token_denial_commits_the_session_so_the_audit_entry_survives(denial: Exception):
     # issue_client_token writes a TOKEN_DENIED audit entry before it raises. The endpoint must
     # return the error: an exception reaching the session dependency would roll the entry back.
     outcome: list[str] = []
@@ -166,7 +168,7 @@ def test_auth_token_denial_commits_the_session_so_the_audit_entry_survives(denia
 
     with _overrides(fake_create_token):
         app.dependency_overrides[get_db_session] = tracked_session
-        response = TestClient(app).post(
+        response = await _post(
             "/api/v1/auth/token",
             data={"grant_type": "client_credentials", "client_id": "skillbot", "client_secret": "wrong"},
         )
@@ -175,24 +177,24 @@ def test_auth_token_denial_commits_the_session_so_the_audit_entry_survives(denia
     assert outcome == ["committed"]
 
 
-def test_auth_token_endpoint_requires_form_fields():
+async def test_auth_token_endpoint_requires_form_fields():
     async def fake_create_token(*args, **kwargs):
         raise AssertionError("service should not be called")
 
     with _overrides(fake_create_token):
-        response = TestClient(app).post("/api/v1/auth/token", data={})
+        response = await _post("/api/v1/auth/token", data={})
 
     assert response.status_code == 422
     assert response.json()["code"] == "validation_error"
     assert [error["loc"] for error in response.json()["errors"]] == [["body", "grant_type"]]
 
 
-def test_auth_token_endpoint_requires_client_credentials():
+async def test_auth_token_endpoint_requires_client_credentials():
     async def fake_create_token(*args, **kwargs):
         raise AssertionError("service should not be called")
 
     with _overrides(fake_create_token):
-        response = TestClient(app).post("/api/v1/auth/token", data={"grant_type": "client_credentials"})
+        response = await _post("/api/v1/auth/token", data={"grant_type": "client_credentials"})
 
     assert response.status_code == 422
     assert response.json() == {"detail": "client_id and client_secret are required", "code": "invalid_request"}
@@ -224,6 +226,11 @@ class _overrides:
 
     def __exit__(self, exc_type, exc, tb):
         app.dependency_overrides.clear()
+
+
+async def _post(path: str, **kwargs: Any) -> httpx.Response:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        return await client.post(path, **kwargs)
 
 
 def _token(*, scope: str) -> CreatedAccessToken:
