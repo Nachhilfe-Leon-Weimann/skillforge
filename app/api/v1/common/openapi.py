@@ -113,14 +113,19 @@ def _register_error_envelope(schema: dict[str, Any]) -> None:
 
 
 def _document_auth_errors(schema: dict[str, Any]) -> None:
-    """Document 401/403 on every operation that declares a ``security`` requirement."""
+    """Document 401 on every operation that declares a ``security`` requirement, and 403 if it names a scope.
+
+    An operation that needs a token but no scope lets any valid token pass, so it cannot answer 403.
+    """
     for operation in _operations(schema):
         if not operation.get("security"):
             continue
 
         responses = operation.setdefault("responses", {})
         _document(responses, "401", "Missing or invalid bearer token", UNAUTHORIZED_EXAMPLES)
-        _document(responses, "403", _forbidden_description(operation), FORBIDDEN_EXAMPLES)
+        scopes = _required_scopes(operation)
+        if scopes:
+            _document(responses, "403", _forbidden_description(scopes), FORBIDDEN_EXAMPLES)
 
 
 def _document(responses: dict[str, Any], status: str, description: str, examples: dict[str, dict[str, Any]]) -> None:
@@ -174,11 +179,12 @@ def _refs(node: Any) -> set[str]:
     return set()
 
 
-def _forbidden_description(operation: dict[str, Any]) -> str:
-    scopes = list(dict.fromkeys(scope for requirement in operation["security"] for scope in _scopes_of(requirement)))
+def _required_scopes(operation: dict[str, Any]) -> list[str]:
+    return list(dict.fromkeys(scope for requirement in operation["security"] for scope in _scopes_of(requirement)))
+
+
+def _forbidden_description(scopes: list[str]) -> str:
     match scopes:
-        case []:
-            return "Not enough permissions"
         case [scope]:
             return f"Missing required scope: {scope}"
         case _:

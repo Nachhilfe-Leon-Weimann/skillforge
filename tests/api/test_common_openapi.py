@@ -91,6 +91,9 @@ def _customized_app() -> FastAPI:
     )
     async def guarded_with_own_errors() -> None: ...
 
+    @app.get("/guarded-without-scope", dependencies=[require_scopes()])
+    async def guarded_without_scope() -> None: ...
+
     @app.get("/open")
     async def unguarded() -> None: ...
 
@@ -147,6 +150,14 @@ def test_forbidden_description_names_all_required_scopes():
     responses = _responses(_customized_app(), "/guarded-twice")
 
     assert responses["403"]["description"] == "Missing required scopes: bot:read, bot:write"
+
+
+def test_operation_that_needs_a_token_but_no_scope_documents_the_401_only():
+    """Any valid token passes such a route, so it cannot answer 403."""
+    responses = _responses(_customized_app(), "/guarded-without-scope")
+
+    assert responses["401"]["description"] == "Missing or invalid bearer token"
+    assert "403" not in responses
 
 
 def test_auth_error_examples_show_the_envelope_with_detail_and_code():

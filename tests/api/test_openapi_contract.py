@@ -78,7 +78,11 @@ def test_bearer_auth_errors_are_documented_exactly_where_a_token_is_required(sch
         if operation.get("security"):
             guarded += 1
             assert _documents_bearer_401(responses), f"{method} {path}"
-            assert _documents_scope_403(responses), f"{method} {path}"
+            if _requires_a_scope(operation):
+                assert _documents_scope_403(responses), f"{method} {path}"
+            else:
+                # Any valid token passes (``GET /auth/me``), so there is no 403 to document.
+                assert "403" not in responses, f"{method} {path}"
         else:
             # An unguarded operation may own a 401 (the token endpoint's ``invalid_client``), but
             # never the derived bearer-token one, and no 403.
@@ -86,6 +90,10 @@ def test_bearer_auth_errors_are_documented_exactly_where_a_token_is_required(sch
             assert "403" not in responses, f"{method} {path}"
 
     assert guarded
+
+
+def _requires_a_scope(operation: dict[str, Any]) -> bool:
+    return any(scopes for requirement in operation["security"] for scopes in requirement.values())
 
 
 def _documents_bearer_401(responses: dict[str, Any]) -> bool:

@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.api.v1.common import ApiModel
+from app.core.auth.principal import Principal
 from app.core.auth.results import CreatedClientSecret
 from app.core.auth.tokens import CreatedAccessToken
 from app.core.db.models import ApplicationClient, ApplicationClientStatus
@@ -21,6 +23,25 @@ class AccessTokenResponse(BaseModel):
             token_type=token.token_type,
             expires_in=token.expires_in,
             scope=token.scope,
+        )
+
+
+class MeResponse(ApiModel):
+    """What the calling token says about its bearer."""
+
+    principal_type: str
+    """Kind of principal the token was issued to; `application` for an application client."""
+    client_id: str | None
+    """Client ID of the application client; `null` for a principal that is not a client."""
+    scopes: list[str]
+    """Scopes the token grants, sorted."""
+
+    @classmethod
+    def from_principal(cls, principal: Principal) -> MeResponse:
+        return cls(
+            principal_type=principal.principal_type,
+            client_id=principal.client_id,
+            scopes=sorted(principal.scopes),
         )
 
 

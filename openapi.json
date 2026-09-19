@@ -1629,6 +1629,43 @@
         "title": "JobStatusCounts",
         "type": "object"
       },
+      "MeResponse": {
+        "description": "What the calling token says about its bearer.",
+        "properties": {
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client ID of the application client; `null` for a principal that is not a client.",
+            "title": "Client Id"
+          },
+          "principal_type": {
+            "description": "Kind of principal the token was issued to; `application` for an application client.",
+            "title": "Principal Type",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "Scopes the token grants, sorted.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "principal_type",
+          "client_id",
+          "scopes"
+        ],
+        "title": "MeResponse",
+        "type": "object"
+      },
       "MemberRole": {
         "enum": [
           "admin",
@@ -4207,6 +4244,57 @@
           }
         ],
         "summary": "Revoke Application Client Secret Endpoint",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "description": "Report what the calling token carries. Answers from the token alone, without asking the database.",
+        "operationId": "auth_get_me",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          }
+        },
+        "security": [
+          {
+            "OAuth2ClientCredentialsBearer": []
+          }
+        ],
+        "summary": "Get Me",
         "tags": [
           "auth"
         ]
