@@ -46,7 +46,7 @@ async def load_parties_for_discord_ids(session: AsyncSession, discord_ids: Itera
             selectinload(Party.contact_infos),
             selectinload(Party.outgoing_relations),
             selectinload(Party.incoming_relations),
-            selectinload(Party.discord_account),
+            selectinload(Party.discord_accounts),
             selectinload(Party.microsoft_account),
         )
     )

@@ -70,7 +70,7 @@ class MicrosoftAccountProfile(BaseModel):
 
 
 class ExternalAccountsProfile(BaseModel):
-    discord: DiscordAccountProfile | None = None
+    discord: list[DiscordAccountProfile] = Field(default_factory=list)
     microsoft: MicrosoftAccountProfile | None = None
 
 
@@ -124,11 +124,7 @@ class OperationalProfile(BaseModel):
             subjects=sorted(subjects),
             relations=relations,
             external_accounts=ExternalAccountsProfile(
-                discord=(
-                    DiscordAccountProfile.model_validate(party.discord_account)
-                    if party.discord_account is not None
-                    else None
-                ),
+                discord=[DiscordAccountProfile.model_validate(account) for account in party.discord_accounts],
                 microsoft=(
                     MicrosoftAccountProfile.model_validate(party.microsoft_account)
                     if party.microsoft_account is not None

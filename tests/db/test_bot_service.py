@@ -82,9 +82,9 @@ async def test_get_principal_view_resolves_groups_permissions_and_profile(sessio
     assert [(rel.type, rel.direction, rel.counterparty_party_id) for rel in profile.relations] == [
         (PartyRelationType.PARENT_OF, "incoming", parent_id)
     ]
-    assert profile.external_accounts.discord is not None
-    assert profile.external_accounts.discord.discord_id == DISCORD_ID
-    assert profile.external_accounts.discord.is_primary is True
+    assert [(account.discord_id, account.is_primary) for account in profile.external_accounts.discord] == [
+        (DISCORD_ID, True)
+    ]
     assert profile.external_accounts.microsoft is not None
     assert profile.external_accounts.microsoft.user_id == "MS-GRAPH-ID"
 

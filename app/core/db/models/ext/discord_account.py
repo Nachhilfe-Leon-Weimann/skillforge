@@ -36,4 +36,4 @@ class DiscordAccount(TimestampMixin, ExtBase):
         ),
     )
 
-    party: Mapped[Party] = relationship("Party", back_populates="discord_account")
+    party: Mapped[Party] = relationship("Party", back_populates="discord_accounts")

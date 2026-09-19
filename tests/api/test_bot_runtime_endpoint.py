@@ -80,7 +80,7 @@ async def test_read_principal_includes_operational_profile(monkeypatch):
     assert profile["person"] == {"firstname": "Max", "lastname": "Muster"}
     assert profile["contact_infos"] == [{"type": "email", "value": "max@example.com", "label": None}]
     assert profile["subjects"] == []
-    assert profile["external_accounts"] == {"discord": None, "microsoft": None}
+    assert profile["external_accounts"] == {"discord": [], "microsoft": None}
 
 
 async def test_read_principal_returns_404(monkeypatch):
@@ -476,6 +476,6 @@ def _party_with_person(party_id: UUID) -> Party:
     party.contact_infos = [ContactInfo(type=ContactInfoType.EMAIL, value="max@example.com")]
     party.outgoing_relations = []
     party.incoming_relations = []
-    party.discord_account = None
+    party.discord_accounts = []
     party.microsoft_account = None
     return party

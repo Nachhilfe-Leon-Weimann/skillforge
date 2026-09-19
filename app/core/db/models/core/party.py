@@ -78,12 +78,12 @@ class Party(TimestampMixin, CoreBase):
         foreign_keys="PartyRelation.to_party_id",
     )
 
-    discord_account: Mapped[DiscordAccount | None] = relationship(
+    # A party may have several Discord accounts, at most one of them primary and active.
+    discord_accounts: Mapped[list[DiscordAccount]] = relationship(
         "DiscordAccount",
         back_populates="party",
-        uselist=False,
         cascade="all, delete-orphan",
-        single_parent=True,
+        order_by="(DiscordAccount.is_primary.desc(), DiscordAccount.discord_id)",
     )
 
     sevdesk_contact: Mapped[SevdeskContact | None] = relationship(

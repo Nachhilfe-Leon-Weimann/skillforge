@@ -13,7 +13,7 @@ async def test_ext_relationships(session):
     await session.flush()
 
     assert discord_account.party_id == party.id
-    assert party.discord_account is discord_account
+    assert party.discord_accounts == [discord_account]
 
 
 def test_discord_account_indexes():

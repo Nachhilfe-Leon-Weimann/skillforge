@@ -1050,14 +1050,11 @@
       "ExternalAccountsProfile": {
         "properties": {
           "discord": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DiscordAccountProfile"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "items": {
+              "$ref": "#/components/schemas/DiscordAccountProfile"
+            },
+            "title": "Discord",
+            "type": "array"
           },
           "microsoft": {
             "anyOf": [
