@@ -1,6 +1,6 @@
 # Spec: CRM API (parties, roles, contact infos, relations, subjects)
 
-> Status: P0 implemented on `feat/crm-api` (2026-09), P1 open | Domain arc `crm`
+> Status: P0 implemented on `feat/crm-api` (2026-09), P1 in progress on `feat/crm-p1` | Domain arc `crm`
 > Builds on [`api-conventions.md`](api-conventions.md) (P0-1 to P0-4 and P1 merged) and on
 > [ADR 0007](../decisions/0007-crm-system-of-record.md) (Accepted). **Supersedes P0-5 of `api-conventions.md`.**
 > Written to be executed by coding agents: every requirement names its symbols, files and checkable criteria.
@@ -39,11 +39,10 @@ correcting mistakes. That shapes the API more than any future UI does.
 - **Optimistic concurrency** (`version` / `If-Match`).
 - **Managing `ext` links** (sevDesk, Clockodo, Microsoft, Discord) through the CRM, including showing them in the
   party detail. They belong to the integrations (ADR 0007).
-- **Change feed / eventing / an `updated_since` filter.** `updated_at` on the aggregate root is the only signal.
+- **Change feed / eventing.** `updated_at` on the aggregate root is the only signal; P1-3 adds a filter on it.
 - **A `sort` parameter, fuzzy search, `pg_trgm`.** Fixed order and `ILIKE` are enough at this size.
-- **Phone number normalization to E.164** and **global duplicate prevention** (a parent's e-mail may legitimately
-  appear on the child too).
-- **Any change to the bot domain.** Follow-ups are listed under P1.
+- **Global duplicate prevention** (a parent's e-mail may legitimately appear on the child too).
+- **Any change to the bot domain in P0.** The follow-ups are P1-2.
 
 ## Decided defaults
 
@@ -580,12 +579,114 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
 
 ### Nice-to-have (P1)
 
-- **P1-1 - `GET /api/v1/auth/me`.** Client ID and granted scopes of the calling token; useful to verify a token in
-  Swagger. Belongs to the `auth` domain, not to the CRM.
-- **P1-2 - Bot follow-ups of ADR 0007.** `prepare_student_activation` validates the pair against `TUTOR_OF`;
-  `load_parties_for_discord_ids` reuses `PARTY_GRAPH`; `Party.discord_account` becomes a collection.
-- **P1-3 - `updated_since` filter** on `GET /parties`, once a consumer polls for changes.
-- **P1-4 - Phone normalization** to E.164.
+Four independent requirements in three domains. The rules for implementing agents apply to each; every slice ends
+with `just check-all` green, `openapi.json` regenerated where the API changed, `just test-clients` passing, and its
+own `docs(specs): tick P1-x` commit. Only P1-3 and P1-4 touch the CRM packages.
+
+**P1-1 - `GET /api/v1/auth/me`.** _What does this token say about me? Useful to verify a token in Swagger UI. Belongs
+to the `auth` domain, not to the CRM._
+
+- _Technique:_ `get_me` in a new `app/api/v1/auth/me.py`, included in the `auth` router. The principal comes from a
+  parameter typed `Annotated[Principal, require_scopes()]`: no scope, so any valid token passes, and 401 / 403 are
+  still derived by the OpenAPI hook. `MeResponse(ApiModel)` in the auth [`schemas.py`](../../app/api/v1/auth/schemas.py)
+  carries `principal_type`, `client_id: str | None` and `scopes: list[str]` (sorted). The route reads no database: it
+  reports what the token carries, also for a client that was suspended after the token was issued.
+- _Acceptance criteria:_
+  - [ ] With a valid token the route answers 200 with the token's principal type, client ID and its scopes sorted.
+  - [ ] Without a token and with an invalid one it is 401 in the error envelope.
+  - [ ] In `openapi.json` the operation ID is `auth_get_me`, the security requirement lists no scopes, 401 and 403
+        are derived, and every property of `MeResponse` has a description.
+  - [ ] The handler depends on the principal only - no session, no settings.
+
+**P1-2 - Bot follow-ups of ADR 0007.** _Bot-domain and model work in three commits (a, b, c). The CRM packages stay
+untouched, and the dependency keeps its direction: the bot reads the CRM, never the reverse._
+
+- _Technique (a) - `Party.discord_accounts`:_ the relationship in [`party.py`](../../app/core/db/models/core/party.py)
+  becomes `discord_accounts: Mapped[list[DiscordAccount]]`, ordered primary first, then by `discord_id`;
+  `DiscordAccount.party` back-populates it. `ExternalAccountsProfile.discord` becomes `list[DiscordAccountProfile]`
+  and `load_parties_for_discord_ids` loads the collection. No migration: `ext.discord_account` always allowed several
+  rows per party (its key is `discord_id`; only "one primary active account per party" is unique), which the scalar
+  relationship answered with a warning and an arbitrary row. The link kind `"discord_account"` in `EXTERNAL_LINKS`
+  names the table, is part of the `party_in_use` contract, and stays.
+- _Technique (b) - one party graph:_ `load_parties_for_discord_ids` in
+  [`profile.py`](../../app/services/bot/profile.py) applies `*PARTY_GRAPH` plus what only the bot's profile touches
+  (both relation collections, `discord_accounts`, `microsoft_account`). `PARTY_GRAPH` itself is unchanged: no CRM
+  mapper touches the extras.
+- _Technique (c) - `TUTOR_OF`:_ a helper `_require_tutor_of` in
+  [`transitions.py`](../../app/services/bot/transitions.py), called by `prepare_student_activation` with its other
+  validations and therefore before the replay lookup. It resolves both Discord IDs to parties through **active**
+  `ext.discord_account` rows (a deactivated link counts as unlinked; any active account of a party qualifies, primary
+  or not) and requires a `tutor_of` relation from the tutor's party to the student's. Each failure is the existing
+  `TransitionValidationError` (422 `transition_validation`) with its own message: "Student is not linked to a party",
+  "Tutor is not linked to a party", "Tutor is not assigned to this student". It is a plain read: no lock, no write.
+  `commit_student_activation` does not check again - a relation removed between the two phases is divergence, and
+  reconciling that is later bot work (ADR 0007).
+- _Technique:_ [ADR 0007](../decisions/0007-crm-system-of-record.md) marks its three follow-ups as done and says what
+  "no synchronous cross-checks" rules out: the CRM asking the bot. The bot validating its own transition against the
+  intended state is a consumer reading the CRM.
+- _Acceptance criteria:_
+  - [ ] (a) Given a party with two linked accounts, its profile lists both, the primary one first, and loading it
+        raises no SQLAlchemy warning; a party without an account has `external_accounts.discord == []`.
+  - [ ] (a) `party_in_use` still names `discord_account`; the CRM's contract tests pass unchanged.
+  - [ ] (b) The profile of a person holding both roles, and of a company, maps without `MissingGreenlet`; that the
+        loader is built on `PARTY_GRAPH` is asserted on the emitted SQL (it loads `core.company`, which only
+        `PARTY_GRAPH` contributes).
+  - [ ] (c) With both accounts linked and `tutor_of` from tutor to student in place, prepare and commit work as
+        before; a non-primary active account is enough.
+  - [ ] (c) Without the relation - or with only the inverse one - prepare is 422 "Tutor is not assigned to this
+        student"; a student or tutor without a link, or with only a deactivated one, is 422 with the message of that
+        side. Nothing is written in any of these cases.
+  - [ ] (c) A retried prepare after the relation was removed is the 422, not a replay; a commit after the relation
+        was removed still succeeds.
+  - [ ] (c) The three messages are pinned over HTTP next to the existing rows of
+        [`test_bot_error_contract.py`](../../tests/api/test_bot_error_contract.py); the bot's error catalog does not
+        grow.
+  - [ ] The architecture test of P0-1 stays green: nothing under the CRM packages imports the bot.
+
+**P1-3 - `updated_since` filter on `GET /parties`.** _The pull-based change signal of decision H. The spec tied it to
+a polling consumer; it is built ahead of one because it is one filter._
+
+- _Technique:_ `updated_since: AwareDatetime | None` on `PartyListParams` with a description and an example in `Z`
+  notation (a literal `+` in a query string decodes as a space); `list_parties(..., updated_since=None)` adds
+  `Party.updated_at >= updated_since`. The boundary is included so that a poller sees a change twice rather than
+  never. Order, paging and the other filters are unchanged. Two limits go into "List and search": a deleted party
+  is invisible to the filter (no soft delete), and `updated_at` is the **start** of the writing transaction
+  (`now()`), so a consumer must poll with an overlap instead of a moving cursor.
+- _Acceptance criteria:_
+  - [ ] `updated_since=<t>` returns exactly the parties with `updated_at >= t`, the boundary included; it combines
+        with the other filters by AND, and `total` counts the filtered set.
+  - [ ] A timestamp in the future is an empty page, not an error; a timestamp without an offset and a malformed one
+        are the validation 422.
+  - [ ] A write anywhere in the aggregate makes its party appear: shown for a contact info write and for the party
+        on the other side of a new relation.
+  - [ ] The parameter has its description in `openapi.json` (standing criterion).
+
+**P1-4 - Phone numbers in E.164.**
+
+- _Technique:_ the `phone` branch of `normalize_contact_value` in [`inputs.py`](../../app/services/crm/inputs.py)
+  parses with `phonenumbers` (new dependency) and `DEFAULT_PHONE_REGION = "DE"`, and returns the E.164 form. A value
+  is rejected when it contains a letter (the parser would silently convert or drop it), when it does not parse,
+  when it is not `IS_POSSIBLE` for its region (`IS_POSSIBLE_LOCAL_ONLY` is not enough: a number without its area
+  code has no E.164 form), or when it carries an extension (E.164 has none and formatting would drop it silently;
+  the extension belongs into `label`). The check is "possible", deliberately not "valid": number ranges are opened
+  faster than metadata ships, and a real number that cannot be stored is worse than a typo that can. Everything else
+  stays: the function raises `ValueError` with messages that never repeat the value, it is a fixed point, and
+  nothing outside `inputs.py` knows the library. There is no data migration - nothing is live; a value stored before
+  this slice keeps its form until it is next written.
+- _Technique:_ the descriptions of the three `value` fields name E.164 and the default region; the description of
+  `q` says that a phone number is found by its digits without the national leading zero (`171 1234567` or the full
+  `+49171...`), since search stays a plain substring match. "Representations" and the non-goals are updated.
+- _Acceptance criteria:_
+  - [ ] `0171 1234567`, `+49 171 1234567`, `0049 171 1234567`, `+49 (0)171 1234567` and `0171/1234567` are all
+        stored as `+491711234567`; `+1 650 253 0000` is stored as `+16502530000`.
+  - [ ] **Fixed point:** for every accepted sample, normalizing the result again returns it; `POST` and `PATCH`
+        store the same form.
+  - [ ] A value with a letter, one that is no number, a too long one and a local-only one (`112`) are invalid: the
+        validation 422 with a field path on the create routes, 422 `invalid_contact_value` on `PATCH`. A value with
+        an extension is rejected with its own message. No message repeats the value.
+  - [ ] Two spellings of one number in a create body are the validation 422 (duplicate); adding the second spelling
+        to a party that has the first is 409 `contact_info_already_exists`.
+  - [ ] `phonenumbers` is imported by `inputs.py` only.
 
 ### Future considerations (P2)
 
@@ -610,6 +711,11 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
 - **No `CrmServiceError` marker base,** and role "not found" is one class for both roles.
 - **An invalid contact value on update is a domain error** (`invalid_contact_value`): the type is only known from
   the stored row, so the check needs the database (rule I-2). On create it stays a Pydantic validation error.
+- **P1-2: student activation is strict.** Both sides need an active link to a party and the `tutor_of` relation;
+  there is no lenient path for unlinked users. The CRM says what should be true (ADR 0007).
+- **P1-2: the profile lists all Discord accounts** of a party instead of picking one. Nothing consumes the field
+  yet, so the contract change breaks nobody.
+- **P1-4: default region `DE`, "possible" rather than "valid",** extensions and letters rejected rather than dropped.
 
 ## Timeline / phasing
 
@@ -621,6 +727,9 @@ ADR 0007 to the [decisions index](../decisions/README.md), below the 0006 row th
 1. **P0-1** proves the stack on subjects, which P0-4 needs anyway.
 2. **P0-2**, then **P0-3**: from here the operator can create and find people.
 3. **P0-4**, **P0-5**, **P0-6** complete the reference flow.
+
+4. **P1** follows on `feat/crm-p1`, branched from `feat/crm-api`, so that P0 can be merged on its own: **P1-1**,
+   **P1-2** (a, b, c), **P1-3**, **P1-4**. The four are independent; the order only keeps the bot work together.
 
 **Dependency:** none open - `api-conventions` is on `main` and ADR 0007 is accepted.
 

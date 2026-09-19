@@ -51,7 +51,10 @@ bot's provisioning flow keeps writing `ext.discord_account`. They link a party, 
 
 Deliberately _not_:
 
-- **No synchronous cross-checks** between the domains in either direction.
+- **No synchronous cross-checks** between the domains in either direction: no CRM write asks the bot,
+  and no bot write is a condition for a CRM write. The bot validating _its own_ transition against the
+  intended state (a student activation against `TUTOR_OF`) is not such a check - it is a consumer
+  reading the CRM.
 - **No write-back** from the bot into `core`, not even "to keep things in sync".
 - **No eventing yet.** How consumers learn about CRM changes (outbox, jobs per
   [ADR 0004](0004-forge-first-job-queue.md)) is a later arc. Until then the party aggregate's
