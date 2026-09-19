@@ -1,12 +1,14 @@
 """`GET /parties` - list, search, filters, order and paging - against the real database."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.models import PreferredMeetingTool, Student, StudentSubject, Subject, Tutor, TutorSubject
+from app.core.db.models import Party, PreferredMeetingTool, Student, StudentSubject, Subject, Tutor, TutorSubject
 
 pytestmark = pytest.mark.db
 
@@ -169,6 +171,8 @@ async def test_filters_never_fail_an_impossible_combination_is_an_empty_page(
         ({"subject_id": 2**31}, ["query", "subject_id"]),
         ({"limit": 0}, ["query", "limit"]),
         ({"offset": 2**63}, ["query", "offset"]),
+        ({"updated_since": "2026-01-01T00:00:00"}, ["query", "updated_since"]),
+        ({"updated_since": "yesterday"}, ["query", "updated_since"]),
     ],
     ids=[
         "unknown parameter",
@@ -178,6 +182,8 @@ async def test_filters_never_fail_an_impossible_combination_is_an_empty_page(
         "subject out of range",
         "limit",
         "offset beyond int64",
+        "updated_since without an offset",
+        "updated_since that is no timestamp",
     ],
 )
 async def test_a_malformed_query_is_the_validation_422(client: AsyncClient, params: dict, loc: list):
@@ -311,3 +317,87 @@ async def test_the_number_of_statements_does_not_grow_with_the_page_size(
 
     assert counts[1] == counts[4] == counts[12], counts
     assert counts[1] >= 2
+
+
+# --- updated_since ---
+
+BOUNDARY = datetime(2025, 6, 1, 12, 0, tzinfo=UTC)
+
+
+async def _set_updated_at(session: AsyncSession, party: dict, value: datetime) -> None:
+    await session.execute(update(Party).where(Party.id == uuid.UUID(party["id"])).values(updated_at=value))
+
+
+async def test_updated_since_returns_the_parties_changed_at_or_after_it(client: AsyncClient, session: AsyncSession):
+    before = await _person(client, "Anna", "Since-Before")
+    boundary = await _person(client, "Berta", "Since-Boundary")
+    await _person(client, "Clara", "Since-Now")
+    await _set_updated_at(session, before, BOUNDARY - timedelta(microseconds=1))
+    await _set_updated_at(session, boundary, BOUNDARY)
+
+    at_the_boundary = await _list(client, q="since-", updated_since=BOUNDARY.isoformat())
+    just_after_it = await _list(client, q="since-", updated_since=(BOUNDARY + timedelta(microseconds=1)).isoformat())
+
+    assert _names(at_the_boundary) == ["Berta Since-Boundary", "Clara Since-Now"]
+    assert at_the_boundary["total"] == 2
+    assert _names(just_after_it) == ["Clara Since-Now"]
+
+
+async def test_updated_since_reads_any_offset_and_the_z_notation(client: AsyncClient, session: AsyncSession):
+    party = await _person(client, "Dora", "Since-Offset")
+    await _set_updated_at(session, party, BOUNDARY)
+
+    for same_instant in ("2025-06-01T12:00:00Z", "2025-06-01T14:00:00+02:00"):
+        assert _names(await _list(client, q="since-offset", updated_since=same_instant)) == ["Dora Since-Offset"]
+    assert _names(await _list(client, q="since-offset", updated_since="2025-06-01T12:00:01Z")) == []
+
+
+async def test_updated_since_combines_with_the_other_filters(client: AsyncClient, session: AsyncSession):
+    old_company = await _company(client, "Since-Combo Alt GmbH")
+    await _company(client, "Since-Combo Neu GmbH")
+    await _person(client, "Emil", "Since-Combo")
+    await _set_updated_at(session, old_company, BOUNDARY - timedelta(days=1))
+
+    page = await _list(client, q="since-combo", type="company", updated_since=BOUNDARY.isoformat())
+
+    assert _names(page) == ["Since-Combo Neu GmbH"]
+    assert page["total"] == 1
+
+
+async def test_updated_since_without_an_offset_is_rejected_for_being_ambiguous(client: AsyncClient):
+    """The parameter is known - the 422 is about the missing offset, not about an unknown name."""
+    response = await client.get("/parties", params={"updated_since": "2026-01-01T00:00:00"})
+
+    assert response.status_code == 422
+    assert [error["type"] for error in response.json()["errors"]] == ["timezone_aware"]
+
+
+async def test_updated_since_in_the_future_is_an_empty_page_not_an_error(client: AsyncClient):
+    await _person(client, "Frieda", "Since-Future")
+
+    page = await _list(client, updated_since=(datetime.now(UTC) + timedelta(days=1)).isoformat())
+
+    assert page["items"] == []
+    assert page["total"] == 0
+
+
+async def test_a_write_anywhere_in_the_aggregate_makes_its_party_appear(client: AsyncClient, backdate):
+    """Decision H: a contact info write moves its party, a relation moves the parties on both sides."""
+    contacted = await _person(client, "Gustav", "Since-Write")
+    parent = await _person(client, "Hanna", "Since-Write")
+    child = await _person(client, "Ida", "Since-Write")
+    await _person(client, "Jonas", "Since-Write")
+    everyone = await _list(client, q="since-write")
+    await backdate(*(uuid.UUID(item["id"]) for item in everyone["items"]))
+    an_hour_ago = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    assert _names(await _list(client, q="since-write", updated_since=an_hour_ago)) == []
+
+    added = await client.post(f"/parties/{contacted['id']}/contact-infos", json=_email("gustav@example.com"))
+    related = await client.put(f"/parties/{parent['id']}/relations/parent_of/{child['id']}")
+
+    assert (added.status_code, related.status_code) == (201, 200)
+    assert _names(await _list(client, q="since-write", updated_since=an_hour_ago)) == [
+        "Gustav Since-Write",
+        "Hanna Since-Write",
+        "Ida Since-Write",
+    ]

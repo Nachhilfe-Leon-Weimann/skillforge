@@ -1,6 +1,7 @@
 """The party aggregate: its one loading path and the bookkeeping every write ends with."""
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import ColumnElement, delete, exists, func, literal, or_, select, union_all, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -97,6 +98,7 @@ async def list_parties(
     role: PartyRole | None = None,
     subject_id: int | None = None,
     q: str | None = None,
+    updated_since: datetime | None = None,
 ) -> tuple[list[Party], int]:
     """Return one page of parties matching all given filters, plus the size of the filtered set.
 
@@ -107,7 +109,7 @@ async def list_parties(
         select(Party)
         .outerjoin(Person, Person.party_id == Party.id)
         .outerjoin(Company, Company.party_id == Party.id)
-        .where(*_filters(type=type, role=role, subject_id=subject_id, q=q))
+        .where(*_filters(type=type, role=role, subject_id=subject_id, q=q, updated_since=updated_since))
     )
     total = await session.scalar(select(func.count()).select_from(filtered.subquery()))
     result = await session.execute(
@@ -147,11 +149,20 @@ async def delete_party(session: AsyncSession, party_id: uuid.UUID) -> None:
 
 
 def _filters(
-    *, type: PartyType | None, role: PartyRole | None, subject_id: int | None, q: str | None
+    *,
+    type: PartyType | None,
+    role: PartyRole | None,
+    subject_id: int | None,
+    q: str | None,
+    updated_since: datetime | None,
 ) -> list[ColumnElement[bool]]:
     filters: list[ColumnElement[bool]] = []
     if type is not None:
         filters.append(Party.type == type)
+
+    # The boundary is included: a consumer polling for changes sees one twice rather than never.
+    if updated_since is not None:
+        filters.append(Party.updated_at >= updated_since)
 
     is_student = exists().where(Student.person_id == Party.id)
     is_tutor = exists().where(Tutor.person_id == Party.id)

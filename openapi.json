@@ -9816,6 +9816,28 @@
               "description": "Search text, split on whitespace. Every word must appear, ignoring case, in the first name, the last name, the company name or a contact value. Searching for an e-mail address doubles as the duplicate check before creating a party.",
               "title": "Q"
             }
+          },
+          {
+            "description": "Only parties changed at or after this instant, by any write inside the party: its names, roles, contact infos and relations. The offset is required; write it as `Z` or percent-encode the `+`. A deleted party is not reported, and a change carries the start time of its transaction - so poll with an overlap rather than from the newest timestamp seen.",
+            "in": "query",
+            "name": "updated_since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only parties changed at or after this instant, by any write inside the party: its names, roles, contact infos and relations. The offset is required; write it as `Z` or percent-encode the `+`. A deleted party is not reported, and a change carries the start time of its transaction - so poll with an overlap rather than from the newest timestamp seen.",
+              "examples": [
+                "2026-09-01T00:00:00Z"
+              ],
+              "title": "Updated Since"
+            }
           }
         ],
         "responses": {

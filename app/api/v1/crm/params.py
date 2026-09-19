@@ -4,7 +4,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import Path, Query
-from pydantic import AfterValidator, Field
+from pydantic import AfterValidator, AwareDatetime, Field
 
 from app.api.v1.common import PageParams
 from app.core.db.models import PartyRelationType, PartyType
@@ -75,6 +75,16 @@ class PartyListParams(PageParams):
             "name, the company name or a contact value. Searching for an e-mail address doubles as the duplicate "
             "check before creating a party."
         ),
+    )
+    updated_since: AwareDatetime | None = Field(
+        None,
+        description=(
+            "Only parties changed at or after this instant, by any write inside the party: its names, roles, "
+            "contact infos and relations. The offset is required; write it as `Z` or percent-encode the `+`. "
+            "A deleted party is not reported, and a change carries the start time of its transaction - so poll "
+            "with an overlap rather than from the newest timestamp seen."
+        ),
+        examples=["2026-09-01T00:00:00Z"],
     )
 
 
