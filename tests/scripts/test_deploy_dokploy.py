@@ -130,9 +130,22 @@ def test_deploys_waits_and_verifies_the_version(dokploy):
     assert result.returncode == 0, result.stderr
     assert [call["composeId"] for call in state.deploy_calls] == ["compose-1"]
     assert "1.2.3" in state.deploy_calls[0]["title"]
+    assert "(answer: success)" in result.stdout
     assert state.polls >= state.polls_until_final
     assert state.health_calls >= 1
     assert API_KEY not in result.stdout + result.stderr
+
+
+def test_reports_the_deployment_to_github_actions(dokploy, tmp_path):
+    _, base_url = dokploy
+    output, summary = tmp_path / "output", tmp_path / "summary"
+
+    result = _run(base_url, GITHUB_OUTPUT=str(output), GITHUB_STEP_SUMMARY=str(summary))
+
+    assert result.returncode == 0, result.stderr
+    assert output.read_text() == "deployment_id=dep-new\n"
+    assert "| Version | v1.2.3 |" in summary.read_text()
+    assert "| Dokploy deployment | dep-new |" in summary.read_text()
 
 
 def test_a_failed_deployment_fails_the_script_with_dokploys_message(dokploy):

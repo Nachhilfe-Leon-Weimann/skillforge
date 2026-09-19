@@ -90,10 +90,14 @@ jq -n \
 	--arg description "run=${GITHUB_RUN_ID:-local} attempt=${GITHUB_RUN_ATTEMPT:-1} sha=${RELEASE_SHA:-unknown}" \
 	'{composeId: $composeId, title: $title, description: $description}' > "$PAYLOAD"
 api POST compose.deploy "$WORK_DIR/deploy-response.json" "$PAYLOAD"
-echo "Dokploy accepted the deployment request for v$RELEASE_VERSION"
+# Only the answer's shape is logged (keys, no values): a returned deployment id could replace the heuristic below.
+echo "Dokploy accepted the deployment request for v$RELEASE_VERSION (answer: $(jq -r 'if type == "object" then keys | join(", ") else type end' "$WORK_DIR/deploy-response.json" 2> /dev/null || echo unreadable))"
 
 # The new deployment is the newest entry that did not exist before the request - this does not
 # depend on Dokploy echoing the title back.
+# Residual race: a deployment somebody else starts between the snapshot above and the first poll
+# would be mistaken for ours. The workflow's concurrency group serializes our own runs and the
+# running-gate above narrows the rest.
 deployment_id=
 deadline=$((SECONDS + DEPLOY_TIMEOUT))
 while :; do
