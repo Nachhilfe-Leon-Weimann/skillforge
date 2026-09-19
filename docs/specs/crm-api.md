@@ -197,7 +197,8 @@ class SubjectUpdateRequest:     title: Name | MISSING
 ```
 
 - Contact values are normalized by one function, `normalize_contact_value(type, value)` in `inputs.py`: an
-  `email` is validated as `EmailStr` and lowercased; a `phone` has all whitespace removed and must not be empty.
+  `email` is validated as `EmailStr` and lowercased; a `phone` becomes its E.164 form (`+491711234567`, a national
+  form is read as a German number - P1-4; until then it only lost its whitespace).
   It raises `ValueError`.
   - **On create** the type is in the body, so a `model_validator(mode="after")` calls it and Pydantic turns the
     `ValueError` into the validation 422 with a field path (rule I-2).
@@ -275,7 +276,7 @@ class PartyListParams(PageParams):
     role: PartyRole | None = None
     subject_id: int | None = None
     q: str | None = Field(None, min_length=2)
-    updated_since: AwareDatetime | None = None        # P1-3
+    updated_since: AwareDatetime | None = None  # P1-3
 
 
 class RelationListParams(PageParams):
@@ -426,7 +427,8 @@ criteria of P0-5 in `api-conventions.md`, which this spec supersedes.
         `company_not_found`; `GET /parties/{unknown}` is 404 `party_not_found`.
   - [x] Names are stripped; a blank name and an explicit `null` on update are the validation 422.
   - [x] A create body with the same `(type, value)` contact info twice is the validation 422 with a field path.
-        An e-mail is stored lowercased, an invalid one is 422; a phone value is stored without whitespace.
+        An e-mail is stored lowercased, an invalid one is 422; a phone value is stored without whitespace
+        (in E.164 since P1-4).
   - [x] The create request schemas carry `examples`; `just test-clients` still passes with the union in place.
   - [x] [`test_error_taxonomy.py`](../../tests/api/test_error_taxonomy.py) passes with a single `party_not_found`.
 - _Deviations:_
@@ -712,16 +714,33 @@ a polling consumer; it is built ahead of one because it is one filter._
   `q` says that a phone number is found by its digits without the national leading zero (`171 1234567` or the full
   `+49171...`), since search stays a plain substring match. "Representations" and the non-goals are updated.
 - _Acceptance criteria:_
-  - [ ] `0171 1234567`, `+49 171 1234567`, `0049 171 1234567`, `+49 (0)171 1234567` and `0171/1234567` are all
+  - [x] `0171 1234567`, `+49 171 1234567`, `0049 171 1234567`, `+49 (0)171 1234567` and `0171/1234567` are all
         stored as `+491711234567`; `+1 650 253 0000` is stored as `+16502530000`.
-  - [ ] **Fixed point:** for every accepted sample, normalizing the result again returns it; `POST` and `PATCH`
+  - [x] **Fixed point:** for every accepted sample, normalizing the result again returns it; `POST` and `PATCH`
         store the same form.
-  - [ ] A value with a letter, one that is no number, a too long one and a local-only one (`112`) are invalid: the
+  - [x] A value with a letter, one that is no number, a too long one and a local-only one (`112`) are invalid: the
         validation 422 with a field path on the create routes, 422 `invalid_contact_value` on `PATCH`. A value with
         an extension is rejected with its own message. No message repeats the value.
-  - [ ] Two spellings of one number in a create body are the validation 422 (duplicate); adding the second spelling
+  - [x] Two spellings of one number in a create body are the validation 422 (duplicate); adding the second spelling
         to a party that has the first is 409 `contact_info_already_exists`.
-  - [ ] `phonenumbers` is imported by `inputs.py` only.
+  - [x] `phonenumbers` is imported by `inputs.py` only.
+- _Deviations:_
+  - **No string is an e-mail address and a phone number at once any more.** Before, a phone value was any non-blank
+    text, so the same value could sit under both types of one party, and two P0 tests showed that the duplicate key
+    is `(type, value)`. That case is unreachable now - through the API and through the services, which normalize
+    too. The tests became `test_a_value_is_judged_by_its_type` and the duplicate test for two spellings of one
+    number; the key in the database is unchanged.
+  - The parser knows the space but neither tab nor line break inside a number, so whitespace is collapsed before
+    parsing - the P0 promise "whitespace does not matter" still holds.
+  - An extension has its own `ValueError` message (it names `label`), but over HTTP `PATCH` answers with the fixed
+    `detail` of `invalid_contact_value` like every other invalid value: the catalog says `expose_message: no`. On
+    the create routes the message is part of the validation 422.
+  - `MAX_CONTACT_VALUE_LENGTH` no longer decides anything for phone numbers (the parser rejects what is too long
+    for E.164); it stays as the bound for e-mail addresses, and the "fits exactly" test uses a 254-character
+    address now.
+  - That `q` finds a number by its stored digits - and not by `0171` - is a test of its own in
+    `test_crm_party_list_api.py`, so the sentence in the parameter's description cannot rot.
+  - `ruff format` also formats the Python blocks of this document; the alignment of one comment changed with it.
 
 ### Future considerations (P2)
 
