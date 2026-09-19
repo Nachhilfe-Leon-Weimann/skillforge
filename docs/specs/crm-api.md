@@ -275,6 +275,7 @@ class PartyListParams(PageParams):
     role: PartyRole | None = None
     subject_id: int | None = None
     q: str | None = Field(None, min_length=2)
+    updated_since: AwareDatetime | None = None        # P1-3
 
 
 class RelationListParams(PageParams):
@@ -286,6 +287,10 @@ class RelationListParams(PageParams):
   `firstname`, `lastname`, the company `name`, or a contact info `value`.
 - `subject_id` without `role` means "has the subject in any role"; with `role` it is restricted to that role.
 - Filters never error: `type=company&role=student` or an unknown `subject_id` is an empty page.
+- `updated_since` (P1-3) keeps the parties with `updated_at >= updated_since`, the boundary included. It is the
+  pull side of decision H and has two limits a consumer must know: a **deleted** party is invisible to it (there is
+  no soft delete), and `updated_at` is the **start** of the writing transaction (`now()`), so a change can become
+  visible after a later timestamp has already been seen - poll with an overlap, not from the newest `updated_at`.
 - Fixed order as verified above. `GET /subjects` takes the bare `PageQuery` and orders by `lower(title), id`.
   Relations order by `created_at, type, other party id`.
 - All query parameters of an endpoint live in its one model (the query-model trap of `api-conventions.md`).
@@ -676,13 +681,20 @@ a polling consumer; it is built ahead of one because it is one filter._
   is invisible to the filter (no soft delete), and `updated_at` is the **start** of the writing transaction
   (`now()`), so a consumer must poll with an overlap instead of a moving cursor.
 - _Acceptance criteria:_
-  - [ ] `updated_since=<t>` returns exactly the parties with `updated_at >= t`, the boundary included; it combines
+  - [x] `updated_since=<t>` returns exactly the parties with `updated_at >= t`, the boundary included; it combines
         with the other filters by AND, and `total` counts the filtered set.
-  - [ ] A timestamp in the future is an empty page, not an error; a timestamp without an offset and a malformed one
+  - [x] A timestamp in the future is an empty page, not an error; a timestamp without an offset and a malformed one
         are the validation 422.
-  - [ ] A write anywhere in the aggregate makes its party appear: shown for a contact info write and for the party
+  - [x] A write anywhere in the aggregate makes its party appear: shown for a contact info write and for the party
         on the other side of a new relation.
-  - [ ] The parameter has its description in `openapi.json` (standing criterion).
+  - [x] The parameter has its description in `openapi.json` (standing criterion).
+- _Deviations:_
+  - A timestamp without an offset is told apart from an unknown parameter by the `type` of the validation error
+    (`timezone_aware`): both are a 422 at `["query", "updated_since"]`, so the location alone would have passed
+    before the parameter existed.
+  - The boundary is tested one microsecond to either side, on `updated_at` values written directly: inside one test
+    transaction every `now()` is the same instant.
+  - The description of the parameter carries both limits, so the generated client and Swagger UI show them too.
 
 **P1-4 - Phone numbers in E.164.**
 
