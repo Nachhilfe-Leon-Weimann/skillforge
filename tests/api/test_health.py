@@ -100,6 +100,7 @@ async def test_system_health_ok_when_all_checks_pass(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
+    assert body["version"] == app.version
     assert body["dependencies"]["checks"]["database"] == "ok"
     assert body["workers"]["checks"]["bot-ops-reaper"] == "ok"
 
@@ -112,6 +113,17 @@ async def test_system_health_503_when_dependency_down(monkeypatch):
 
     assert response.status_code == 503
     assert response.json()["status"] == "unhealthy"
+
+
+async def test_system_health_reports_the_version_while_degraded(monkeypatch):
+    _force_workers_healthy(monkeypatch)
+
+    async with _client(_FakeDatabase(healthy=False)) as client:
+        response = await client.get("/health")
+
+    # The deploy job compares this against the released version; it must not depend on the status.
+    assert response.status_code == 503
+    assert response.json()["version"] == app.version
 
 
 # --- service units ----------------------------------------------------------

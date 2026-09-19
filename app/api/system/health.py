@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 
 from app.core.db import Database
 from app.core.db.dependencies import get_database
@@ -37,9 +37,9 @@ def _http_status_for(health: HealthStatus) -> int:
 
 
 @router.get("")
-async def system_health_check(response: Response, database: DatabaseDep) -> SystemHealthCheckResponse:
+async def system_health_check(request: Request, response: Response, database: DatabaseDep) -> SystemHealthCheckResponse:
     """Aggregate health across all dependencies and workers."""
-    result = await check_system_health(database)
+    result = await check_system_health(database, version=request.app.version)
     response.status_code = _http_status_for(result.status)
     return result
 

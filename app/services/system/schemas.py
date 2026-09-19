@@ -46,5 +46,6 @@ class WorkersHealthCheckResponse(HealthCheckResponse):
 
 
 class SystemHealthCheckResponse(HealthCheckResponse):
+    version: str
     dependencies: DependenciesHealthCheckResponse
     workers: WorkersHealthCheckResponse
