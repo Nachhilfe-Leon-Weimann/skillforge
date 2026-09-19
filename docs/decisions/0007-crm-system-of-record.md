@@ -66,10 +66,12 @@ Deliberately _not_:
   writable relation.
 - The two views can disagree for a while. That is accepted and visible rather than prevented:
   reconciliation needs the bot to read the CRM, not the CRM to know the bot.
-- Follow-up work in the bot domain, none of it part of the CRM API:
-  - `prepare_student_activation` takes the tutor from the request and checks bot state only; it should
-    validate the pair against `TUTOR_OF`.
-  - The party graph loaded in `profile.py` duplicates the CRM's loader and should reuse it.
-  - `Party.discord_account` is a scalar relationship although several accounts per party are allowed.
+- Follow-up work in the bot domain, none of it part of the CRM API - done with P1-2 of
+  [`crm-api.md`](../specs/crm-api.md):
+  - `prepare_student_activation` took the tutor from the request and checked bot state only; it now
+    validates the pair against `TUTOR_OF` (`_require_tutor_of`).
+  - The party graph loaded in `profile.py` duplicated the CRM's loader; it now builds on `PARTY_GRAPH`.
+  - `Party.discord_account` was a scalar relationship although several accounts per party are
+    allowed; it is the collection `Party.discord_accounts` now.
 - The future customer portal is a second consumer under the same rule: it reads and writes through
   the CRM API and gets no private path into `core`.

@@ -138,6 +138,13 @@ against Discord state. The full design is in the [CRM API spec](specs/crm-api.md
 - **One loading path.** Async SQLAlchemy cannot lazy-load, so `PARTY_GRAPH` in `parties.py` names
   everything a representation may touch, `load_party` applies it with `populate_existing`, and every
   write returns through it. A `from_model` mapper touches only what `PARTY_GRAPH` loads.
+- **The bot as a consumer.** The bot reads the CRM in two places. Its operational profile loads the
+  party through `PARTY_GRAPH` plus the relationships only the profile touches
+  (`load_parties_for_discord_ids` in `profile.py`). And `prepare_student_activation` checks the pair
+  it is given against the intended state (`_require_tutor_of` in `transitions.py`): both users must
+  be linked to a party through an active Discord account, and the tutor's party must be `tutor_of`
+  the student's. The commit does not check again - a relation that moved on is divergence to
+  reconcile, not a failed commit.
 - **Uniqueness by constraint.** Subject titles (`uq_subject_title_lower`) and contact infos
   (`uq_contact_info`) are decided by the database: the change is made and flushed *inside* a
   SAVEPOINT and an `IntegrityError` becomes the domain error (`_unique_title`,

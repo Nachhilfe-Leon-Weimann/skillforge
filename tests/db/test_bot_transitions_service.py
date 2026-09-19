@@ -1,12 +1,13 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import delete, func, select
 
 from app.core.db.models import (
     ArchiveCategory,
+    DiscordAccount,
     DiscordChannel,
     DiscordChannelType,
     DiscordGuild,
@@ -15,6 +16,10 @@ from app.core.db.models import (
     Operation,
     OperationKind,
     OperationStatus,
+    Party,
+    PartyRelation,
+    PartyRelationType,
+    PartyType,
     StudentChannelState,
     StudentWorkspace,
     TutorWorkspace,
@@ -83,7 +88,7 @@ async def test_tutor_activation_prepare_conflicts_when_workspace_exists(session)
 @pytest.mark.db
 async def test_student_activation_prepare_and_commit(session):
     await _setup_guild_with_tutor(session)
-    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    await _add_student(session, 20)
 
     operation = await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
     committed = await commit_student_activation(session, operation_id=operation.operation_id, channel_id=300)
@@ -100,8 +105,8 @@ async def test_student_activation_prepare_and_commit(session):
 async def test_student_activation_capacity_counts_reservations(session):
     # Capacity 1: a single outstanding PREPARED reservation already fills the tutor.
     await _setup_guild_with_tutor(session, capacity=1)
-    await _add_user(session, 20, MemberRole.STUDENT, "Student A")
-    await _add_user(session, 21, MemberRole.STUDENT, "Student B")
+    await _add_student(session, 20, "Student A")
+    await _add_student(session, 21, "Student B")
 
     await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
 
@@ -113,10 +118,131 @@ async def test_student_activation_capacity_counts_reservations(session):
 async def test_student_activation_unknown_tutor_workspace(session):
     await _add_guild(session, 1)
     await _add_user(session, 10, MemberRole.TUTOR, "Tutor")  # tutor exists but no workspace
-    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    await _add_student(session, 20)
 
     with pytest.raises(TransitionValidationError):
         await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+
+
+# --- student activation against the CRM (ADR 0007) ---------------------------
+
+
+@pytest.mark.db
+async def test_student_activation_needs_the_tutor_of_relation(session):
+    await _setup_guild_with_tutor(session)
+    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+
+    with pytest.raises(TransitionValidationError, match="^Tutor is not assigned to this student$"):
+        await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+
+    assert await _count_prepared(session, subject_discord_id=20, kind=OperationKind.STUDENT_ACTIVATE) == 0
+
+
+@pytest.mark.db
+async def test_student_activation_ignores_a_tutor_of_relation_pointing_the_other_way(session):
+    await _setup_guild_with_tutor(session)
+    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    await _assign_tutor(session, student_id=10, tutor_id=20)
+
+    with pytest.raises(TransitionValidationError, match="^Tutor is not assigned to this student$"):
+        await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+
+
+@pytest.mark.db
+async def test_student_activation_ignores_relations_of_another_type(session):
+    await _setup_guild_with_tutor(session)
+    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    session.add(
+        PartyRelation(
+            from_party_id=await _party_id(session, 10),
+            to_party_id=await _party_id(session, 20),
+            type=PartyRelationType.PAYS_FOR,
+        )
+    )
+    await session.flush()
+
+    with pytest.raises(TransitionValidationError, match="^Tutor is not assigned to this student$"):
+        await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("link", ["none", "deactivated"])
+async def test_student_activation_needs_a_student_linked_to_a_party(session, link):
+    await _setup_guild_with_tutor(session)
+    await _add_user(session, 20, MemberRole.STUDENT, "Student", linked=False)
+    if link == "deactivated":
+        await _link_party(session, 20, is_primary=False, active=False)
+        await _assign_tutor(session, student_id=20)
+
+    with pytest.raises(TransitionValidationError, match="^Student is not linked to a party$"):
+        await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("link", ["none", "deactivated"])
+async def test_student_activation_needs_a_tutor_linked_to_a_party(session, link):
+    await _setup_guild_with_tutor(session, linked=False)
+    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    if link == "deactivated":
+        await _link_party(session, 10, is_primary=False, active=False)
+        await _assign_tutor(session, student_id=20)
+
+    with pytest.raises(TransitionValidationError, match="^Tutor is not linked to a party$"):
+        await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+
+
+@pytest.mark.db
+async def test_student_activation_accepts_any_active_account_of_the_party(session):
+    """The student's second, non-primary account is as good as the primary one."""
+    await _setup_guild_with_tutor(session)
+    await _add_student(session, 20)
+    session.add_all([
+        DiscordUser(discord_id=21, role=MemberRole.STUDENT, nick_name="Student (second account)"),
+        DiscordAccount(discord_id=21, party_id=await _party_id(session, 20), is_primary=False, active=True),
+    ])
+    await session.flush()
+
+    operation = await prepare_student_activation(session, guild_id=1, student_discord_id=21, tutor_discord_id=10)
+
+    assert operation.status is OperationStatus.PREPARED
+
+
+@pytest.mark.db
+async def test_a_retried_student_activation_is_validated_again_not_replayed(session):
+    await _setup_guild_with_tutor(session)
+    await _add_student(session, 20)
+    await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+    await session.execute(delete(PartyRelation))
+
+    with pytest.raises(TransitionValidationError, match="^Tutor is not assigned to this student$"):
+        await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+
+
+@pytest.mark.db
+async def test_student_activation_commits_although_the_relation_is_gone(session):
+    """The CRM moving on between the two phases is divergence to reconcile later, not a failed commit."""
+    await _setup_guild_with_tutor(session)
+    await _add_student(session, 20)
+    operation = await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+    await session.execute(delete(PartyRelation))
+
+    committed = await commit_student_activation(session, operation_id=operation.operation_id, channel_id=300)
+
+    assert committed.status is OperationStatus.COMMITTED
+
+
+@pytest.mark.db
+async def test_the_tutor_of_check_only_reads(session, statements):
+    await _setup_guild_with_tutor(session)
+    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    statements.clear()
+
+    with pytest.raises(TransitionValidationError):
+        await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
+
+    crm_statements = [s for s in statements if "core." in s or "ext." in s]
+    assert crm_statements
+    assert all(s.startswith("SELECT") and "FOR " not in s for s in crm_statements)
 
 
 # --- stash / pop ------------------------------------------------------------
@@ -293,7 +419,7 @@ async def test_student_deactivation_double_commit_is_rejected(session):
 async def test_student_deactivation_frees_tutor_capacity(session):
     await _setup_guild_with_tutor(session, capacity=1)
     await _add_student_workspace(session, student_id=20, channel_id=300)
-    await _add_user(session, 21, MemberRole.STUDENT, "Student B")
+    await _add_student(session, 21, "Student B")
 
     # The single slot is occupied, so a new activation is refused.
     with pytest.raises(TransitionConflictError):
@@ -367,7 +493,7 @@ async def test_tutor_deactivation_refuses_with_stashed_student(session):
 @pytest.mark.db
 async def test_tutor_deactivation_refuses_with_outstanding_inbound_reservation(session):
     await _setup_guild_with_tutor(session)
-    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    await _add_student(session, 20)
     # A PREPARED (uncommitted) student activation reserves a slot under the tutor.
     await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
 
@@ -399,7 +525,7 @@ async def test_tutor_deactivation_commit_rechecks_reservations(session):
     await _setup_guild_with_tutor(session)
     operation = await prepare_tutor_deactivation(session, guild_id=1, tutor_discord_id=10)
 
-    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    await _add_student(session, 20)
     await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
 
     with pytest.raises(TransitionConflictError):
@@ -482,7 +608,7 @@ async def test_tutor_deactivation_commit_serializes_against_concurrent_reservati
                 student_channel_capacity=1,
             )
         )
-        await _add_user(setup, 20, MemberRole.STUDENT, "Student")
+        await _add_student(setup, 20)
         deactivate_op = await prepare_tutor_deactivation(setup, guild_id=1, tutor_discord_id=10)
         op_id = deactivate_op.operation_id
 
@@ -523,6 +649,7 @@ async def test_tutor_deactivation_commit_serializes_against_concurrent_reservati
             await cleanup.execute(delete(TutorWorkspace))
             await cleanup.execute(delete(DiscordChannel))
             await cleanup.execute(delete(DiscordUser))
+            await cleanup.execute(delete(Party))
             await cleanup.execute(delete(DiscordGuild))
 
 
@@ -545,7 +672,7 @@ async def test_repeated_tutor_activation_prepare_returns_same_operation(session)
 @pytest.mark.db
 async def test_repeated_student_activation_prepare_returns_same_operation(session):
     await _setup_guild_with_tutor(session)
-    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    await _add_student(session, 20)
 
     first = await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
     second = await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
@@ -616,7 +743,7 @@ async def test_student_activation_prepare_conflicts_on_different_tutor(session):
     await _add_channel(session, 111, DiscordChannelType.TEXT, parent_channel_id=110)
     session.add(TutorWorkspace(guild_id=1, tutor_discord_id=11, category_channel_id=110, command_channel_id=111))
     await session.flush()
-    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    await _add_student(session, 20, tutor_ids=(10, 11))
 
     await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
 
@@ -645,7 +772,7 @@ async def test_retried_activation_near_capacity_replays_without_capacity_error(s
     # Capacity 1: `first` reserves the single slot. A retry of the SAME student must replay `first`
     # instead of counting first's own reservation and spuriously tripping "capacity reached".
     await _setup_guild_with_tutor(session, capacity=1)
-    await _add_user(session, 20, MemberRole.STUDENT, "Student")
+    await _add_student(session, 20)
 
     first = await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
     second = await prepare_student_activation(session, guild_id=1, student_discord_id=20, tutor_discord_id=10)
@@ -732,6 +859,7 @@ async def test_concurrent_prepare_dedupes_to_a_single_operation(db):
         async with db.session() as cleanup:
             await cleanup.execute(delete(Operation))
             await cleanup.execute(delete(DiscordUser))
+            await cleanup.execute(delete(Party))
             await cleanup.execute(delete(DiscordGuild))
 
 
@@ -749,7 +877,7 @@ async def test_concurrent_activation_under_different_tutor_conflicts(db):
         await _add_channel(setup, 111, DiscordChannelType.TEXT, parent_channel_id=110)
         setup.add(TutorWorkspace(guild_id=1, tutor_discord_id=11, category_channel_id=110, command_channel_id=111))
         await setup.flush()
-        await _add_user(setup, 20, MemberRole.STUDENT, "Student")
+        await _add_student(setup, 20, tutor_ids=(10, 11))
 
     a_prepared = asyncio.Event()
     release_a = asyncio.Event()
@@ -782,6 +910,7 @@ async def test_concurrent_activation_under_different_tutor_conflicts(db):
             await cleanup.execute(delete(TutorWorkspace))
             await cleanup.execute(delete(DiscordChannel))
             await cleanup.execute(delete(DiscordUser))
+            await cleanup.execute(delete(Party))
             await cleanup.execute(delete(DiscordGuild))
 
 
@@ -828,6 +957,7 @@ async def test_concurrent_stash_same_student_replays_without_capacity_error(db):
             await cleanup.execute(delete(TutorWorkspace))
             await cleanup.execute(delete(DiscordChannel))
             await cleanup.execute(delete(DiscordUser))
+            await cleanup.execute(delete(Party))
             await cleanup.execute(delete(DiscordGuild))
 
 
@@ -877,9 +1007,44 @@ async def _add_guild(session, guild_id: int) -> None:
     await session.flush()
 
 
-async def _add_user(session, discord_id: int, role: MemberRole, nick_name: str) -> None:
+async def _add_user(session, discord_id: int, role: MemberRole, nick_name: str, *, linked: bool = True) -> None:
     session.add(DiscordUser(discord_id=discord_id, role=role, nick_name=nick_name))
     await session.flush()
+    if linked:
+        await _link_party(session, discord_id)
+
+
+async def _link_party(session, discord_id: int, *, is_primary: bool = True, active: bool = True) -> UUID:
+    """Give the Discord user a party of their own, as the CRM and the provisioning flow would."""
+    party = Party(type=PartyType.PERSON)
+    session.add_all([party, DiscordAccount(discord_id=discord_id, party=party, is_primary=is_primary, active=active)])
+    await session.flush()
+    return party.id
+
+
+async def _party_id(session, discord_id: int) -> UUID:
+    party_id = await session.scalar(select(DiscordAccount.party_id).where(DiscordAccount.discord_id == discord_id))
+    assert party_id is not None
+    return party_id
+
+
+async def _assign_tutor(session, *, student_id: int, tutor_id: int = 10) -> None:
+    """What the CRM records as ``tutor_of``: this tutor teaches this student."""
+    session.add(
+        PartyRelation(
+            from_party_id=await _party_id(session, tutor_id),
+            to_party_id=await _party_id(session, student_id),
+            type=PartyRelationType.TUTOR_OF,
+        )
+    )
+    await session.flush()
+
+
+async def _add_student(session, discord_id: int, nick_name: str = "Student", *, tutor_ids: tuple[int, ...] = (10,)):
+    """A student ready to be activated: an active Discord user whose party the given tutors teach."""
+    await _add_user(session, discord_id, MemberRole.STUDENT, nick_name)
+    for tutor_id in tutor_ids:
+        await _assign_tutor(session, student_id=discord_id, tutor_id=tutor_id)
 
 
 async def _add_channel(
@@ -904,9 +1069,10 @@ async def _setup_guild_with_tutor(
     category_id: int = 100,
     command_id: int = 101,
     capacity: int = 49,
+    linked: bool = True,
 ) -> None:
     await _add_guild(session, guild_id)
-    await _add_user(session, tutor_id, MemberRole.TUTOR, "Tutor")
+    await _add_user(session, tutor_id, MemberRole.TUTOR, "Tutor", linked=linked)
     await _add_channel(session, category_id, DiscordChannelType.CATEGORY, guild_id=guild_id)
     await _add_channel(session, command_id, DiscordChannelType.TEXT, guild_id=guild_id, parent_channel_id=category_id)
     session.add(

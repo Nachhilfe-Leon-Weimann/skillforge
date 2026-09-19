@@ -12,12 +12,13 @@ plus outstanding (non-expired) PREPARED reservations.
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.models import (
     ArchiveCategory,
+    DiscordAccount,
     DiscordChannel,
     DiscordChannelType,
     DiscordGuild,
@@ -26,6 +27,8 @@ from app.core.db.models import (
     Operation,
     OperationKind,
     OperationStatus,
+    PartyRelation,
+    PartyRelationType,
     StudentChannelState,
     StudentWorkspace,
     TutorWorkspace,
@@ -116,6 +119,7 @@ async def prepare_student_activation(
 ) -> Operation:
     await _require_guild(session, guild_id)
     await _require_active_user(session, student_discord_id, MemberRole.STUDENT, "student")
+    await _require_tutor_of(session, tutor_discord_id=tutor_discord_id, student_discord_id=student_discord_id)
     tutor_workspace = await _lock_tutor_workspace(session, guild_id, tutor_discord_id)
     if tutor_workspace is None:
         raise TransitionValidationError("Tutor has no workspace in this guild")
@@ -375,6 +379,42 @@ async def _require_active_user(
     if user.role is not role or not user.active:
         raise TransitionValidationError(f"User is not an active {role_label}")
     return user
+
+
+async def _require_tutor_of(session: AsyncSession, *, tutor_discord_id: int, student_discord_id: int) -> None:
+    """Require that the CRM assigns this tutor to this student.
+
+    The CRM says what should be true (ADR 0007), so the pair the bot names is checked against it:
+    both users must be linked to a party through an **active** Discord account - a deactivated link
+    counts as unlinked, and any active account of a party will do - and the tutor's party must have
+    a ``tutor_of`` relation to the student's. A plain read, without a lock: a relation that goes
+    away after prepare is divergence to reconcile later, not a reason to fail the commit.
+    """
+    linked = await session.execute(
+        select(DiscordAccount.discord_id, DiscordAccount.party_id).where(
+            DiscordAccount.discord_id.in_([tutor_discord_id, student_discord_id]),
+            DiscordAccount.active.is_(True),
+        )
+    )
+    party_ids = dict(linked.tuples().all())
+    student_party_id = party_ids.get(student_discord_id)
+    if student_party_id is None:
+        raise TransitionValidationError("Student is not linked to a party")
+    tutor_party_id = party_ids.get(tutor_discord_id)
+    if tutor_party_id is None:
+        raise TransitionValidationError("Tutor is not linked to a party")
+
+    assigned = await session.scalar(
+        select(
+            exists().where(
+                PartyRelation.from_party_id == tutor_party_id,
+                PartyRelation.to_party_id == student_party_id,
+                PartyRelation.type == PartyRelationType.TUTOR_OF,
+            )
+        )
+    )
+    if not assigned:
+        raise TransitionValidationError("Tutor is not assigned to this student")
 
 
 async def _require_student_workspace(

@@ -156,6 +156,15 @@ EXPECTATIONS: list[Expectation] = [
     ("cancel_operation", OperationNotFoundError(INTERNAL), 404, "Operation not found"),
     ("cancel_operation", OperationNotPendingError("Operation has expired"), 409, "Operation has expired"),
     ("cancel_operation", OperationNotPendingError(), 409, OPERATION_NOT_PENDING),
+    # A student activation is validated against the CRM (ADR 0007); each reason reaches the client as it is.
+    *(
+        ("prepare_student_activation", TransitionValidationError(reason), 422, reason)
+        for reason in (
+            "Student is not linked to a party",
+            "Tutor is not linked to a party",
+            "Tutor is not assigned to this student",
+        )
+    ),
     # Only these two commits re-check the student workspace, which may have vanished since prepare.
     (
         "commit_student_stash",
