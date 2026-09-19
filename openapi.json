@@ -2897,12 +2897,17 @@
           "status": {
             "$ref": "#/components/schemas/HealthStatus"
           },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
           "workers": {
             "$ref": "#/components/schemas/WorkersHealthCheckResponse"
           }
         },
         "required": [
           "status",
+          "version",
           "dependencies",
           "workers"
         ],

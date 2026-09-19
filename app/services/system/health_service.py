@@ -75,13 +75,14 @@ async def check_workers_health(database: Database) -> WorkersHealthCheckResponse
     return WorkersHealthCheckResponse(status=_aggregate_health_status(*checks.values()), checks=checks)
 
 
-async def check_system_health(database: Database) -> SystemHealthCheckResponse:
+async def check_system_health(database: Database, *, version: str) -> SystemHealthCheckResponse:
     """Aggregate dependency and worker health into the overall system status."""
     dependencies = await check_dependencies_health(database)
     workers = await check_workers_health(database)
 
     return SystemHealthCheckResponse(
         status=_aggregate_health_status(dependencies.status, workers.status),
+        version=version,
         dependencies=dependencies,
         workers=workers,
     )
