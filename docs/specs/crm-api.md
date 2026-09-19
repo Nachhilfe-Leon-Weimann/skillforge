@@ -587,16 +587,23 @@ own `docs(specs): tick P1-x` commit. Only P1-3 and P1-4 touch the CRM packages.
 to the `auth` domain, not to the CRM._
 
 - _Technique:_ `get_me` in a new `app/api/v1/auth/me.py`, included in the `auth` router. The principal comes from a
-  parameter typed `Annotated[Principal, require_scopes()]`: no scope, so any valid token passes, and 401 / 403 are
+  parameter typed `Annotated[Principal, require_scopes()]`: no scope, so any valid token passes, and the 401 is
   still derived by the OpenAPI hook. `MeResponse(ApiModel)` in the auth [`schemas.py`](../../app/api/v1/auth/schemas.py)
   carries `principal_type`, `client_id: str | None` and `scopes: list[str]` (sorted). The route reads no database: it
   reports what the token carries, also for a client that was suspended after the token was issued.
 - _Acceptance criteria:_
-  - [ ] With a valid token the route answers 200 with the token's principal type, client ID and its scopes sorted.
-  - [ ] Without a token and with an invalid one it is 401 in the error envelope.
-  - [ ] In `openapi.json` the operation ID is `auth_get_me`, the security requirement lists no scopes, 401 and 403
-        are derived, and every property of `MeResponse` has a description.
-  - [ ] The handler depends on the principal only - no session, no settings.
+  - [x] With a valid token the route answers 200 with the token's principal type, client ID and its scopes sorted.
+  - [x] Without a token and with an invalid one it is 401 in the error envelope.
+  - [x] In `openapi.json` the operation ID is `auth_get_me`, the security requirement lists no scopes, the 401 is
+        derived, and every property of `MeResponse` has a description.
+  - [x] The handler depends on the principal only - no session, no settings.
+- _Deviations:_
+  - **A route that needs a token but no scope documents no 403.** Any valid token passes it, so the response cannot
+    occur; `_document_auth_errors` in [`openapi.py`](../../app/api/v1/common/openapi.py) now derives the 403 only
+    where the security requirement names a scope. Before, the hook had a fallback description for this case
+    ("Not enough permissions") while the contract test demanded a scope-naming 403 from every guarded operation -
+    the two disagreed, and this route is the first to hit it. `test_openapi_contract.py` asserts both directions.
+    `openapi.json` is unchanged for every existing operation.
 
 **P1-2 - Bot follow-ups of ADR 0007.** _Bot-domain and model work in three commits (a, b, c). The CRM packages stay
 untouched, and the dependency keeps its direction: the bot reads the CRM, never the reverse._
