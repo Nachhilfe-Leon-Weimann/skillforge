@@ -49,7 +49,7 @@ Three mental models for one person is friction on every release. On top of that:
 
 - **Release branches, backports, maintenance lines.** One prod, one supported version.
 - **A dev or staging environment.** Only prod exists platform-wide. Nothing deploys on a plain push to `main`;
-  skillbot's dev deploy is dropped (the bot runs locally via `just start`).
+  skillbot's dev deploy is dropped (the bot runs locally via `just dev`).
 - **Supply-chain hardening from `github-actions-playground`:** digest pinning, attestations, signed release
   tags, image promotion, release-overlap verification, multi-arch images. Deliberately out.
 - **Automatic rollback.** An app rollback does not roll back an Alembic migration; pretending otherwise is
