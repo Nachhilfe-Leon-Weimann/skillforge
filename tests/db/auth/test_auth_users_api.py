@@ -6,7 +6,14 @@ import pytest
 from sqlalchemy import select
 
 from app.core.auth.services.users import ACTION_TOKEN_PREFIX
-from app.core.db.models import UserAccount, UserAccountRole, UserAccountRoleName, UserActionToken, UserSession
+from app.core.db.models import (
+    AuthAuditLog,
+    UserAccount,
+    UserAccountRole,
+    UserAccountRoleName,
+    UserActionToken,
+    UserSession,
+)
 
 pytestmark = pytest.mark.db
 
@@ -213,6 +220,26 @@ async def test_disabling_an_account_revokes_its_sessions(client, make_person, ad
     await session.refresh(user_session)
     assert user_session.revoked_at is not None
     assert user_session.revoked_reason == "account_disabled"
+
+
+async def test_enabling_a_disabled_account_with_a_password_brings_it_back_without_its_sessions(
+    client, make_person, add_user_session, session
+):
+    party = await make_person()
+    created = (await client.post("/users", json={"party_id": str(party.id), "email": "anna@example.org"})).json()
+    user_id, token = created["id"], created["invitation"]["token"]
+    await client.post("/password/redeem", json={"token": token, "new_password": "correct horse battery staple"})
+    user_session = await add_user_session(user_id)
+    await client.patch(f"/users/{user_id}", json={"status": "disabled"})
+
+    response = await client.patch(f"/users/{user_id}", json={"status": "active"})
+
+    assert response.json()["status"] == "active"
+    await session.refresh(user_session)
+    assert user_session.revoked_reason == "account_disabled", "a revoked session stays revoked"
+    assert [log.event_type for log in await session.scalars(select(AuthAuditLog).order_by(AuthAuditLog.created_at))][
+        -1
+    ] == "user_account.enabled"
 
 
 # --- Stored roles ---
