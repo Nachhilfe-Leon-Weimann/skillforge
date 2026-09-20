@@ -10,7 +10,7 @@ from .config import AuthSettings
 from .principal import Principal
 from .scopes import Scope, expand
 from .security import oauth2_scheme
-from .tokens import PRINCIPAL_TYPE_APPLICATION, TokenValidationError, validate_access_token
+from .tokens import PRINCIPAL_TYPE_APPLICATION, PRINCIPAL_TYPE_USER, TokenValidationError, validate_access_token
 
 
 def get_auth_settings() -> AuthSettings:
@@ -51,6 +51,15 @@ async def get_current_principal(
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": authenticate_value},
         ) from exc
+
+    if principal.principal_type == PRINCIPAL_TYPE_USER:
+        # Who the request speaks for, on every log line it produces. Never the session id.
+        bind_request_log_context(
+            request,
+            principal_type=principal.principal_type,
+            user_id=str(principal.principal_id),
+            party_id=str(principal.party_id),
+        )
 
     missing_scopes = set(security_scopes.scopes) - expand(principal.scopes)
     if missing_scopes:
