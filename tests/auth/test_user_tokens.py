@@ -149,6 +149,24 @@ def test_validate_access_token_rejects_a_user_token_whose_subject_is_not_its_pri
         validate_access_token(token, settings)
 
 
+def test_validate_access_token_rejects_a_user_token_whose_subject_spells_its_principal_differently():
+    """`uuid.UUID` also parses the hyphen-less, uppercase, brace and urn forms, so comparing the
+    parsed value would let `sub` and `principal_id` disagree textually while still matching."""
+    settings = _settings()
+    token = _encode_user_claims(settings, principal_id=USER_ID.hex, subject=f"user:{USER_ID}")
+
+    with pytest.raises(TokenValidationError):
+        validate_access_token(token, settings)
+
+
+def test_validate_access_token_accepts_a_user_token_whose_subject_repeats_its_principal_claim():
+    """The other side of the same check: a token Forge issues spells both the same way."""
+    settings = _settings()
+    token = _encode_user_claims(settings, principal_id=USER_ID.hex, subject=f"user:{USER_ID.hex}")
+
+    assert validate_access_token(token, settings).principal_id == USER_ID
+
+
 def test_validate_access_token_rejects_a_user_token_with_an_application_subject():
     settings = _settings()
     token = _encode_user_claims(settings, subject="app:portal")
@@ -221,6 +239,7 @@ def _encode_user_claims(
     settings: AuthSettings,
     *,
     principal_type: str = "user",
+    principal_id: str | None = None,
     subject: str | None = None,
     party_id: str | None = None,
     roles: object = None,
@@ -232,7 +251,7 @@ def _encode_user_claims(
         "aud": settings.audience,
         "sub": subject or f"user:{USER_ID}",
         "principal_type": principal_type,
-        "principal_id": str(USER_ID),
+        "principal_id": principal_id or str(USER_ID),
         "azp": "portal",
         "scope": "account:self",
         "party_id": party_id or str(PARTY_ID),

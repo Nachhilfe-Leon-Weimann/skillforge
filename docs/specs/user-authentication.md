@@ -519,6 +519,9 @@ Until the portal exists, everything works from Swagger UI:
   the rejections in the same file:
   `test_validate_access_token_rejects_a_user_token_without_its_reach_claims` (both `party_id` and `sid`),
   `test_validate_access_token_rejects_a_user_token_whose_subject_is_not_its_principal`,
+  `..._whose_subject_spells_its_principal_differently` (with
+  `test_validate_access_token_accepts_a_user_token_whose_subject_repeats_its_principal_claim`: the two claims are
+  compared as written, so the hyphen-less and uppercase spellings `uuid.UUID` accepts cannot disagree),
   `..._with_an_application_subject`, `..._with_an_unusable_party_id`, `..._with_malformed_roles` and
   `test_validate_access_token_rejects_an_unknown_principal_type`. Over HTTP the same three denials are a `401` in
   the error envelope: `test_me_with_a_user_token_that_lost_its_party_is_the_401_envelope`,

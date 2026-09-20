@@ -197,14 +197,16 @@ def _application_principal(claims: dict[str, object]) -> Principal:
 
 def _user_principal(claims: dict[str, object]) -> Principal:
     client_id = _require_str_claim(claims, "azp")
-    principal_id = _require_uuid_claim(claims, "principal_id")
+    # Compared as written, not as parsed: ``uuid.UUID`` also accepts the hyphen-less, uppercase,
+    # brace and urn forms, so a parsed comparison would let the two claims disagree textually.
+    principal_id = _require_str_claim(claims, "principal_id")
     subject = _require_str_claim(claims, "sub")
     if subject != f"user:{principal_id}":
         raise TokenValidationError("Invalid subject")
 
     return Principal(
         principal_type=PRINCIPAL_TYPE_USER,
-        principal_id=principal_id,
+        principal_id=_require_uuid_claim(claims, "principal_id"),
         subject=subject,
         scopes=_require_scopes(claims),
         client_id=client_id,
