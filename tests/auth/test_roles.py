@@ -17,6 +17,12 @@ def test_derived_roles_carry_no_scopes_of_their_own(role: Role):
     assert ROLE_SCOPES[role] == frozenset()
 
 
+def test_role_scopes_has_an_entry_for_every_role():
+    """``scopes_for`` indexes ``ROLE_SCOPES[role]`` without a default, so a ``Role`` member added
+    later without a mapping entry would be a bare ``KeyError`` at token issuance."""
+    assert set(ROLE_SCOPES) == set(Role)
+
+
 def test_admin_role_scopes_match_the_spec_and_exclude_bot_write():
     assert ROLE_SCOPES[Role.ADMIN] == {
         Scope.CRM_READ,
