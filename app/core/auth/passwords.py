@@ -5,6 +5,8 @@ same wherever a password is set. Hashing reuses ``PasswordHash.recommended()``, 
 that already hashes client secrets in ``secrets.py``.
 """
 
+from functools import cache
+
 from pwdlib import PasswordHash
 from pwdlib import exceptions as pwdlib_exceptions
 
@@ -13,12 +15,19 @@ MAX_PASSWORD_LENGTH = 128
 
 _PASSWORD_HASH = PasswordHash.recommended()
 
-DUMMY_PASSWORD_HASH = _PASSWORD_HASH.hash("no account uses this password")
-"""A real hash of a password no account has, verified against when no account matched.
 
-Keeps the timing of "unknown e-mail address" close to "wrong password", so the two cannot be told
-apart by it (spec: no enumeration). Computed once, at import.
-"""
+@cache
+def dummy_password_hash() -> str:
+    """A real hash of a password no account has, verified against when no account matched.
+
+    Keeps the timing of "unknown e-mail address" close to "wrong password", so the two cannot be
+    told apart by it (spec: no enumeration).
+
+    Computed on first use and then kept: at import time the API, the reaper, both operator
+    commands and every pytest process would each pay an Argon2 hash for a value only the login
+    path ever looks at.
+    """
+    return _PASSWORD_HASH.hash("no account uses this password")
 
 
 def meets_password_policy(password: str) -> bool:

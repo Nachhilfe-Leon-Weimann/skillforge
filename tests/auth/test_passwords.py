@@ -1,11 +1,13 @@
 """The password policy and the hashing behind it live in one module (spec: security rules)."""
 
+import importlib
+
 import pytest
 
 from app.core.auth.passwords import (
-    DUMMY_PASSWORD_HASH,
     MAX_PASSWORD_LENGTH,
     MIN_PASSWORD_LENGTH,
+    dummy_password_hash,
     hash_password,
     meets_password_policy,
     verify_password,
@@ -47,5 +49,17 @@ def test_a_hash_of_an_unknown_format_is_a_mismatch_rather_than_a_crash():
 
 def test_the_dummy_hash_is_a_real_hash_that_no_password_matches():
     """It is verified against when no account matched, so the two paths cost the same time."""
-    assert DUMMY_PASSWORD_HASH.startswith("$argon2")
-    assert not verify_password("correct horse battery staple", DUMMY_PASSWORD_HASH)
+    assert dummy_password_hash().startswith("$argon2")
+    assert not verify_password("correct horse battery staple", dummy_password_hash())
+
+
+def test_the_dummy_hash_is_computed_on_first_use_and_then_kept():
+    """Importing the module must not cost an Argon2 hash - every process pays that one."""
+    assert dummy_password_hash() is dummy_password_hash()
+    assert dummy_password_hash.cache_info().currsize == 1
+
+
+def test_importing_the_module_hashes_nothing():
+    module = importlib.reload(importlib.import_module("app.core.auth.passwords"))
+
+    assert module.dummy_password_hash.cache_info().currsize == 0
