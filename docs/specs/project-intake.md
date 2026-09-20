@@ -1,6 +1,6 @@
 # Spec: Project intake (issues and PRs land on the board with module, assignee and the iteration they closed in)
 
-> Status: In progress - P0-0 done, P0-1 implemented (live verification follows its merge), P0-2 and P0-3 open.
+> Status: In progress - P0-0 and P0-1 done (#128, live since 2026-09-20), P0-1a implemented, P0-2 and P0-3 open.
 > Tracking: [#127](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/127)
 > Platform arc (skillforge first, then skillsite and skillbot), same shape as
 > [`release-flow.md`](release-flow.md): written here because skillforge is the first adopter; the **platform
@@ -10,8 +10,8 @@
 ## Problem statement
 
 Planning happens on one org-wide board, the
-[skill-platform project](https://github.com/orgs/Nachhilfe-Leon-Weimann/projects/2). Four things are still done
-by hand on every issue and every PR, in every repo:
+[skill-platform project](https://github.com/orgs/Nachhilfe-Leon-Weimann/projects/2). Five things are still done
+by hand - or forgotten - on every issue and every PR, in every repo:
 
 - **Putting it on the board.** GitHub's built-in *Auto-add to project* workflow covers one repository per
   workflow, and the number of such workflows depends on the plan of the project's **owner**: one on Free. The
@@ -22,9 +22,11 @@ by hand on every issue and every PR, in every repo:
 - **Setting its Module.** The board is sliced by the single-select field *Module* (`forge`, `bot`, `site`,
   `core`). The value follows from the repo, yet it is picked by hand - and an item without it drops out of
   every per-module view.
-- **Recording when a PR was finished.** The board runs in two-week iterations. A PR that closes should sit in
-  the iteration it closed in, whatever it was planned for - otherwise an iteration's view does not show what
-  was actually delivered in it.
+- **Recording when an item was finished.** The board runs in two-week iterations. An issue or a PR that closes
+  should sit in the iteration it closed in, whatever it was planned for - otherwise an iteration's view does
+  not show what was actually delivered in it.
+- **Giving an issue its type.** Task, Bug, Feature, Epic: GitHub cannot make the issue type mandatory, so an
+  issue opened in a hurry stays without one, and nothing points it out.
 
 An item that is forgotten is simply missing from the board, and nothing notices.
 
@@ -34,23 +36,24 @@ An item that is forgotten is simply missing from the board, and nothing notices.
 2. **An item nobody is assigned to gets its author as assignee.** An assignee set on purpose is never touched.
 3. **Every item has its Module.** The repo's module is set on intake; a Module set on purpose is never touched.
    Which module a repo stands for is configuration, not code.
-4. **A closed PR sits in the iteration it closed in.**
-5. **One flow, three repos, one file.** Same file name, same job names, same org variable and secret - the
+4. **A closed issue or PR sits in the iteration it closed in.**
+5. **An issue without a type does not go unnoticed:** closing it asks for one.
+6. **One flow, three repos, one file.** Same file name, same job names, same org variable and secret - the
    platform contract of `release-flow.md` applies - and **the file itself is identical in every repo**, so it
    can move into a shared platform repo unchanged.
-6. **No new credential.** The org App that already opens the release PRs does this too.
-7. **It never gets in the way.** The workflow is not a required check, and an item it cannot handle (an author
+7. **No new credential.** The org App that already opens the release PRs does this too.
+8. **It never gets in the way.** The workflow is not a required check, and an item it cannot handle (an author
    who cannot be assigned, a bot) leaves a green run, not a red one.
 
 ## Non-goals
 
 - **Setting the other project fields** (Status, Priority, Effort). The project's built-in *Item added to
   project* workflow already sets the status; the rest is planning, not intake. Module and the iteration of a
-  closed PR are the exceptions because they are not judgements: one follows from the repo, the other from the
+  closed item are the exceptions because they are not judgements: one follows from the repo, the other from the
   calendar.
-- **Iteration planning.** Which iteration an *open* item is planned for stays a manual decision, and closed
-  *issues* are not moved - only PRs, which is what was asked for. Adding issues later is one trigger line.
-- **Labels, reviewers, milestones, issue types.**
+- **Iteration planning.** Which iteration an *open* item is planned for stays a manual decision.
+- **Setting labels, reviewers, milestones or the issue type.** Which type an issue has is a judgement; the
+  workflow only points out that it is missing (decision L).
 - **Assigning bot-authored PRs.** A bot cannot be an assignee; the release PR and Dependabot PRs stay unassigned.
 - **A GitHub plan upgrade, or a personal access token.** A PAT is tied to Leon's account and expires.
 - **A third-party action for the assignment.** It is one REST call.
@@ -65,23 +68,24 @@ An item that is forgotten is simply missing from the board, and nothing notices.
 
 | Topic | Decision | Rationale |
 |---|---|---|
-| **A - Mechanism** | One workflow per repo, **`triage.yml`**, with two independent jobs: **`board`** (add to the project, set the Module, move a closed PR into the current iteration) and **`assign-author`**. | Independent on purpose: a broken App token must not stop the assignment, and the other way round. Everything that needs the App token and the project item lives in one job, so the token is minted once per event. |
+| **A - Mechanism** | One workflow per repo, **`triage.yml`**, with three independent jobs: **`board`** (add to the project, set the Module, move a closed item into the current iteration), **`assign-author`** and **`issue-type`** (decision L). | Independent on purpose: a broken App token must not stop the assignment or the reminder, and the other way round. Everything that needs the App token and the project item lives in one job, so the token is minted once per event. |
 | **B - Adding** | [`actions/add-to-project`](https://github.com/actions/add-to-project) (GitHub's own action, pinned by SHA), pointed at the project URL. | Maintained by GitHub, one input besides the token. Adding an item that is already on the board is a no-op, so it can run next to the built-in workflow. |
 | **C - Token for the board** | An installation token of the org App **`skill-platform-release`**, minted with `actions/create-github-app-token` and narrowed to `permission-organization-projects: write` plus read on issues and pull requests (the action resolves the item it adds). Credentials are the existing org variable `RELEASE_APP_CLIENT_ID` and org secret `RELEASE_APP_PRIVATE_KEY`. | `GITHUB_TOKEN` cannot reach an org project at all. The App, its key and both names already exist in every platform repo. This widens the App's role - see *Trade-offs accepted*; decision E in `release-flow.md` is amended accordingly. |
 | **D - Token for the assignment** | The workflow's own `GITHUB_TOKEN` with `issues: write` and `pull-requests: write` on that job only; top-level `permissions: {}`. | Assigning is a repo-level write; it needs neither the App nor a secret. |
-| **E - Triggers** | `issues` with `opened` and `reopened`; `pull_request_target` with `opened`, `reopened` and `closed`. | `pull_request_target` runs the workflow from `main` and has the secret even for a PR from a fork (the repos are public). An issue transferred into a repo arrives as `opened`. `reopened` is the cheap second chance for an item whose first run failed. `closed` drives decision K; `assign-author` skips it. |
+| **E - Triggers** | `issues` and `pull_request_target`, each with `opened`, `reopened` and `closed`. | `pull_request_target` runs the workflow from `main` and has the secret even for a PR from a fork (the repos are public). An issue transferred into a repo arrives as `opened`. `reopened` is the cheap second chance for an item whose first run failed. `closed` drives decisions K and L; `assign-author` skips it. |
 | **F - What is added** | Everything, including bot-authored PRs (release PR, Dependabot). | That is what the board holds today: release PR #117 and five Dependabot PRs are on it. Merged items move to *Done* and are auto-archived by the project's built-in workflows, so they do not pile up. |
 | **G - Who is assigned** | The author, if and only if the item has **no assignee at the moment the job runs** and the author is a user (not a bot) who can be assigned in that repo. Anything else: do nothing, stay green. | "Nobody assigned" is read from the API at run time, not from the event payload, so an assignee picked while creating the item or seconds after it always wins. Assignability is checked first (`GET /repos/{owner}/{repo}/assignees/{login}`), so an outside contributor does not produce a failed run. |
 | **H - Built-in auto-add** | Switched **off** once `triage.yml` is proven in the repo it covers. *Auto-add sub-issues to project* stays on. | One mechanism per concern; a second, plan-limited one that covers a single repo is a trap for the next person who wonders why one repo behaves differently. |
 | **I - Not a gate** | `triage.yml` is never added to the required checks of the `main` ruleset. | A GitHub API hiccup must not block a merge. A red run is visible in the Actions tab and costs one click on the board. |
-| **J - Module** | The `board` job sets the project's single-select field **Module** to the repo's module, **only when the field is empty**. The module is the **repository variable `PROJECT_MODULE`** (skillforge: `forge`), given by option *name*; project, field and option ids are looked up at run time from the item the action returns. An unset variable or a name the project does not know fails the run. | Same rule as for the assignee: a value chosen by hand wins, e.g. a forge issue that really belongs to `core`. A name survives a recreated field; an opaque option id does not. A repository variable instead of a line in the file, because the file is about to move into the shared platform repo: a caller's workflow-level `env` is **not** passed on to a called workflow, while GitHub's own advice for values shared across workflows is the `vars` context. With the variable the file has no repo-specific line at all (goal 5). The price is configuration that no diff shows - which is why a missing or wrong value must be a red run, not an item without a Module. |
-| **K - Iteration** | When a PR is **closed** (merged or not), the `board` job sets the project's **Iteration** field to the current iteration - the one whose `startDate <= today < startDate + duration`, with *today* taken in `Europe/Berlin`. It **replaces** an existing value. If no iteration covers today (a gap, or none planned), the run leaves the field alone, prints a notice and stays green. | Unlike Module and assignee this is not a default but a fact: the iteration a PR closed in. A PR planned for iteration 12 that closes in 13 belongs to 13. A closed-unmerged PR counts too - the board treats it as done just the same. Berlin time, because the iterations are planned in it: a PR merged at 00:30 belongs to the day Leon saw on the clock. A gap between iterations is a legitimate state, not an error. |
+| **J - Module** | The `board` job sets the project's single-select field **Module** to the repo's module, **only when the field is empty**. The module is the **repository variable `PROJECT_MODULE`** (skillforge: `forge`), given by option *name*; project, field and option ids are looked up at run time from the item the action returns. An unset variable or a name the project does not know fails the run. | Same rule as for the assignee: a value chosen by hand wins, e.g. a forge issue that really belongs to `core`. A name survives a recreated field; an opaque option id does not. A repository variable instead of a line in the file, because the file is about to move into the shared platform repo: a caller's workflow-level `env` is **not** passed on to a called workflow, while GitHub's own advice for values shared across workflows is the `vars` context. With the variable the file has no repo-specific line at all (goal 6). The price is configuration that no diff shows - which is why a missing or wrong value must be a red run, not an item without a Module. |
+| **K - Iteration** | When an **issue or a PR is closed** - whatever the reason: merged or not, completed or not planned - the `board` job sets the project's **Iteration** field to the current iteration: the one whose `startDate <= today < startDate + duration`, with *today* taken in `Europe/Berlin`. It **replaces** an existing value. If no iteration covers today (a gap, or none planned), the run leaves the field alone, prints a notice and stays green. | Unlike Module and assignee this is not a default but a fact: the iteration an item closed in. Something planned for iteration 12 that closes in 13 belongs to 13. Every close reason counts - the board moves the item to *Done* just the same, and a rule with exceptions would need someone to remember them. Berlin time, because the iterations are planned in it: a PR merged at 00:30 belongs to the day Leon saw on the clock. A gap between iterations is a legitimate state, not an error. (The first version only listened to closed PRs; the first live test, #129, showed that issues were the missing half.) |
+| **L - Missing issue type** | When an **issue** is closed and has no issue type at that moment, the `issue-type` job posts one comment asking for it. The comment carries a hidden marker, so closing the same issue again does not ask twice. It uses `GITHUB_TOKEN` (`issues: write`), reads the type at run time and never sets a type itself. | The type cannot be made mandatory and cannot be derived. Closing is the last moment somebody looks at the issue anyway, and a comment reaches author and assignee as a notification without blocking anything. On close rather than on open, because an issue is often filed in a hurry and typed later - asking at once would be noise. |
 
 ## Platform contract
 
 Identical in every adopting repo:
 
-- **Workflow:** `.github/workflows/triage.yml`, jobs `board` and `assign-author`, top-level
+- **Workflow:** `.github/workflows/triage.yml`, jobs `board`, `assign-author` and `issue-type`, top-level
   `permissions: {}`, every action pinned by full SHA with a version comment (Dependabot keeps them current).
 - **The file is identical in every repo.** Its workflow-level `env` holds `PROJECT_URL`
   (`https://github.com/orgs/Nachhilfe-Leon-Weimann/projects/2`) and `MODULE: ${{ vars.PROJECT_MODULE }}`.
@@ -110,14 +114,12 @@ Checked on 2026-09-20 against the live org (read-only API calls).
 | Does the iteration logic work against the real project? | **Yes.** The lookup and the mutation were run verbatim against the item of PR #128. The field has 14-day iterations; the filter picks *Iteration 13* for 2026-09-13 to 09-26 and *Iteration 14* from 09-27, is right across the end of daylight saving time (10-24 -> 15, 10-25 -> 16), and returns nothing before the first and after the last planned iteration (the notice branch). `configuration.iterations` lists the running and the upcoming iterations; completed ones are a separate list and are not needed. |
 | Do the assignment calls behave as decision G assumes? | **Yes.** `GET .../issues/{number}` answers for a PR number too; `GET .../assignees/{login}` exits 0 for Leon and fails with `HTTP 404` for an outside account - the text the script matches on. |
 | Can the workflow be tried before it is on `main`? | **No.** `issues` and `pull_request_target` run the workflow file of the default branch, so opening the PR that adds `triage.yml` does not trigger it. Its merge might: `closed` fires after the merge, when `main` already has the file. Otherwise the first issue or PR opened after the merge is the live test. |
+| Does it work live? | **Yes, since #128 landed on 2026-09-20.** Merging #128 was the first run (`closed` fires after the merge, when `main` has the file): *Module is already set to "forge"*, *Moved into "Iteration 13"*. The test issue #129 was on the board seconds after it was opened: *Module set to "forge"*, *Assigned leonweimann*. Both runs used the **repo-scoped App token narrowed to `organization-projects: write`** - it can add to the org project and write its fields. Closing #129 started no run and left its iteration empty: `issues` did not listen to `closed` yet (now decision K). |
+| How does the API show a missing issue type? | `GET /repos/{owner}/{repo}/issues/{number}` carries `"type": null`; with a type it is an object with `name`. The reminder's calls were run against #129: comment posted, found again through its marker, deleted. |
 | Action versions | `actions/add-to-project` v2.0.0 (`5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd`), `actions/create-github-app-token` v3.2.0 (`bcd2ba49218906704ab6c1aa796996da409d3eb1`, the pin `release.yml` already uses). |
 
-**Not verified yet - the first items after the merge of P0-1 prove or refute them:**
+**Not verified yet:**
 
-- An installation token that is scoped to one repository and narrowed to `organization-projects: write` can add
-  an item to the org project and write its Module. (The action's README only documents personal access
-  tokens; the local run above used a user token.) If it fails, mint the token with `owner:` set instead of the
-  repo default.
 - In the shared platform repo: that `vars.PROJECT_MODULE` inside a *called* workflow resolves to the **calling**
   repo's variable. The run belongs to the caller, and GitHub recommends `vars` for exactly this, but its docs
   do not spell it out. If it does not, the three-line caller passes `module: ${{ vars.PROJECT_MODULE }}` as an
@@ -143,11 +145,11 @@ Checked on 2026-09-20 against the live org (read-only API calls).
   `updateProjectV2ItemFieldValue`. On `closed` a further step looks up the Iteration field's
   `configuration.iterations`, picks the one that covers today and writes it the same way. Re-running the
   action on `closed` is how the step gets the item id - and it puts a PR on the board that never was.
-- *Technique (Leon or an agent with repo admin):* `gh variable set PROJECT_MODULE --body forge`.
   `assign-author`: skip when the author's `type` is `Bot`; otherwise read the item through
   `GET /repos/{owner}/{repo}/issues/{number}` (PRs are issues for this endpoint), stop if `assignees` is not
   empty, stop if the author is not assignable, else `POST .../issues/{number}/assignees`. `gh api` with
   `GH_TOKEN: ${{ github.token }}` is enough; no checkout, no script file.
+- *Technique (Leon or an agent with repo admin):* `gh variable set PROJECT_MODULE --body forge`.
 - *Technique:* [`test_triage_workflow.py`](../../tests/test_triage_workflow.py) guards the hygiene rules of the
   platform contract as part of `just check`: no checkout, no `${{ }}` inside a `run:` block, top-level
   `permissions: {}`, every action pinned, the narrowed App token, and `MODULE` coming from `vars.PROJECT_MODULE`
@@ -162,16 +164,31 @@ Checked on 2026-09-20 against the live org (read-only API calls).
         live project, see Verified behavior; #127 got its `forge` and #128 its iteration that way)*
   - [x] The repository variable `PROJECT_MODULE` is `forge`. *(set 2026-09-20)*
 
-  Live, after the merge (the workflow cannot run earlier - see *Verified behavior*):
-  - [ ] A new issue without an assignee is on the board, Module `forge`, assigned to its author within a minute.
-  - [ ] A new PR from a branch of the repo: same.
+  Live (the workflow only runs from `main`):
+  - [x] A new issue without an assignee is on the board, Module `forge`, assigned to its author within a minute.
+        *(#129: on the board and assigned 9 seconds after it was opened)*
+  - [ ] A new PR from a branch of the repo: same. *(the PR of P0-1a is the test)*
   - [ ] An item created **with** an assignee keeps exactly that assignee; an item whose Module was changed by
         hand keeps it after a close and reopen.
   - [ ] The release PR (author `skill-platform-release[bot]`) is on the board with its Module, unassigned, and
         both jobs are green.
-  - [ ] An item that is already on the board (added by the built-in workflow) leaves a green run and no duplicate.
-  - [ ] A PR that is merged, and one that is closed without merging, sits in the current iteration afterwards -
-        also when it was planned for another one.
+  - [x] An item that is already on the board leaves a green run and no duplicate. *(#128 had been added by
+        hand; its merge run found the item, and the PR still has exactly one)*
+  - [x] A merged PR sits in the current iteration afterwards. *(#128: "Moved into Iteration 13")* A PR closed
+        without merging has not been tried.
+
+**P0-1a - Closed issues: iteration and type reminder.**
+- *Technique:* `issues` also listens to `closed` (decision E), so the iteration step of `board` covers issues
+  (decision K). New job `issue-type` (decision L): read `type` through `GET .../issues/{number}`, stop if it is
+  set, stop if a comment with the marker `<!-- triage:missing-issue-type -->` exists, else post the comment.
+- *Acceptance criteria:*
+  - [x] `actionlint` passes; the hygiene tests cover the new `run:` block without a change.
+  - [x] The reminder's calls do what decision L says. *(run by hand against #129, see Verified behavior)*
+
+  Live:
+  - [ ] A closed issue sits in the current iteration afterwards - also when it was planned for another one.
+  - [ ] An issue closed without a type gets exactly one comment, also after a reopen and a second close; an
+        issue closed with a type gets none.
 
 **P0-2 - Roll out to skillsite and skillbot.**
 - *Technique:* set the repository variable `PROJECT_MODULE` (`site`, `bot`), then copy `triage.yml` and its
@@ -219,9 +236,12 @@ missing from the board.
 - **Configuration outside the repo.** `PROJECT_MODULE` lives in the repo settings: not versioned, not reviewed,
   invisible in a diff. Accepted for a file without repo-specific lines; the red run on a missing or unknown
   value is the safety net.
-- **The iteration of a closed PR is overwritten.** Whoever parks a closed PR in another iteration on purpose
-  has to do it after closing. A PR that is closed, reopened and closed again ends up in the iteration of the
-  last close.
+- **The iteration of a closed item is overwritten.** Whoever parks a closed issue or PR in another iteration on
+  purpose has to do it after closing. An item that is closed, reopened and closed again ends up in the
+  iteration of the last close.
+- **The type reminder is a comment, not a gate.** It can be ignored, and it adds one bot comment to the issue.
+  Accepted: GitHub offers no way to require a type, and a notification at the moment of closing is the least
+  intrusive thing that still gets seen.
 - **A failed intake stops nothing.** Not being a required check (decision I) means a red `triage` run is only
   seen by someone who looks. The cost of a miss is one manual click; the cost of a gate would be blocked merges.
 
