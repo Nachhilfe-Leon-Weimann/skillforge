@@ -8,11 +8,13 @@ result of the call that issues it, and never reaches a log or an audit ``detail`
 import hashlib
 import secrets as random_secrets
 import uuid
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from sqlalchemy import CursorResult, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -38,6 +40,7 @@ from .errors import (
     AccountPartyNotFoundError,
     InvalidActionTokenError,
     UserAccountAlreadyExistsError,
+    UserAccountManagementError,
     UserAccountNotFoundError,
     UserAccountStateError,
     UserEmailAlreadyInUseError,
@@ -100,8 +103,8 @@ async def invite_user_account(
         status=UserAccountStatus.INVITED,
         roles=[UserAccountRole(role=role) for role in sorted(set(roles))],
     )
-    session.add(account)
-    await session.flush()
+    async with _unique_account(session):
+        session.add(account)
     await _audit(
         session,
         account.id,
@@ -204,7 +207,8 @@ async def update_user_account(
         normalized = normalize_email(email)
         if normalized != account.email:
             await _require_email_unused(session, normalized)
-            account.email = normalized
+            async with _unique_account(session):
+                account.email = normalized
 
     if status is not None and status is not previous_status:
         if status is UserAccountStatus.ACTIVE and account.password_hash is None:
@@ -237,7 +241,12 @@ async def add_user_role(
 
 
 async def remove_user_role(session: AsyncSession, user_id: uuid.UUID, *, role: UserAccountRoleName, actor: str) -> None:
-    """Take a stored role away; a role the account does not hold is a ``UserRoleNotFoundError``."""
+    """Take a stored role away; a role the account does not hold is a ``UserRoleNotFoundError``.
+
+    Locked like ``add_user_role``: two overlapping removals would otherwise both find the row and
+    the second would delete what is no longer there.
+    """
+    await _lock_user_account(session, user_id)
     account = await get_user_account(session, user_id)
     stored = next((held for held in account.roles if held.role is role), None)
     if stored is None:
@@ -299,16 +308,23 @@ async def redeem_action_token(session: AsyncSession, *, plaintext: str, new_pass
     the lock are cleared, the token is marked used, and a ``password_reset`` revokes every session
     of the account - an invitation has none to revoke.
     """
-    token = await session.scalar(
+    found = await session.scalar(
         select(UserActionToken).where(UserActionToken.token_hash == hash_action_token(plaintext))
     )
-    now = datetime.now(UTC)
-    if token is None or token.used_at is not None or token.invalidated_at is not None or token.expires_at <= now:
+    # The cheap look-up first: a token that was never live costs neither a hash nor a row lock.
+    if found is None or not _is_live(found, datetime.now(UTC)):
         raise InvalidActionTokenError("Unknown, used or expired token")
     if not meets_password_policy(new_password):
         raise WeakPasswordError(WeakPasswordError.message)
 
-    account = await _lock_user_account(session, token.user_account_id)
+    account = await _lock_user_account(session, found.user_account_id)
+    token = await _lock_action_token(session, found.id)
+    # Only now is the answer authoritative: the look-up above was not serialized against a redeem
+    # or an issue that was running at the same time, and either may have spent this token since.
+    now = datetime.now(UTC)
+    if token is None or not _is_live(token, now):
+        raise InvalidActionTokenError("Unknown, used or expired token")
+
     account.password_hash = hash_password(new_password)
     account.failed_login_count = 0
     account.locked_until = None
@@ -358,9 +374,31 @@ async def _revoke_sessions(session: AsyncSession, user_id: uuid.UUID, *, reason:
     return result.rowcount
 
 
+async def _lock_action_token(session: AsyncSession, token_id: uuid.UUID) -> UserActionToken | None:
+    """Re-read the token row with its own lock, past whatever the session still holds of it."""
+    return await session.scalar(
+        select(UserActionToken)
+        .where(UserActionToken.id == token_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
+def _is_live(token: UserActionToken, now: datetime) -> bool:
+    """Whether the token can still be redeemed: not used, not replaced, not expired."""
+    return token.used_at is None and token.invalidated_at is None and token.expires_at > now
+
+
 async def _lock_user_account(session: AsyncSession, user_id: uuid.UUID) -> UserAccount:
-    """Return the account with its row locked until the transaction ends."""
-    account = await session.scalar(select(UserAccount).where(UserAccount.id == user_id).with_for_update())
+    """Return the account with its row locked until the transaction ends.
+
+    ``populate_existing`` is what makes the lock worth taking: an account the session already
+    holds would otherwise keep the attributes it was loaded with, and every check made after the
+    lock would run on data from before it.
+    """
+    account = await session.scalar(
+        select(UserAccount).where(UserAccount.id == user_id).with_for_update().execution_options(populate_existing=True)
+    )
     if account is None:
         raise UserAccountNotFoundError(f"No user account with id {user_id}")
 
@@ -373,8 +411,45 @@ async def find_user_account_by_party(session: AsyncSession, party_id: uuid.UUID)
 
 
 async def _require_email_unused(session: AsyncSession, email: str) -> None:
+    """The friendly check: it answers before anything is written, but it cannot be the last word."""
     if await session.scalar(select(UserAccount.id).where(UserAccount.email == email)) is not None:
         raise UserEmailAlreadyInUseError("The e-mail address is already in use")
+
+
+@asynccontextmanager
+async def _unique_account(session: AsyncSession) -> AsyncIterator[None]:
+    """Write the change made inside the block in a SAVEPOINT and translate a uniqueness conflict.
+
+    The checks above are check-then-insert, so two overlapping requests both pass them; the
+    constraint is what decides, and the flush forces the violation here instead of at commit. The
+    change must happen *inside* the block: ``begin_nested()`` first flushes whatever is pending
+    into the enclosing transaction, where a violation would take the whole transaction down - and
+    its message, which names the e-mail address, would be logged.
+    """
+    try:
+        async with session.begin_nested():
+            yield
+            await session.flush()
+    except IntegrityError as exc:
+        conflict = _conflict_for(exc)
+        if conflict is None:
+            raise
+        raise conflict from exc
+
+
+def _conflict_for(exc: IntegrityError) -> UserAccountManagementError | None:
+    """The taxonomy error of the violated constraint, or ``None`` for anything else.
+
+    SQLAlchemy's asyncpg dialect wraps the driver error; the raw ``asyncpg`` error, with its
+    ``constraint_name``, is its ``__cause__``.
+    """
+    match getattr(getattr(exc.orig, "__cause__", None), "constraint_name", None):
+        case "user_account_party_id_key":
+            return UserAccountAlreadyExistsError("The party already has a user account")
+        case "user_account_email_key":
+            return UserEmailAlreadyInUseError("The e-mail address is already in use")
+        case _:
+            return None
 
 
 def _require_purpose_allowed(account: UserAccount, purpose: UserActionTokenPurpose) -> None:

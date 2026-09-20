@@ -18,7 +18,13 @@ from ..scopes import Scope, parse_scopes
 from .clients import find_application_client
 from .scopes import grant_client_scopes, seed_default_scopes
 from .secrets import client_has_usable_secret, create_client_secret
-from .users import add_user_role, find_user_account_by_party, invite_user_account, issue_action_token
+from .users import (
+    add_user_role,
+    find_user_account_by_party,
+    invite_user_account,
+    issue_action_token,
+    load_user_account,
+)
 
 BOOTSTRAP_ACTOR = "cli"
 """What the operator commands record as the issuer, where a request records its principal."""
@@ -116,4 +122,7 @@ async def bootstrap_admin_account(
             actor=BOOTSTRAP_ACTOR,
         )
 
-    return BootstrappedAdminAccount(account=view.account, created_account=False, invitation=invitation)
+    # Loaded again at the end: taking the account's row lock re-reads it, which leaves the roles
+    # of the object loaded before it behind.
+    account = (await load_user_account(session, existing.id)).account
+    return BootstrappedAdminAccount(account=account, created_account=False, invitation=invitation)
