@@ -30,7 +30,13 @@ from .services import (
     seed_default_scopes,
     update_application_client,
 )
-from .tokens import CreatedAccessToken, TokenValidationError, create_application_access_token, validate_access_token
+from .tokens import (
+    CreatedAccessToken,
+    TokenValidationError,
+    create_application_access_token,
+    create_user_access_token,
+    validate_access_token,
+)
 
 __all__ = [
     "ApplicationClientAlreadyExistsError",
@@ -53,6 +59,7 @@ __all__ = [
     "create_application_client_secret",
     "create_application_access_token",
     "create_client_secret",
+    "create_user_access_token",
     "generate_client_secret",
     "get_current_principal",
     "get_application_client",
