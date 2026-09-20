@@ -232,10 +232,11 @@ declaration. The full rules, with the *why*, are in the
 
 One flow for the whole platform ([spec](specs/release-flow.md)): release-please maintains a release PR;
 shipping it creates the tag and GitHub release, and the `Release` workflow builds the image, publishes
-the Python client and calls `deploy.yml`. The deploy script
-([`deploy-dokploy.sh`](../.github/scripts/deploy-dokploy.sh)) triggers `compose.deploy` over the Dokploy
-API, waits for the deployment to finish and then requires `GET /health` to answer `ok` with the released
-`version` - a failed migration or a stale container is a red workflow. Dokploy runs the repo's
+the Python client and calls `deploy.yml`, which hands over to the platform's shared deploy workflow
+([`skill-platform-workflows`](https://github.com/Nachhilfe-Leon-Weimann/skill-platform-workflows), the same
+for every repo). Its script triggers `compose.deploy` over the Dokploy API, waits for the deployment to
+finish and then requires `GET /health` to answer `ok` with the released `version` - a failed migration or
+a stale container is a red workflow. Dokploy runs the repo's
 [`compose.yml`](../compose.yml), whose `image:` tags the release commit pins to `vX.Y.Z`: `main` records
 what prod runs. There is no automatic rollback - an app rollback would not roll back an Alembic migration;
 the manual procedure is in the [README](../README.md#rolling-back).
