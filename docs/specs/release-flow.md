@@ -247,7 +247,8 @@ and `pre-push` hooks calling `just` recipes.)
 result.) skillbot's existing deploy notification therefore goes away when it adopts this flow.
 
 **P1-4 - History convention in `CLAUDE.md`.** Decision D as a short rule set, including "one PR per slice" and
-"fold `docs(specs): tick` commits into the slice".
+"fold `docs(specs): tick` commits into the slice". *Done: the "History on `main`" rule under Conventions in
+[`CLAUDE.md`](../../CLAUDE.md).*
 
 ### Future considerations (P2)
 
