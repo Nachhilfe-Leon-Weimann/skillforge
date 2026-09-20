@@ -64,5 +64,8 @@ def test_every_action_is_pinned_by_sha() -> None:
     assert [line for line in uses if not PINNED_ACTION.match(line)] == []
 
 
-def test_the_module_is_configured_in_one_line() -> None:
-    assert len([line for line in _lines() if re.match(r"^  MODULE: \w+$", line)]) == 1
+def test_the_module_comes_from_the_repository_variable() -> None:
+    # The file stays free of repo-specific values so that it can move into the shared platform repo unchanged.
+    assert [line.strip() for line in _lines() if line.lstrip().startswith("MODULE:")] == [
+        "MODULE: ${{ vars.PROJECT_MODULE }}"
+    ]

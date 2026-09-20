@@ -1,7 +1,10 @@
 name: Triage
 
 # Project intake (docs/specs/project-intake.md): every issue and PR lands on the org project with its Module
-# set, and gets its author as assignee when nobody is assigned.
+# set and gets its author as assignee when nobody is assigned; a closed PR moves into the current iteration.
+#
+# Nothing in this file is repo-specific - the module is the repository variable PROJECT_MODULE - so it can move
+# into the shared platform repo as it is.
 #
 # `issues` and `pull_request_target` run this file from `main`, with the App key, for anyone who opens an issue
 # or a PR. So this workflow never checks out code and never puts `${{ github.event.* }}` into a `run:` block -
@@ -11,18 +14,18 @@ on:
   issues:
     types: [opened, reopened]
   pull_request_target:
-    types: [opened, reopened]
+    types: [opened, reopened, closed]
 
 permissions: {}
 
 env:
   PROJECT_URL: https://github.com/orgs/Nachhilfe-Leon-Weimann/projects/2
-  # The one repo-specific line: this repo's option of the project's single-select field "Module".
-  MODULE: forge
+  # This repo's option of the project's single-select field "Module" (forge, site, bot).
+  MODULE: ${{ vars.PROJECT_MODULE }}
 
 jobs:
-  add-to-project:
-    name: Add to the project and set Module
+  board:
+    name: Put on the board, set Module and Iteration
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -38,7 +41,8 @@ jobs:
           permission-issues: read
           permission-pull-requests: read
 
-      # Adding an item that is already on the board returns the existing item.
+      # Adding an item that is already on the board returns the existing item - this is also how the later
+      # steps find the item of a PR that is being closed.
       - name: Add to the project
         id: add
         uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
@@ -52,6 +56,11 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ITEM_ID: ${{ steps.add.outputs.itemId }}
         run: |
+          if [ -z "$MODULE" ]; then
+            echo "::error::The repository variable PROJECT_MODULE is not set."
+            exit 1
+          fi
+
           # shellcheck disable=SC2016 # the $names inside the single-quoted queries are GraphQL variables
           item=$(gh api graphql -f item="$ITEM_ID" -f field=Module -f query='
             query($item: ID!, $field: String!) {
@@ -97,10 +106,64 @@ jobs:
               }'
           echo "Module set to \"$MODULE\"."
 
+      # The iteration of a closed PR says when it was finished - a fact, so it replaces whatever was planned.
+      - name: Move a closed PR into the current iteration
+        if: github.event.action == 'closed'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ITEM_ID: ${{ steps.add.outputs.itemId }}
+          TZ: Europe/Berlin
+        run: |
+          # shellcheck disable=SC2016
+          item=$(gh api graphql -f item="$ITEM_ID" -f field=Iteration -f query='
+            query($item: ID!, $field: String!) {
+              node(id: $item) {
+                ... on ProjectV2Item {
+                  project {
+                    id
+                    field(name: $field) {
+                      ... on ProjectV2IterationField {
+                        id
+                        configuration { iterations { id title startDate duration } }
+                      }
+                    }
+                  }
+                }
+              }
+            }')
+
+          today=$(date +%F)
+          current=$(jq -r --arg today "$today" '
+            [ .data.node.project.field.configuration.iterations[]?
+              | ((.startDate | strptime("%Y-%m-%d") | mktime) + .duration * 86400 | strftime("%Y-%m-%d")) as $end
+              | select(.startDate <= $today and $today < $end)
+              | "\(.id) \(.title)" ]
+            | first // empty' <<<"$item")
+          if [ -z "$current" ]; then
+            echo "::notice::No iteration covers $today; the iteration stays as it is."
+            exit 0
+          fi
+
+          # shellcheck disable=SC2016
+          gh api graphql --silent \
+            -f project="$(jq -r '.data.node.project.id' <<<"$item")" \
+            -f item="$ITEM_ID" \
+            -f field="$(jq -r '.data.node.project.field.id' <<<"$item")" \
+            -f iteration="${current%% *}" \
+            -f query='
+              mutation($project: ID!, $item: ID!, $field: ID!, $iteration: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $project, itemId: $item, fieldId: $field, value: { iterationId: $iteration }
+                }) { projectV2Item { id } }
+              }'
+          echo "Moved into \"${current#* }\"."
+
   assign-author:
     name: Assign the author
-    # A bot cannot be an assignee.
-    if: github.event.issue.user.type != 'Bot' && github.event.pull_request.user.type != 'Bot'
+    # Only for a new item, and a bot cannot be an assignee.
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.issue.user.type != 'Bot' && github.event.pull_request.user.type != 'Bot'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

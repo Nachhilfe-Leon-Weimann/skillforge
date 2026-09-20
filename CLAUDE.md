@@ -43,7 +43,8 @@ migrations/          Alembic (env.py creates schemas; baseline = explicit DDL)
 tests/               api/, auth/, db/ (db/crm/: the CRM app against Postgres), workers/
                      (DB tests via @pytest.mark.db)
 .github/             workflows: ci.yml, build.yml, release.yml (release-please -> build -> publish -> deploy),
-                     deploy.yml, triage.yml (issues/PRs -> org project + Module + author as assignee);
+                     deploy.yml, triage.yml (issues/PRs -> org project + Module + author as assignee;
+                     closed PR -> current iteration; module = repo variable PROJECT_MODULE);
                      scripts/deploy-dokploy.sh (the only code that talks to Dokploy)
 scripts/             coverage_summary.py, dump_openapi.py
 ```
