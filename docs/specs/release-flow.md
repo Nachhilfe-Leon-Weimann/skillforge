@@ -4,7 +4,8 @@
 > P1: P1-1 implemented - `compose.yml` pins the deployed version, the next release is the first to move the pin;
 > P1-4 in #125; P1-2 and P1-3 dropped. P2 *Shared workflows* done: the deploy lives in
 > [`skill-platform-workflows`][workflows] since 2026-09-20 (#133).
-> Platform arc (skillforge first, then skillbot and skillsite).
+> Platform arc (skillforge first, then skillbot and skillsite): skillbot adopted the flow on 2026-09-21
+> (skillbot#10); its first release PR is open, the first release through the flow is still to come.
 > This spec is also the decision record (no separate ADR: *Decided defaults*, *Verified behavior* and
 > *Trade-offs accepted* carry the why). Written in skillforge because it is the first adopter; the **platform
 > contract** below is what the other repos copy. Every GitHub behavior this spec relies on was verified in a
@@ -318,14 +319,18 @@ platform contract): a new adopter copies the two callers from its README and `ci
   + tag). Already has the App. Needs the `/health` `version` field and a job named `check`.
 - **skillbot:** `release-type: python`; replaces `build-deploy.yml`; the dev deploy, both webhooks and the Discord
   deploy notification go away; actions get pinned. No HTTP health endpoint -> deployment status only.
+  *Adopted 2026-09-21 (skillbot#10):* `ci.yml` and `release.yml` as here, `build.yml` with one differing line
+  (`file: Dockerfile`), `deploy.yml` identical. Its vendoring went with it (see *Decided*), which is what made
+  the copy that close. Without `/health`, a pin in `compose.yml` that stops moving would be a *green* deploy of
+  the old image - there `test_release_config.py` is the only backstop, not one of two.
+  - [x] The first push to `main` lets the App open a release PR whose diff touches exactly `pyproject.toml`,
+        `uv.lock`, `compose.yml`, `CHANGELOG.md` and the manifest; its commit is *Verified* and its `check` is
+        green. *(skillbot#12, `0.2.0`: no tag existed, so it collects the whole history)*
+  - [x] A `dry_run` dispatch of `Deploy` is green against skillbot's compose service. *(2026-09-21)*
+  - [ ] The first release builds `ghcr.io/nachhilfe-leon-weimann/skillbot:vX.Y.Z` and deploys it.
 
 ## Open questions
 
-- **skillbot's Dokploy target.** The repo has no `compose.yml`; if the service is a Dokploy *application*
-  rather than a *compose* service, either move it to a repo `compose.yml` (preferred, uniform) or let the
-  deploy script support `application.deploy`. Decide at adoption.
-- **skillbot's two lockfiles** (`uv.lock`, `uv.lock.prod`): both contain the package version; both need an
-  `extra-files` entry or the split should be revisited. Decide at adoption.
 - **Dokploy API key scope.** The key acts as the user who created it. If the instance allows a restricted
   user, create one for deployments; otherwise accept the broader key as an environment secret.
 
@@ -338,6 +343,15 @@ platform contract): a new adopter copies the two callers from its README and `ci
 - **Squash via `gh pr merge <n> -sd --auto` is the default merge path** (decisions C and G). `git ship` stays
   allowed but needs a green tip; once the required check was live it failed in daily use, which settled it.
 - **No local hooks and no deploy notifications** - P1-2 and P1-3 were dropped on 2026-09-20; P1 is P1-1 and P1-4.
+- **skillbot's Dokploy target** (decided at adoption, 2026-09-21): a repo `compose.yml` with the pinned image and
+  a Dokploy *compose* service on it - the uniform option. The deploy script did not have to learn
+  `application.deploy`.
+- **skillbot's two lockfiles** (decided at adoption, 2026-09-21): the split is gone. skillbot vendored skillcore
+  (`vendor/`, a second lock `uv.lock.prod` made with `--no-sources`, the real `uv.lock` git-ignored), and the
+  tracked lock had gone stale unnoticed - it knew neither `skillforge-client` nor skillcore 0.2.0, so its image
+  could not start. skillbot now takes skillcore from its git tag exactly as this repo does: one tracked `uv.lock`,
+  one `extra-files` entry, `--locked` in CI and in the image. Rule for the next adopter: bring the repo in line
+  with this one first, then copy the workflows - do not build the flow around legacy structure.
 
 ## Success metrics
 
@@ -363,7 +377,8 @@ One PR per requirement, `just check` green on each:
 6. **P1-1 and P1-4** as independent follow-ups (P1-2 and P1-3 are dropped). *P1-1: #126, confirmed by the next
    release. P1-4: #125.*
 7. **Shared workflows (P2)** - before the other repos adopt the flow, so that they start from the callers.
-   *Done: `skill-platform-workflows` `v1.0.0`, #133.* Then skillbot, then skillsite.
+   *Done: `skill-platform-workflows` `v1.0.0`, #133.* Then skillbot (*adopted 2026-09-21, skillbot#10*), then
+   skillsite.
 
 **Dependency:** Leon extends the App installation and creates the org variable/secret, the `production`
 environment and the Dokploy API key - these cannot be done from a PR.
