@@ -189,11 +189,12 @@ Checked on 2026-09-20 against the live org (read-only API calls).
 
   Live:
   - [x] A closed issue sits in the current iteration afterwards. *(#129, reopened and closed after #130 landed:
-        "Moved into Iteration 13"; #130 itself moved there on its merge.)* Replacing a planned iteration has only
-        been shown by hand, not by a live run.
+        "Moved into Iteration 13"; #130 itself moved there on its merge.)* An iteration that was already planned
+        is replaced. *(confirmed live by Leon, 2026-09-20 - and wanted: the moment of closing decides; whoever
+        means an older iteration corrects it after closing)*
   - [x] An issue closed without a type gets a comment. *(#129, closed with its type removed: one comment from
-        `github-actions`)* Not tried live yet: that a second close does not ask again, and that a typed issue
-        gets none - both branches were only run by hand.
+        `github-actions`)* A second close does not ask again, and a typed issue gets none. *(both confirmed live
+        by Leon, 2026-09-20)*
 
 **P0-2 - Roll out to skillsite and skillbot.**
 - *Technique:* set the repository variable `PROJECT_MODULE` (`site`, `bot`), then copy `triage.yml` and its
