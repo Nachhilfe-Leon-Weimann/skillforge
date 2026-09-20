@@ -167,7 +167,8 @@ Checked on 2026-09-20 against the live org (read-only API calls).
   Live (the workflow only runs from `main`):
   - [x] A new issue without an assignee is on the board, Module `forge`, assigned to its author within a minute.
         *(#129: on the board and assigned 9 seconds after it was opened)*
-  - [ ] A new PR from a branch of the repo: same. *(the PR of P0-1a is the test)*
+  - [x] A new PR from a branch of the repo: same. *(#130, the PR of P0-1a, was opened without an assignee and not
+        put on the board by hand: on the board, Module `forge`, author assigned)*
   - [ ] An item created **with** an assignee keeps exactly that assignee; an item whose Module was changed by
         hand keeps it after a close and reopen.
   - [ ] The release PR (author `skill-platform-release[bot]`) is on the board with its Module, unassigned, and
