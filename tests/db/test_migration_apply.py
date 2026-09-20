@@ -64,6 +64,34 @@ async def _enum_labels(url: str, schema: str, enum_name: str) -> list[str]:
         await conn.close()
 
 
+async def _type_exists(url: str, schema: str, type_name: str) -> bool:
+    conn = await asyncpg.connect(_asyncpg_dsn(url))
+    try:
+        row = await conn.fetchrow(
+            """
+            SELECT 1
+            FROM pg_type t
+            JOIN pg_namespace n ON n.oid = t.typnamespace
+            WHERE t.typname = $1 AND n.nspname = $2
+            """,
+            type_name,
+            schema,
+        )
+        return row is not None
+    finally:
+        await conn.close()
+
+
+async def _row_exists(url: str, table: str, row_id: str) -> bool:
+    conn = await asyncpg.connect(_asyncpg_dsn(url))
+    try:
+        # `table` is one of the two fixed literals passed below, never external input.
+        row = await conn.fetchrow(f"SELECT 1 FROM {table} WHERE id = $1::uuid", row_id)
+        return row is not None
+    finally:
+        await conn.close()
+
+
 @pytest.fixture
 def migration_db_url(db_url: str):
     """A freshly created, empty database so migrations run from a clean slate."""
@@ -141,3 +169,55 @@ def test_cancelled_operation_status_migration_is_reversible(migration_db_url: st
 
     _alembic(migration_db_url, "upgrade", "head")
     assert asyncio.run(_enum_labels(migration_db_url, "bot", "operation_status")) == _OPERATION_STATUSES_WITH_CANCELLED
+
+
+_USER_ACCOUNT_ENUM_TYPES = ["user_account_status", "user_account_role_name", "user_action_token_purpose"]
+
+_PARTY_ID = "11111111-1111-1111-1111-111111111111"
+_APPLICATION_CLIENT_ID = "22222222-2222-2222-2222-222222222222"
+
+# The two rows the new tables reference, seeded *before* 0011 runs so its upgrade is exercised
+# against a database that already holds data - not just an empty schema.
+_SEED_PRE_EXISTING_TABLES = f"""
+INSERT INTO core.party (id, type) VALUES ('{_PARTY_ID}', 'PERSON');
+INSERT INTO auth.application_client (id, client_id, name)
+    VALUES ('{_APPLICATION_CLIENT_ID}', 'seed-client', 'Seed Client');
+"""
+
+_SEED_USER_ACCOUNT_TABLES = f"""
+INSERT INTO auth.user_account (id, party_id, email, status)
+    VALUES ('33333333-3333-3333-3333-333333333333',
+            '{_PARTY_ID}', 'seed@example.com', 'invited');
+INSERT INTO auth.user_account_role (user_account_id, role)
+    VALUES ('33333333-3333-3333-3333-333333333333', 'admin');
+INSERT INTO auth.user_session (id, user_account_id, application_client_id, scope, refresh_token_hash, expires_at)
+    VALUES ('44444444-4444-4444-4444-444444444444', '33333333-3333-3333-3333-333333333333',
+            '{_APPLICATION_CLIENT_ID}', 'account:self', 'some-hash', now() + interval '30 days');
+INSERT INTO auth.user_action_token (id, user_account_id, purpose, token_hash, expires_at, issued_by)
+    VALUES ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333333',
+            'invitation', 'token-hash', now() + interval '7 days', 'cli');
+"""
+
+
+def test_user_account_tables_migration_is_reversible_and_drops_its_enum_types(migration_db_url: str) -> None:
+    # The empty-database path (0011 applying to a schema with no rows at all) is covered by
+    # test_migrations_apply_match_models_and_reverse, which chains the full base -> head -> base
+    # -> head on a fresh database. This test instead seeds the tables 0011 references *before*
+    # running it, so the upgrade below is exercised against a database that already holds data.
+    _alembic(migration_db_url, "upgrade", "0010_subject_title_unique")
+    asyncio.run(_run_on_server(migration_db_url, _SEED_PRE_EXISTING_TABLES))
+
+    _alembic(migration_db_url, "upgrade", "head")
+    assert all(asyncio.run(_type_exists(migration_db_url, "public", name)) for name in _USER_ACCOUNT_ENUM_TYPES)
+
+    # Now seed every new table too, so the downgrade below also runs against data.
+    asyncio.run(_run_on_server(migration_db_url, _SEED_USER_ACCOUNT_TABLES))
+
+    _alembic(migration_db_url, "downgrade", "0010_subject_title_unique")
+    assert not any(asyncio.run(_type_exists(migration_db_url, "public", name)) for name in _USER_ACCOUNT_ENUM_TYPES)
+    # The pre-existing rows the new tables referenced must survive the downgrade untouched.
+    assert asyncio.run(_row_exists(migration_db_url, "core.party", _PARTY_ID))
+    assert asyncio.run(_row_exists(migration_db_url, "auth.application_client", _APPLICATION_CLIENT_ID))
+
+    _alembic(migration_db_url, "upgrade", "head")
+    assert all(asyncio.run(_type_exists(migration_db_url, "public", name)) for name in _USER_ACCOUNT_ENUM_TYPES)
