@@ -50,11 +50,15 @@ def _scope_values(scopes: Iterable[Scope | str] | str) -> frozenset[str]:
     ``services/scopes.py`` - a plain ``str`` also type-checks as ``Iterable[str]``, so without this
     case a caller passing one (for example ``expand(session.scope)``, a space-separated text
     column) would silently get it iterated character by character.
+
+    Values are stripped and empty ones dropped, in both cases: ``_format_scope`` in ``tokens.py``
+    does the same before writing the claim, and a padded value that normalizes differently here
+    would slip past ``canonical`` and land in the token as the pair it promises never to carry.
     """
     if isinstance(scopes, str):
         return frozenset(scopes.split())
 
-    return frozenset(str(scope) for scope in scopes)
+    return frozenset(value for value in (str(scope).strip() for scope in scopes) if value)
 
 
 def expand(scopes: Iterable[Scope | str] | str) -> frozenset[str]:

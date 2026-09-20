@@ -88,6 +88,16 @@ def test_user_access_token_carries_the_canonical_scope():
     assert created.scope == "account:self crm:read"
 
 
+def test_user_access_token_canonicalizes_padded_scopes():
+    """`canonical` and `_format_scope` have to agree on what a value is, or a padded scope slips
+    past the canonicalization and the token carries the pair the claim promises never to hold."""
+    settings = _settings()
+
+    created = _user_token(settings, scopes=["crm:read ", "crm:read:own"])
+
+    assert created.scope == "crm:read"
+
+
 def test_user_access_token_takes_a_bare_roles_string_as_a_whitespace_separated_list():
     """A ``str`` type-checks as ``Iterable[str]``: without special-casing it, one role would be
     written to the claim character by character - the pitfall ``_scope_values`` documents."""

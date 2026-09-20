@@ -60,6 +60,20 @@ def test_canonical_treats_a_bare_string_as_a_space_separated_scope_string():
     assert canonical("crm:read crm:read:own") == {"crm:read"}
 
 
+def test_canonical_strips_the_values_of_an_iterable_before_comparing_them():
+    """A padded value has to normalize like the bare one, or the `:own` variant survives next to a
+    scope that is present after all - and `_format_scope` strips it into the token anyway."""
+    assert canonical(["crm:read ", "crm:read:own"]) == {"crm:read"}
+
+
+def test_expand_strips_the_values_of_an_iterable_before_comparing_them():
+    assert expand([" crm:read"]) == {"crm:read", "crm:read:own"}
+
+
+def test_expand_drops_empty_values_of_an_iterable():
+    assert expand(["bot:read", "", "  "]) == {"bot:read"}
+
+
 def test_canonical_is_the_inverse_of_expand_on_every_subset_of_scope():
     """Property-style check over every subset of ``Scope``:
 
