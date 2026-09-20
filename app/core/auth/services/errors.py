@@ -1,4 +1,6 @@
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import ConflictError, DomainValidationError, NotFoundError
+
+from ..passwords import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
 
 
 class ClientCredentialsError(ValueError):
@@ -43,3 +45,72 @@ class ApplicationClientScopeGrantNotFoundError(ApplicationClientManagementError,
     """Raised when a scope grant cannot be found."""
 
     message = "Application client scope grant not found"
+
+
+class UserAccountManagementError(ValueError):
+    """Raised when managing a user account cannot be completed.
+
+    The catalog below is closed (spec: user-authentication.md): a requirement that seems to need
+    another class or ``code`` is a reason to stop and ask, not to add one.
+    """
+
+
+class UserAccountNotFoundError(UserAccountManagementError, NotFoundError):
+    """Raised when no user account has the given ID."""
+
+    message = "User account not found"
+
+
+class UserAccountAlreadyExistsError(UserAccountManagementError, ConflictError):
+    """Raised when the party already has a user account."""
+
+    message = "The party already has a user account"
+
+
+class UserEmailAlreadyInUseError(UserAccountManagementError, ConflictError):
+    """Raised when another user account already uses the e-mail address."""
+
+    message = "Another user account already uses this e-mail address"
+
+
+class UserAccountStateError(UserAccountManagementError, ConflictError):
+    """Raised when the account's state does not allow what was asked.
+
+    An invitation for an account that has a password, a reset for one that has none, and enabling
+    an account that has none.
+    """
+
+    message = "The account state does not allow this"
+
+
+class AccountPartyNotFoundError(UserAccountManagementError, NotFoundError):
+    """Raised when the party a user account is invited for does not exist."""
+
+    message = "Party not found"
+
+
+class AccountPartyNotAPersonError(UserAccountManagementError, DomainValidationError):
+    """Raised when the party a user account is invited for is not a person (decision C)."""
+
+    message = "A user account belongs to a person, not to a company"
+
+
+class UserRoleNotFoundError(UserAccountManagementError, NotFoundError):
+    """Raised when removing a stored role the account does not hold."""
+
+    message = "The account does not hold this role"
+
+
+class InvalidActionTokenError(UserAccountManagementError, DomainValidationError):
+    """Raised for an unknown, used, invalidated or expired one-time token.
+
+    One error for all four cases: a caller must not be able to tell them apart (no enumeration).
+    """
+
+    message = "Invalid or expired token"
+
+
+class WeakPasswordError(UserAccountManagementError, DomainValidationError):
+    """Raised when a password violates the policy in ``passwords.py``."""
+
+    message = f"Password must be between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters long"

@@ -7,6 +7,12 @@ from app.core.db.models import AuthAuditLog
 
 
 class AuditEventType(StrEnum):
+    """What an ``AuthAuditLog`` entry records.
+
+    A ``detail`` never carries a plaintext secret, and never an e-mail address typed for an account
+    that does not exist (spec: security rules).
+    """
+
     APPLICATION_CLIENT_CREATED = "application_client.created"
     APPLICATION_CLIENT_DISABLED = "application_client.disabled"
     APPLICATION_CLIENT_UPDATED = "application_client.updated"
@@ -16,6 +22,18 @@ class AuditEventType(StrEnum):
     SCOPE_GRANT_REMOVED = "scope_grant.removed"
     TOKEN_DENIED = "token.denied"
     TOKEN_ISSUED = "token.issued"
+    USER_ACCOUNT_INVITED = "user_account.invited"
+    USER_ACCOUNT_ACTIVATED = "user_account.activated"
+    USER_ACCOUNT_UPDATED = "user_account.updated"
+    USER_ACCOUNT_DISABLED = "user_account.disabled"
+    USER_ACCOUNT_ENABLED = "user_account.enabled"
+    USER_ROLE_ADDED = "user_role.added"
+    USER_ROLE_REMOVED = "user_role.removed"
+    INVITATION_ISSUED = "invitation.issued"
+    PASSWORD_RESET_ISSUED = "password_reset.issued"
+    PASSWORD_SET = "password.set"
+    SESSION_REVOKED = "session.revoked"
+    SESSION_REUSE_DETECTED = "session.reuse_detected"
 
 
 async def write_auth_audit_log(
