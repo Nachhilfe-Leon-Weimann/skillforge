@@ -73,6 +73,11 @@ publishes `skillforge-client==X.Y.Z` and deploys through the Dokploy API, failin
 reports the new version. To deploy the current release again: run the `Deploy` workflow by hand.
 The why is in [`docs/specs/release-flow.md`](docs/specs/release-flow.md).
 
+If a `Release` run fails after the release exists, fix the cause and use **Re-run failed jobs** - never
+*Re-run all jobs*: release-please would find the release already created, report no new release, and every
+later job would be skipped while the run turns green. To rebuild only the image, dispatch `Build` for the
+tag; to deploy the current release again, dispatch `Deploy` with its version.
+
 ## Common commands
 
 | Command | Purpose |
