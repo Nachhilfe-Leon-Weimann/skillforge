@@ -332,7 +332,7 @@ One PR per requirement, `just check` green on each:
 5. **P0-5** - cleanup and docs. *Done: #119, plus #121 (the `openapi.json` round-trip fix).* Then merge the
    release PR #117: the first real release through the new flow. *Done 2026-09-20: `v0.4.0`.*
 6. **P1-1 and P1-4** as independent follow-ups (P1-2 and P1-3 are dropped); then skillsite, then skillbot.
-   *P1-1: the PR that pins `compose.yml`, confirmed by the next release. P1-4: #125.*
+   *P1-1: #126, confirmed by the next release. P1-4: #125.*
 
 **Dependency:** Leon extends the App installation and creates the org variable/secret, the `production`
 environment and the Dokploy API key - these cannot be done from a PR.
