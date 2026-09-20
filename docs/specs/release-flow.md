@@ -4,8 +4,8 @@
 > the flow (`0.4.0`, release PR #117) | Platform arc (skillforge first, then skillsite and skillbot)
 > This spec is also the decision record (no separate ADR: *Decided defaults*, *Verified behavior* and
 > *Trade-offs accepted* carry the why). Written in skillforge because it is the first adopter; the **platform
-> contract** below is what the other repos copy. Every GitHub behavior this spec relies on was verified in a throwaway repo (see
-> *Verified behavior*); nothing here assumes a feature GitHub does not have.
+> contract** below is what the other repos copy. Every GitHub behavior this spec relies on was verified in a
+> throwaway repo (see *Verified behavior*); nothing here assumes a feature GitHub does not have.
 
 ## Problem statement
 
