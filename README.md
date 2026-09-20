@@ -63,6 +63,21 @@ uv add skillforge-client
 The generated client source lives only in `build/`; its maintained README and package metadata
 templates live in `clients/python/templates/`.
 
+## Releasing
+
+Releases are driven by [release-please](https://github.com/googleapis/release-please): it keeps a
+release PR (`chore(main): release X.Y.Z`) up to date with the next version and `CHANGELOG.md`, both
+derived from the conventional commits on `main`. **Shipping that PR with `git ship` is the release** -
+the `Release` workflow then tags `vX.Y.Z`, builds `ghcr.io/nachhilfe-leon-weimann/skillforge:vX.Y.Z`,
+publishes `skillforge-client==X.Y.Z` and deploys through the Dokploy API, failing unless `GET /health`
+reports the new version. To deploy the current release again: run the `Deploy` workflow by hand.
+The why is in [`docs/specs/release-flow.md`](docs/specs/release-flow.md).
+
+If a `Release` run fails after the release exists, fix the cause and use **Re-run failed jobs** - never
+*Re-run all jobs*: release-please would find the release already created, report no new release, and every
+later job would be skipped while the run turns green. To rebuild only the image, dispatch `Build` for the
+tag; to deploy the current release again, dispatch `Deploy` with its version.
+
 ## Common commands
 
 | Command | Purpose |

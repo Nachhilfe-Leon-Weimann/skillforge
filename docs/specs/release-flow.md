@@ -12,7 +12,7 @@ The three deployable repos release in three different ways:
 
 | Repo | Release trigger | Version bump | Deploy |
 |---|---|---|---|
-| skillforge | version in `pyproject.toml` has no GitHub release yet, checked after CI on `main` ([`release.yml`](../../.github/workflows/release.yml)) | manual workflow opens a bump PR ([`version-bump.yml`](../../.github/workflows/version-bump.yml)) | deploy webhook, image `:latest` |
+| skillforge | version in `pyproject.toml` has no GitHub release yet, checked after CI on `main` (the former `release.yml`) | manual workflow opens a bump PR (`version-bump.yml`, removed by P0-5) | deploy webhook, image `:latest` |
 | skillsite | manual `workflow_dispatch` | a bot commits and tags directly on `main` | deploy webhook |
 | skillbot | push to `main` -> dev, tag `v*` -> prod | none (tag by hand) | two deploy webhooks, unpinned actions |
 
@@ -149,7 +149,9 @@ What is identical in every repo; everything else is repo-specific detail behind 
   passes it to `release-please-action`; **no step follows the action in this job**. Outputs: `release_created`,
   `tag_name`, `version`, `sha`.
 - *Technique:* `release-please-config.json` with `release-type: python`, `include-component-in-tag: false`,
-  `bump-minor-pre-major: true` and `extra-files` for `uv.lock` (package `skillforge`) and `openapi.json`;
+  `bump-minor-pre-major: true`, `changelog-sections` that show only `feat`, `fix`, `perf` and `revert` (a dry
+  run on today's history listed 34 documentation entries, mostly spec ticks, next to 26 features and 12
+  fixes) and `extra-files` for `uv.lock` (package `skillforge`) and `openapi.json`;
   `.release-please-manifest.json` starts at the current version (`0.3.0`, tag `v0.3.0` exists).
 - *Acceptance criteria:*
   - [ ] After a `feat`/`fix` commit lands on `main`, a release PR exists whose diff touches exactly
@@ -183,7 +185,7 @@ What is identical in every repo; everything else is repo-specific detail behind 
   description carrying version, SHA and run id; poll `deployment.allByCompose` until that deployment is
   `done` (continue) or `error` / `cancelled` / timeout (fail); then poll `HEALTH_URL` until `status` is healthy
   and `version` equals the released version, or time out (fail). No rollback. `workflow_dispatch` input:
-  the version to expect - this is the manual re-run path.
+  the version to expect - this is the manual re-run path. A second dispatch input, `dry_run`, only verifies API access.
 - *Technique:* `SystemHealthCheckResponse` in [`schemas.py`](../../app/services/system/schemas.py) gains
   `version`, filled from `get_project_version()`; `just openapi` afterwards (decision J).
 - *Technique:* remove the secret `DEPLOY_WEBHOOK_URL`, rotate the webhook token in Dokploy so the old URL is
@@ -201,8 +203,8 @@ What is identical in every repo; everything else is repo-specific detail behind 
   `release-version`, `bump-version` and `scripts/version.py` if nothing else uses them. Switch on secret
   scanning and push protection in the repo settings (free for public repos).
 - *Acceptance criteria:*
-  - [ ] `.github/workflows/` contains `ci.yml`, `build.yml`, `release.yml`, `deploy.yml` - nothing else.
-  - [ ] `CLAUDE.md`, `README.md` and [`ARCHITECTURE.md`](../ARCHITECTURE.md) describe the new flow and
+  - [x] `.github/workflows/` contains `ci.yml`, `build.yml`, `release.yml`, `deploy.yml` - nothing else.
+  - [x] `CLAUDE.md`, `README.md` and [`ARCHITECTURE.md`](../ARCHITECTURE.md) describe the new flow and
         point to this spec for the why.
 
 ### Nice-to-have (P1)

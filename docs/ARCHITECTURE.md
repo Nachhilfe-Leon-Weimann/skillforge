@@ -228,6 +228,16 @@ declaration. The full rules, with the *why*, are in the
   `422`) and return `Page[Item]` - never a bare array.
 - **Schemas** derive from `ApiModel`: a docstring under a field becomes its OpenAPI description.
 
+## Release and deploy
+
+One flow for the whole platform ([spec](specs/release-flow.md)): release-please maintains a release PR;
+shipping it creates the tag and GitHub release, and the `Release` workflow builds the image, publishes
+the Python client and calls `deploy.yml`. The deploy script
+([`deploy-dokploy.sh`](../.github/scripts/deploy-dokploy.sh)) triggers `compose.deploy` over the Dokploy
+API, waits for the deployment to finish and then requires `GET /health` to answer `ok` with the released
+`version` - a failed migration or a stale container is a red workflow. There is no automatic rollback:
+an app rollback would not roll back an Alembic migration.
+
 ## Roadmap: capability arcs
 
 The platform grows along four arcs that build on each other (details in the
