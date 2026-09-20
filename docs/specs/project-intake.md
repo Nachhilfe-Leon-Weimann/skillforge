@@ -1,6 +1,7 @@
 # Spec: Project intake (issues and PRs land on the board with module, assignee and the iteration they closed in)
 
-> Status: In progress - P0-0 and P0-1 done (#128, live since 2026-09-20), P0-1a implemented, P0-2 and P0-3 open.
+> Status: In progress - P0-0, P0-1 (#128) and P0-1a (#130) done and live in skillforge since 2026-09-20; P0-2
+> (skillsite, skillbot) and P0-3 (retire the built-in auto-add) open.
 > Tracking: [#127](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/127)
 > Platform arc (skillforge first, then skillsite and skillbot), same shape as
 > [`release-flow.md`](release-flow.md): written here because skillforge is the first adopter; the **platform
@@ -187,9 +188,12 @@ Checked on 2026-09-20 against the live org (read-only API calls).
   - [x] The reminder's calls do what decision L says. *(run by hand against #129, see Verified behavior)*
 
   Live:
-  - [ ] A closed issue sits in the current iteration afterwards - also when it was planned for another one.
-  - [ ] An issue closed without a type gets exactly one comment, also after a reopen and a second close; an
-        issue closed with a type gets none.
+  - [x] A closed issue sits in the current iteration afterwards. *(#129, reopened and closed after #130 landed:
+        "Moved into Iteration 13"; #130 itself moved there on its merge.)* Replacing a planned iteration has only
+        been shown by hand, not by a live run.
+  - [x] An issue closed without a type gets a comment. *(#129, closed with its type removed: one comment from
+        `github-actions`)* Not tried live yet: that a second close does not ask again, and that a typed issue
+        gets none - both branches were only run by hand.
 
 **P0-2 - Roll out to skillsite and skillbot.**
 - *Technique:* set the repository variable `PROJECT_MODULE` (`site`, `bot`), then copy `triage.yml` and its
