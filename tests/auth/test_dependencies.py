@@ -6,7 +6,14 @@ from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
-from app.core.auth import AuthSettings, Principal, create_application_access_token, require_application, require_scopes
+from app.core.auth import (
+    AuthSettings,
+    Principal,
+    create_application_access_token,
+    create_user_access_token,
+    require_application,
+    require_scopes,
+)
 from app.core.auth.dependencies import get_auth_settings, get_current_principal
 
 BotWritePrincipal = Annotated[Principal, require_scopes("bot:write")]
@@ -160,6 +167,35 @@ async def test_require_application_rejects_non_application_principal():
         return {"principal_type": principal.principal_type}
 
     response = await _request(app, "GET", "/application-only")
+
+    assert response.status_code == 403
+
+
+async def test_require_application_rejects_a_real_user_token():
+    """A user principal is not an application one, whatever scopes its token carries."""
+    settings = _settings()
+    app = FastAPI()
+    app.dependency_overrides[get_auth_settings] = lambda: settings
+
+    @app.get("/application-only")
+    async def application_only(principal: ApplicationPrincipal):
+        return {"principal_type": principal.principal_type}
+
+    token = create_user_access_token(
+        settings,
+        principal_id=uuid4(),
+        client_id="portal",
+        party_id=uuid4(),
+        session_id=uuid4(),
+        scopes=["account:self", "bot:read"],
+    )
+
+    response = await _request(
+        app,
+        "GET",
+        "/application-only",
+        headers={"Authorization": f"Bearer {token.access_token}"},
+    )
 
     assert response.status_code == 403
 
