@@ -1,7 +1,7 @@
 # Spec: Release flow (one release and deploy pipeline for the whole skill-platform)
 
-> Status: Implemented - P0 on `main`, `v0.4.0` released and deployed through the flow (2026-09-20); one criterion
-> open (manual `deploy.yml` dispatch, P0-4). P1: P1-2 and P1-3 dropped, P1-1 and P1-4 not started.
+> Status: Implemented - P0 on `main`, `v0.4.0` released and deployed through the flow (2026-09-20);
+> P1: P1-2 and P1-3 dropped, P1-1 and P1-4 not started.
 > Platform arc (skillforge first, then skillsite and skillbot).
 > This spec is also the decision record (no separate ADR: *Decided defaults*, *Verified behavior* and
 > *Trade-offs accepted* carry the why). Written in skillforge because it is the first adopter; the **platform
@@ -217,7 +217,7 @@ What is identical in every repo; everything else is repo-specific detail behind 
         `test_a_failed_deployment_fails_the_script_with_dokploys_message`; not yet seen live)*
   - [x] A healthy container that reports the *old* version turns the workflow red after the timeout. *(script
         level: `test_an_old_version_on_health_fails_after_the_timeout`; not yet seen live)*
-  - [ ] `deploy.yml` can be dispatched by hand for the current release and passes.
+  - [x] `deploy.yml` can be dispatched by hand for the current release and passes.
 
 **P0-5 - Remove what the new flow replaces.**
 - *Technique:* delete `version-bump.yml`, `codeql.yml` and `.github/codeql/`; drop the `check-release` logic
