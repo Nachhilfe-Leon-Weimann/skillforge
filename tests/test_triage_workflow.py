@@ -4,7 +4,7 @@
 outsider. The work - and the rules that make it safe: no checkout, no event data in a shell - lives in the
 platform's shared workflow, which guards them with its own tests (``skill-platform-workflows``,
 ``tests/test_workflows.py``). That only holds while this file stays a caller
-(``docs/specs/project-intake.md``, platform contract). These tests turn a slip into a red ``check``.
+(skillforge, ``docs/specs/project-intake.md``, platform contract). These tests turn a slip into a red ``check``.
 """
 
 from __future__ import annotations
