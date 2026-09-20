@@ -1,6 +1,7 @@
 # Spec: Project intake (issues and PRs land on the board with module, assignee and the iteration they closed in)
 
-> Status: In progress - P0-0 and P0-1 done (#128, live since 2026-09-20), P0-1a implemented, P0-2 and P0-3 open.
+> Status: In progress - P0-0, P0-1 (#128) and P0-1a (#130) done and live in skillforge since 2026-09-20; P0-2
+> (skillsite, skillbot) and P0-3 (retire the built-in auto-add) open.
 > Tracking: [#127](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/127)
 > Platform arc (skillforge first, then skillsite and skillbot), same shape as
 > [`release-flow.md`](release-flow.md): written here because skillforge is the first adopter; the **platform
@@ -75,7 +76,7 @@ An item that is forgotten is simply missing from the board, and nothing notices.
 | **E - Triggers** | `issues` and `pull_request_target`, each with `opened`, `reopened` and `closed`. | `pull_request_target` runs the workflow from `main` and has the secret even for a PR from a fork (the repos are public). An issue transferred into a repo arrives as `opened`. `reopened` is the cheap second chance for an item whose first run failed. `closed` drives decisions K and L; `assign-author` skips it. |
 | **F - What is added** | Everything, including bot-authored PRs (release PR, Dependabot). | That is what the board holds today: release PR #117 and five Dependabot PRs are on it. Merged items move to *Done* and are auto-archived by the project's built-in workflows, so they do not pile up. |
 | **G - Who is assigned** | The author, if and only if the item has **no assignee at the moment the job runs** and the author is a user (not a bot) who can be assigned in that repo. Anything else: do nothing, stay green. | "Nobody assigned" is read from the API at run time, not from the event payload, so an assignee picked while creating the item or seconds after it always wins. Assignability is checked first (`GET /repos/{owner}/{repo}/assignees/{login}`), so an outside contributor does not produce a failed run. |
-| **H - Built-in auto-add** | Switched **off** once `triage.yml` is proven in the repo it covers. *Auto-add sub-issues to project* stays on. | One mechanism per concern; a second, plan-limited one that covers a single repo is a trap for the next person who wonders why one repo behaves differently. |
+| **H - Built-in auto-add** | Switched **off** once `triage.yml` is proven in the repo it covers. *Auto-add sub-issues to project* stays on. | One mechanism per concern; a second, plan-limited one that covers a single repo is a trap for the next person who wonders why one repo behaves differently. *Auto-add sub-issues* is a different concern and not plan-limited: it follows the parent issue, not the repo. It covers what `triage.yml` cannot see - an existing issue that is attached to an epic later (no `opened` event), and sub-issues in repos without the workflow - and adding twice is a no-op. Its one gap: an item that reaches the board only this way gets no Module. |
 | **I - Not a gate** | `triage.yml` is never added to the required checks of the `main` ruleset. | A GitHub API hiccup must not block a merge. A red run is visible in the Actions tab and costs one click on the board. |
 | **J - Module** | The `board` job sets the project's single-select field **Module** to the repo's module, **only when the field is empty**. The module is the **repository variable `PROJECT_MODULE`** (skillforge: `forge`), given by option *name*; project, field and option ids are looked up at run time from the item the action returns. An unset variable or a name the project does not know fails the run. | Same rule as for the assignee: a value chosen by hand wins, e.g. a forge issue that really belongs to `core`. A name survives a recreated field; an opaque option id does not. A repository variable instead of a line in the file, because the file is about to move into the shared platform repo: a caller's workflow-level `env` is **not** passed on to a called workflow, while GitHub's own advice for values shared across workflows is the `vars` context. With the variable the file has no repo-specific line at all (goal 6). The price is configuration that no diff shows - which is why a missing or wrong value must be a red run, not an item without a Module. |
 | **K - Iteration** | When an **issue or a PR is closed** - whatever the reason: merged or not, completed or not planned - the `board` job sets the project's **Iteration** field to the current iteration: the one whose `startDate <= today < startDate + duration`, with *today* taken in `Europe/Berlin`. It **replaces** an existing value. If no iteration covers today (a gap, or none planned), the run leaves the field alone, prints a notice and stays green. | Unlike Module and assignee this is not a default but a fact: the iteration an item closed in. Something planned for iteration 12 that closes in 13 belongs to 13. Every close reason counts - the board moves the item to *Done* just the same, and a rule with exceptions would need someone to remember them. Berlin time, because the iterations are planned in it: a PR merged at 00:30 belongs to the day Leon saw on the clock. A gap between iterations is a legitimate state, not an error. (The first version only listened to closed PRs; the first live test, #129, showed that issues were the missing half.) |
@@ -187,9 +188,13 @@ Checked on 2026-09-20 against the live org (read-only API calls).
   - [x] The reminder's calls do what decision L says. *(run by hand against #129, see Verified behavior)*
 
   Live:
-  - [ ] A closed issue sits in the current iteration afterwards - also when it was planned for another one.
-  - [ ] An issue closed without a type gets exactly one comment, also after a reopen and a second close; an
-        issue closed with a type gets none.
+  - [x] A closed issue sits in the current iteration afterwards. *(#129, reopened and closed after #130 landed:
+        "Moved into Iteration 13"; #130 itself moved there on its merge.)* An iteration that was already planned
+        is replaced. *(confirmed live by Leon, 2026-09-20 - and wanted: the moment of closing decides; whoever
+        means an older iteration corrects it after closing)*
+  - [x] An issue closed without a type gets a comment. *(#129, closed with its type removed: one comment from
+        `github-actions`)* A second close does not ask again, and a typed issue gets none. *(both confirmed live
+        by Leon, 2026-09-20)*
 
 **P0-2 - Roll out to skillsite and skillbot.**
 - *Technique:* set the repository variable `PROJECT_MODULE` (`site`, `bot`), then copy `triage.yml` and its
@@ -203,8 +208,11 @@ Checked on 2026-09-20 against the live org (read-only API calls).
 - *Technique:* in the project's workflow settings, switch off *Auto-add to project* (decision H). Only after
   P0-1 has been green for the repo that workflow covers.
 - *Acceptance criteria:*
-  - [ ] The project lists *Auto-add to project* as disabled; a new issue in each of the three repos still lands
-        on the board.
+  - [x] The project lists *Auto-add to project* as disabled. *(switched off 2026-09-20; *Auto-add sub-issues to
+        project* stays on, decision H)*
+  - [ ] A new issue in each of the three repos still lands on the board. *(skillforge: yes. skillsite and
+        skillbot only once P0-2 is done - the built-in workflow covered one repo, and whichever it was has no
+        automatic intake until then.)*
 
 ### Nice-to-have (P1)
 
