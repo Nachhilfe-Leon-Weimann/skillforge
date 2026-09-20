@@ -1,6 +1,6 @@
 [project]
 name = "skillforge"
-version = "0.3.0"
+version = "0.4.0"
 description = "Backend of the skill-platform."
 authors = [{ name = "Leon Weimann", email = "coding@leonweimann.de" }]
 readme = "README.md"
