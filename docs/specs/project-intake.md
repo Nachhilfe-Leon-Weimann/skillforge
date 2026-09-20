@@ -1,7 +1,8 @@
 # Spec: Project intake (issues and PRs land on the board with module, assignee and the iteration they closed in)
 
 > Status: In progress - P0-0, P0-1 (#128) and P0-1a (#130) done and live in skillforge since 2026-09-20; P0-2
-> (skillsite, skillbot) and P0-3 (retire the built-in auto-add) open. P2 *Shared workflow* done: the workflow
+> half done (skillbot has the caller since 2026-09-21, skillbot#11; skillsite open) and P0-3 (retire the
+> built-in auto-add) open. P2 *Shared workflow* done: the workflow
 > lives in [`skill-platform-workflows`][workflows] since 2026-09-20, the repos keep a caller (#133).
 > Tracking: [#127](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/127)
 > Platform arc (skillforge first, then skillsite and skillbot), same shape as
@@ -206,7 +207,11 @@ Checked on 2026-09-20 against the live org (read-only API calls).
   whole workflow.)
 - *Acceptance criteria:*
   - [ ] The first two live criteria of P0-1 hold in skillsite (Module `site`) and in skillbot (Module `bot`).
-  - [ ] `diff` between the three `triage.yml` files is empty.
+        *(skillbot: the caller is on `main` since skillbot#11, 2026-09-21, with `PROJECT_MODULE` = `bot`; its
+        merge was the first run - "Module is already set to "bot"", "Moved into "Iteration 13"". A new issue and
+        a new PR there are the remaining live test. skillsite: open.)*
+  - [ ] `diff` between the three `triage.yml` files is empty. *(skillforge and skillbot: empty, and the caller's
+        test is identical too; skillsite: open)*
 
 **P0-3 - Retire the built-in auto-add (Leon, settings only).**
 - *Technique:* in the project's workflow settings, switch off *Auto-add to project* (decision H). Only after
