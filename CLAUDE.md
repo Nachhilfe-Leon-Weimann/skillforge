@@ -80,6 +80,12 @@ DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
   (problem/goals/non-goals/decision table), then implement. Reference:
   [`lifecycle-guardian.md`](docs/specs/lifecycle-guardian.md).
 - **Decisions** with lasting impact go into [`docs/decisions/`](docs/decisions/) as an ADR.
+- **History on `main`: one PR per slice** ([spec](docs/specs/release-flow.md), decision D). A slice is one
+  requirement of a spec (`P0-3`) - not the whole spec, not a single fixup: an arc lands as ~6-8 commits, not
+  ~40 and not 1-2, so `git bisect` and the story both survive. Every commit on `main` is green on its own and
+  conventional. Fold fixups and `docs(specs): tick` commits into the slice they belong to: tick a spec's
+  checkboxes in the PR that fulfils them, never in a follow-up. A squash merge does the folding by itself;
+  before a `git ship`, fold by hand.
 - **Releases are release-please PRs** ([spec](docs/specs/release-flow.md)): never bump the version, edit
   `CHANGELOG.md` or create a tag by hand - ship the `chore(main): release X.Y.Z` PR. Commit messages on
   `main` feed the changelog and the version bump, so conventional types matter (`feat`, `fix`, `!`). Nothing
