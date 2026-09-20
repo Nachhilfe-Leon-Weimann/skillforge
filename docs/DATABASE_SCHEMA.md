@@ -384,12 +384,20 @@ INDEX (created_at), INDEX (guild_id, command_name, created_at), INDEX (discord_i
 
 ## Auth Schema
 
-OAuth2 client-credentials. Clients authenticate with a `client_id` + secret, are granted
-scopes, and receive JWTs. See [ADR 0001](decisions/0001-openapi-as-contract.md) for the API
-contract and `app/core/auth/` for the runtime.
+OAuth2 client-credentials, plus the user accounts, sessions and one-time tokens Forge issues
+tokens for (`password` / `refresh_token` grants). Clients authenticate with a `client_id` +
+secret, are granted scopes, and receive JWTs; a user account belongs to exactly one person
+party and is created by invitation only (decision C of
+[`user-authentication.md`](specs/user-authentication.md)). See
+[ADR 0001](decisions/0001-openapi-as-contract.md) for the API contract,
+[ADR 0008](decisions/0008-user-authentication-and-reach.md) for the user model, and
+`app/core/auth/` for the runtime.
 
 ```sql
 auth.application_client_status = ('active', 'disabled')
+auth.user_account_status = ('invited', 'active', 'disabled')
+auth.user_account_role_name = ('admin')
+auth.user_action_token_purpose = ('invitation', 'password_reset')
 
 -- auth.application_client
 id UUID PRIMARY KEY DEFAULT uuid4
@@ -428,6 +436,50 @@ success BOOLEAN NOT NULL
 detail TEXT NULL
 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 INDEX (created_at), INDEX (principal_type, principal_id, created_at)
+
+-- auth.user_account  (one login per person party; the token's principal_id is `id`, `sub` is "user:<id>")
+id UUID PRIMARY KEY DEFAULT uuid4
+party_id UUID NOT NULL UNIQUE REFERENCES core.party(id) ON DELETE CASCADE
+email TEXT NOT NULL UNIQUE CHECK (email = lower(email))
+password_hash TEXT NULL                    -- NULL until the invitation is redeemed
+status user_account_status NOT NULL DEFAULT 'invited'
+failed_login_count INTEGER NOT NULL DEFAULT 0
+locked_until TIMESTAMPTZ NULL
+last_login_at TIMESTAMPTZ NULL
+created_at/updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+
+-- auth.user_account_role  (stored roles only - `student`/`tutor`/`guardian` are derived from the CRM, never stored)
+user_account_id UUID REFERENCES auth.user_account(id) ON DELETE CASCADE
+role user_account_role_name NOT NULL
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+PRIMARY KEY (user_account_id, role)
+
+-- auth.user_session  (one row per login; only the application_client that opened it may refresh/revoke it)
+id UUID PRIMARY KEY DEFAULT uuid4          -- the token's sid
+user_account_id UUID NOT NULL REFERENCES auth.user_account(id) ON DELETE CASCADE
+application_client_id UUID NOT NULL REFERENCES auth.application_client(id) ON DELETE CASCADE
+scope TEXT NOT NULL                        -- canonical scopes granted at login; the ceiling for every refresh
+refresh_token_hash TEXT NOT NULL UNIQUE    -- SHA-256 hex of the current refresh token
+previous_refresh_token_hash TEXT NULL UNIQUE
+rotated_at TIMESTAMPTZ NULL
+expires_at TIMESTAMPTZ NOT NULL
+last_used_at TIMESTAMPTZ NULL
+revoked_at TIMESTAMPTZ NULL                -- NULL = live
+revoked_reason TEXT NULL
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+INDEX (user_account_id)
+
+-- auth.user_action_token  (one-time tokens for invitation and password reset)
+id UUID PRIMARY KEY DEFAULT uuid4
+user_account_id UUID NOT NULL REFERENCES auth.user_account(id) ON DELETE CASCADE
+purpose user_action_token_purpose NOT NULL
+token_hash TEXT NOT NULL UNIQUE            -- SHA-256 hex; plaintext prefix sf_ua_
+expires_at TIMESTAMPTZ NOT NULL
+used_at TIMESTAMPTZ NULL                   -- NULL = unused
+invalidated_at TIMESTAMPTZ NULL            -- set when a newer token of the same purpose replaces this one
+issued_by TEXT NOT NULL                    -- "<principal_type>:<principal_id>" of the issuer, or "cli"
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+INDEX (user_account_id)
 ```
 
 ## System Schema
