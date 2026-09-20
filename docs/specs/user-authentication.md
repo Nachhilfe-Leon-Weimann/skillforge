@@ -439,17 +439,32 @@ Until the portal exists, everything works from Swagger UI:
   `app/core/auth/roles.py` with `Role`, `STORED_ROLES`, `BASE_USER_SCOPES`, `ROLE_SCOPES`, `scopes_for(roles)`;
   `resolve_token_scopes` reworked to the computation above; `get_current_principal` expands before comparing.
 - _Acceptance criteria:_
-  - [ ] `expand({crm:read}) == {crm:read, crm:read:own}`; `canonical` is its inverse on every subset of `Scope`
+  - [x] `expand({crm:read}) == {crm:read, crm:read:own}`; `canonical` is its inverse on every subset of `Scope`
         (property-style test over all members).
-  - [ ] Given user scopes `{account:self, crm:read:own}`: client grants `{account:self, crm:read, crm:write}`
+  - [x] Given user scopes `{account:self, crm:read:own}`: client grants `{account:self, crm:read, crm:write}`
         yield `account:self crm:read:own`; client grants `{crm:read, crm:write}` yield `crm:read:own` (the client
         is the ceiling for `account:self` too); client grants `{bot:read}` yield `invalid_scope`.
-  - [ ] A client granted `crm:read` may request `crm:read:own`; requesting `crm:write` without the grant is
+  - [x] A client granted `crm:read` may request `crm:read:own`; requesting `crm:write` without the grant is
         `invalid_scope`, as today.
-  - [ ] A token carrying `crm:read:own` gets `403` from a route guarded with `require_scopes(Scope.CRM_READ)`; a
+  - [x] A token carrying `crm:read:own` gets `403` from a route guarded with `require_scopes(Scope.CRM_READ)`; a
         token carrying `crm:read` passes a route that requires `crm:read:own`.
-  - [ ] `test_no_role_carries_client_only_scopes`; all new scopes appear with their description in
+  - [x] `test_no_role_carries_client_only_scopes`; all new scopes appear with their description in
         `components.securitySchemes`.
+- _Proven by:_ `test_expand_adds_the_own_variant_of_an_unqualified_scope` and
+  `test_canonical_is_the_inverse_of_expand_on_every_subset_of_scope` in
+  [`test_scopes.py`](../../tests/auth/test_scopes.py) (`expand`/`canonical`); `test_user_grant_the_client_is_the_ceiling_for_account_self_too`,
+  `test_user_grant_intersects_client_grants_with_user_scopes_when_none_requested` and
+  `test_user_grant_with_a_disjoint_client_grant_is_invalid_scope` in
+  [`test_resolve_token_scopes.py`](../../tests/auth/test_resolve_token_scopes.py) (the user-scopes ceiling
+  computation), alongside `test_client_credentials_may_request_the_own_variant_of_a_granted_scope` and
+  `test_client_credentials_rejects_a_scope_without_a_grant` in the same file (the `client_credentials` case);
+  `test_require_scopes_rejects_the_own_variant_for_a_route_that_requires_the_unqualified_scope` and
+  `test_require_scopes_accepts_the_unqualified_scope_for_a_route_that_requires_the_own_variant` in
+  [`test_dependencies.py`](../../tests/auth/test_dependencies.py) (`get_current_principal` expanding before
+  comparing); `test_no_role_carries_client_only_scopes` in [`test_roles.py`](../../tests/auth/test_roles.py) and
+  `test_security_scheme_lists_every_scope_with_its_description` in
+  [`test_openapi_contract.py`](../../tests/api/test_openapi_contract.py) (generic over every `Scope` member, so it
+  already covers the four new ones).
 
 **P0-3 - Data model.**
 

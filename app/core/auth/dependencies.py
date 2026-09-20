@@ -8,7 +8,7 @@ from app.core.logging import bind_request_log_context
 
 from .config import AuthSettings
 from .principal import Principal
-from .scopes import Scope
+from .scopes import Scope, expand
 from .security import oauth2_scheme
 from .tokens import PRINCIPAL_TYPE_APPLICATION, TokenValidationError, validate_access_token
 
@@ -52,7 +52,7 @@ async def get_current_principal(
             headers={"WWW-Authenticate": authenticate_value},
         ) from exc
 
-    missing_scopes = set(security_scopes.scopes) - principal.scopes
+    missing_scopes = set(security_scopes.scopes) - expand(principal.scopes)
     if missing_scopes:
         bind_request_log_context(
             request,
