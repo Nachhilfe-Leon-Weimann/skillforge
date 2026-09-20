@@ -1,9 +1,10 @@
 # Spec: Release flow (one release and deploy pipeline for the whole skill-platform)
 
-> Status: Approved (2026-09-20), not yet implemented | Platform arc (skillforge first, then skillsite and skillbot)
+> Status: P0 implemented on `main` (2026-09-20) - open: the required check (P0-2) and the first release through
+> the flow (`0.4.0`, release PR #117) | Platform arc (skillforge first, then skillsite and skillbot)
 > This spec is also the decision record (no separate ADR: *Decided defaults*, *Verified behavior* and
-> *Trade-offs accepted* carry the why). Written in skillforge because it is the first adopter; the **platform contract** below is what the other
-> repos copy. Every GitHub behavior this spec relies on was verified in a throwaway repo (see
+> *Trade-offs accepted* carry the why). Written in skillforge because it is the first adopter; the **platform
+> contract** below is what the other repos copy. Every GitHub behavior this spec relies on was verified in a throwaway repo (see
 > *Verified behavior*); nothing here assumes a feature GitHub does not have.
 
 ## Problem statement
@@ -85,6 +86,7 @@ release cycles shipped with the real `git ship` alias.
 | Do the `release_created` / `tag_name` / `sha` outputs drive follow-up jobs in the same workflow? | **Yes.** This is how build and deploy are chained - events created with `GITHUB_TOKEN` never start *other* workflows, so an `on: release` trigger is not an option. |
 | Does the release commit pass `required_signatures` + `required_linear_history`? | **Yes.** Commits created through the GitHub API are signed by GitHub (`web-flow`). Observed for `GITHUB_TOKEN` in the probe and confirmed live for the App token: release PR #117 was opened by `skill-platform-release[bot]`, its commit is Verified (committer GitHub), and CI ran on it. |
 | Can `uv.lock` and `openapi.json` follow the version? | **Yes**, via `extra-files`: a `toml` updater with `$.package[?(@.name.value=='<package>')].version` and a `json` updater with `$.info.version`. `uv lock --check` stays consistent. The json updater re-serializes the whole file with JavaScript, so `dump_openapi.py` writes integer-valued floats as integers - otherwise `50.0` comes back as `50` and `just openapi-check` fails on the release PR (found in the final review, not in the probe). A JSONPath that stops matching is a **silent no-op** - CI's `uv sync --locked` is the backstop. |
+| Does release-please cope with squash-merged PRs? | **Yes** (live): #114-#121 were squash-merged; it reads the squash commit's conventional subject and rebuilt the release PR #117 after every merge. |
 | Tag format? | `include-component-in-tag: false` yields plain `vX.Y.Z`, matching the existing tags. |
 | Required status check + `git ship` for a normal PR? | **Works** - same SHA, the green check is already there. |
 | ... and for the release PR opened with `GITHUB_TOKEN`? | **Rejected:** `Required status check "check" is expected`. The PR's CI run is created but never runs jobs. |
@@ -158,12 +160,13 @@ What is identical in every repo; everything else is repo-specific detail behind 
   fixes) and `extra-files` for `uv.lock` (package `skillforge`) and `openapi.json`;
   `.release-please-manifest.json` starts at the current version (`0.3.0`, tag `v0.3.0` exists).
 - *Acceptance criteria:*
-  - [ ] After a `feat`/`fix` commit lands on `main`, a release PR exists whose diff touches exactly
-        `pyproject.toml`, `uv.lock`, `openapi.json`, `CHANGELOG.md` and the manifest.
-  - [ ] The release PR's head commit is shown as *Verified* and its CI run (job `check`) executes and is green.
-  - [ ] `just openapi-check` and `uv sync --locked` pass on the release PR (proves both `extra-files` paths match).
-  - [ ] Merging the release PR (`git ship` or squash) creates tag `vX.Y.Z` and a GitHub release; the PR label becomes
-        `autorelease: tagged`.
+  - [x] After a `feat`/`fix` commit lands on `main`, a release PR exists whose diff touches exactly
+        `pyproject.toml`, `uv.lock`, `openapi.json`, `CHANGELOG.md` and the manifest. *(release PR #117)*
+  - [x] The release PR's head commit is shown as *Verified* and its CI run (job `check`) executes and is green.
+        *(#117, authored by `skill-platform-release[bot]`; green since the `dump_openapi.py` fix, #121)*
+  - [x] `just openapi-check` and `uv sync --locked` pass on the release PR (proves both `extra-files` paths match).
+  - [ ] Merging the release PR (`git ship` or squash) creates tag `vX.Y.Z` and a GitHub release; the PR label
+        becomes `autorelease: tagged`.
 
 **P0-2 - CI is a required check.**
 - *Technique:* add `required_status_checks` with context `check` to the `main` ruleset (after P0-1, otherwise
@@ -179,7 +182,8 @@ What is identical in every repo; everything else is repo-specific detail behind 
   GitHub release is created by release-please; the separate `gh release create` job goes away. Image and
   client coordinates move from the release notes into the README.
 - *Acceptance criteria:*
-  - [ ] A push to `main` that is not a release runs release-please only; build, publish and deploy are skipped.
+  - [x] A push to `main` that is not a release runs release-please only; build, publish and deploy are skipped.
+        *(seen on the pushes of #118, #119 and #121)*
   - [ ] A release produces the image `ghcr.io/nachhilfe-leon-weimann/skillforge:vX.Y.Z` and
         `skillforge-client==X.Y.Z` on PyPI, both built from the tagged commit.
 
@@ -189,23 +193,28 @@ What is identical in every repo; everything else is repo-specific detail behind 
   description carrying version, SHA and run id; poll `deployment.allByCompose` until that deployment is
   `done` (continue) or `error` / `cancelled` / timeout (fail); then poll `HEALTH_URL` until `status` is healthy
   and `version` equals the released version, or time out (fail). No rollback. `workflow_dispatch` input:
-  the version to expect - this is the manual re-run path. A second dispatch input, `dry_run`, only verifies API access.
+  the version to expect - this is the manual re-run path. A second dispatch input, `dry_run`, only verifies API
+  access. A failed deployment listing *while waiting* is retried until the deadline (one transient 502 must not fail a
+  deploy that is still running); the first listing and the `POST` stay fatal.
 - *Technique:* `SystemHealthCheckResponse` in [`schemas.py`](../../app/services/system/schemas.py) gains
-  `version`, filled from `get_project_version()`; `just openapi` afterwards (decision J).
+  `version`, filled from the app's own version (`request.app.version`, which `main.py` sets from
+  `get_project_version()`) and reported for every status; `just openapi` afterwards (decision J).
 - *Technique:* remove the secret `DEPLOY_WEBHOOK_URL`, rotate the webhook token in Dokploy so the old URL is
   dead, and make sure Dokploy's own auto-deploy on push is off for the service.
 - *Acceptance criteria:*
   - [ ] A successful release ends with a green `deploy` job whose summary names the Dokploy deployment and
         the verified version.
-  - [ ] A deployment that ends in `error` (e.g. failing `migrate` service) turns the workflow red.
-  - [ ] A healthy container that reports the *old* version turns the workflow red after the timeout.
+  - [x] A deployment that ends in `error` (e.g. failing `migrate` service) turns the workflow red. *(script level:
+        `test_a_failed_deployment_fails_the_script_with_dokploys_message`; not yet seen live)*
+  - [x] A healthy container that reports the *old* version turns the workflow red after the timeout. *(script
+        level: `test_an_old_version_on_health_fails_after_the_timeout`; not yet seen live)*
   - [ ] `deploy.yml` can be dispatched by hand for the current release and passes.
 
 **P0-5 - Remove what the new flow replaces.**
 - *Technique:* delete `version-bump.yml`, `codeql.yml` and `.github/codeql/`; drop the `check-release` logic
   and the webhook job from `release.yml`; remove the `just` recipes `create-version-bump`, `version-info`,
   `release-version`, `bump-version` and `scripts/version.py` if nothing else uses them. Switch on secret
-  scanning and push protection in the repo settings (free for public repos).
+  scanning and push protection in the repo settings (free for public repos) - both enabled 2026-09-20.
 - *Acceptance criteria:*
   - [x] `.github/workflows/` contains `ci.yml`, `build.yml`, `release.yml`, `deploy.yml` - nothing else.
   - [x] `CLAUDE.md`, `README.md` and [`ARCHITECTURE.md`](../ARCHITECTURE.md) describe the new flow and
@@ -255,8 +264,14 @@ Order: skillforge (this spec) -> skillsite -> skillbot. Copy first, extract shar
   `extra-files` entry or the split should be revisited. Decide at adoption.
 - **Dokploy API key scope.** The key acts as the user who created it. If the instance allows a restricted
   user, create one for deployments; otherwise accept the broader key as an environment secret.
-- **First release PR.** It will collect everything since `v0.3.0` (CRM P0 + P1) into `0.4.0`. Fine as is, or
-  trim the changelog by hand in the release PR before shipping?
+
+## Decided (formerly open questions)
+
+- **First release PR:** it collects everything since `v0.3.0` (CRM P0 + P1) into `0.4.0` and is not trimmed by
+  hand. `changelog-sections` keeps it to what a consumer cares about: 26 features and 12 fixes instead of an
+  additional 34 documentation entries.
+- **No ADR.** This spec is the decision record; a separate ADR would repeat *Decided defaults* in prose.
+- **Both merge paths are allowed** - `git ship` and the squash button (decisions C and F).
 
 ## Success metrics
 
@@ -270,12 +285,16 @@ Order: skillforge (this spec) -> skillsite -> skillbot. Copy first, extract shar
 One PR per requirement, `just check` green on each:
 
 1. **`/health` reports `version`** (the app half of P0-4) - independent, and the first new-flow deploy needs it.
+   *Done: #115.*
 2. **P0-1 + P0-3 together** - the new `release.yml` replaces the old one in a single PR, keeping the webhook
    deploy job for now. They cannot be staged: the old version-driven check would find the GitHub release that
-   release-please created seconds earlier and skip build and deploy.
+   release-please created seconds earlier and skip build and deploy. *Done: #116.*
 3. **P0-2** - required check (settings only, no PR), once a release PR from the App has shown a green `check`.
-4. **P0-4** - deploy script and `deploy.yml`; `release.yml` switches from the webhook to it.
-5. **P0-5** - cleanup and docs. Then ship the release PR: the first real release through the new flow.
+   *Open - #117 is green, so the rule can be added now; verify it through the rules API, never with a probe push.*
+4. **P0-4** - deploy script and `deploy.yml`; `release.yml` switches from the webhook to it. *Done: #118.*
+5. **P0-5** - cleanup and docs. *Done: #119, plus #121 (the `openapi.json` round-trip fix).* Then merge the
+   release PR #117: the first real release through the new flow. *Open.* It closes the remaining boxes of P0-1,
+   P0-3 and P0-4.
 6. **P1-1 .. P1-4** as independent follow-ups; then skillsite, then skillbot.
 
 **Dependency:** Leon extends the App installation and creates the org variable/secret, the `production`
