@@ -61,11 +61,23 @@ def test_canonical_treats_a_bare_string_as_a_space_separated_scope_string():
 
 
 def test_canonical_is_the_inverse_of_expand_on_every_subset_of_scope():
-    """Property-style check: for every subset of ``Scope``, expanding it and then taking the
-    canonical form yields the same result as taking the canonical form directly - expand never
-    changes the canonical form of what it started from."""
+    """Property-style check over every subset of ``Scope``:
+
+    (a) ``expand`` only cares about the canonical form of its input - expanding a subset gives the
+        same result as expanding its canonical form.
+    (b) ``canonical`` undoes ``expand``: taking the canonical form of an expanded subset gives back
+        the canonical form of the original subset.
+    (c) ``canonical`` is a genuine inverse of ``expand`` on an already-canonical subset: expanding
+        and then canonicalizing it returns exactly that subset, unchanged.
+    """
     members = list(Scope)
     for size in range(len(members) + 1):
         for combo in combinations(members, size):
             subset = frozenset(combo)
-            assert canonical(expand(subset)) == canonical(subset)
+            expanded = expand(subset)
+            canonicalized = canonical(subset)
+
+            assert expand(canonicalized) == expanded
+            assert canonical(expanded) == canonicalized
+            if canonicalized == subset:
+                assert canonical(expand(subset)) == subset
