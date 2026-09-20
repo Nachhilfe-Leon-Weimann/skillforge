@@ -43,10 +43,11 @@ migrations/          Alembic (env.py creates schemas; baseline = explicit DDL)
 tests/               api/, auth/, db/ (db/crm/: the CRM app against Postgres), workers/
                      (DB tests via @pytest.mark.db)
 .github/             workflows: ci.yml, build.yml, release.yml (release-please -> build -> publish -> deploy),
-                     deploy.yml, triage.yml (issues/PRs -> org project + Module + author as assignee;
-                     closed issue/PR -> current iteration; issue closed without a type -> comment;
-                     module = repo variable PROJECT_MODULE);
-                     scripts/deploy-dokploy.sh (the only code that talks to Dokploy)
+                     deploy.yml and triage.yml - both only call the platform's shared workflows in
+                     skill-platform-workflows (`@v1`): the Dokploy deploy with its script, and the project
+                     intake (issues/PRs -> org project + Module + author as assignee; closed issue/PR ->
+                     current iteration; issue closed without a type -> comment; module = repo variable
+                     PROJECT_MODULE). Change their behavior there, not here.
 scripts/             coverage_summary.py, dump_openapi.py
 ```
 

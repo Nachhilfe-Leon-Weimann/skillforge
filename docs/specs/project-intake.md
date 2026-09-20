@@ -1,7 +1,8 @@
 # Spec: Project intake (issues and PRs land on the board with module, assignee and the iteration they closed in)
 
 > Status: In progress - P0-0, P0-1 (#128) and P0-1a (#130) done and live in skillforge since 2026-09-20; P0-2
-> (skillsite, skillbot) and P0-3 (retire the built-in auto-add) open.
+> (skillsite, skillbot) and P0-3 (retire the built-in auto-add) open. P2 *Shared workflow* done: the workflow
+> lives in [`skill-platform-workflows`][workflows] since 2026-09-20, the repos keep a caller (#133).
 > Tracking: [#127](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/127)
 > Platform arc (skillforge first, then skillsite and skillbot), same shape as
 > [`release-flow.md`](release-flow.md): written here because skillforge is the first adopter; the **platform
@@ -58,9 +59,9 @@ An item that is forgotten is simply missing from the board, and nothing notices.
 - **Assigning bot-authored PRs.** A bot cannot be an assignee; the release PR and Dependabot PRs stay unassigned.
 - **A GitHub plan upgrade, or a personal access token.** A PAT is tied to Leon's account and expires.
 - **A third-party action for the assignment.** It is one REST call.
-- **The shared platform repo itself.** `triage.yml` is going to move into a central repo for the whole platform
-  soon (the P2 of `release-flow.md`). This spec does not build that repo; it makes sure the file is ready for
-  it: nothing in it is repo-specific (decision J).
+- **The shared platform repo itself.** [`skill-platform-workflows`][workflows] came out of the P2 of
+  `release-flow.md` and holds `triage.yml` since 2026-09-20. This spec did not build that repo; it made sure the
+  file was ready for it: nothing in it is repo-specific (decision J).
 - **skillcore and the `student-*` repos.** skillcore is private: on the Free plan org variables and secrets do
   not reach private repos, and the App is installed on selected repos only. It may adopt this later with
   repo-level copies of the variable and the secret.
@@ -86,10 +87,14 @@ An item that is forgotten is simply missing from the board, and nothing notices.
 
 Identical in every adopting repo:
 
-- **Workflow:** `.github/workflows/triage.yml`, jobs `board`, `assign-author` and `issue-type`, top-level
-  `permissions: {}`, every action pinned by full SHA with a version comment (Dependabot keeps them current).
-- **The file is identical in every repo.** Its workflow-level `env` holds `PROJECT_URL`
+- **Workflow:** the work is `triage.yml` in [`skill-platform-workflows`][workflows]: jobs `board`, `assign-author`
+  and `issue-type`, top-level `permissions: {}`, every action pinned by full SHA with a version comment
+  (Dependabot keeps them current). Its workflow-level `env` holds `PROJECT_URL`
   (`https://github.com/orgs/Nachhilfe-Leon-Weimann/projects/2`) and `MODULE: ${{ vars.PROJECT_MODULE }}`.
+- **Caller:** `.github/workflows/triage.yml` in every repo - **identical in every repo**: the triggers of
+  decision E, top-level `permissions: {}`, one job that calls the shared workflow `@v1` with `secrets: inherit`
+  and grants `issues: write` and `pull-requests: write` (a called workflow only gets the permissions its caller
+  grants; decision D needs these two). The README of the shared repo has the file to copy.
 - **Repository variable `PROJECT_MODULE`:** the repo's option of the project field *Module* - `forge`, `site`,
   `bot`. The only thing that differs between the repos.
 - **Project fields the workflow relies on, by name:** *Module* (single select) and *Iteration* (iteration).
@@ -97,9 +102,10 @@ Identical in every adopting repo:
 - **App `skill-platform-release`:** installed on the repo, with the organization permission *Projects: read and
   write* accepted on the org installation.
 - **`pull_request_target` hygiene:** the workflow never checks out code and never interpolates event data into
-  a script. Values from the event (number, author login) reach `run:` steps through `env:` only. Each repo
-  guards this with a test next to its other config tests (skillforge:
-  [`test_triage_workflow.py`](../../tests/test_triage_workflow.py)).
+  a script. Values from the event (number, author login) reach `run:` steps through `env:` only. The shared
+  repo guards this with its tests ([`test_workflows.py`][workflows-tests]); each repo
+  guards that its `triage.yml` stays a caller - no steps of its own - with a test next to its other config tests
+  (skillforge: [`test_triage_workflow.py`](../../tests/test_triage_workflow.py)).
 
 ## Verified behavior
 
@@ -197,9 +203,10 @@ Checked on 2026-09-20 against the live org (read-only API calls).
         by Leon, 2026-09-20)*
 
 **P0-2 - Roll out to skillsite and skillbot.**
-- *Technique:* set the repository variable `PROJECT_MODULE` (`site`, `bot`), then copy `triage.yml` and its
-  test verbatim. One PR per repo, tracked by an issue in that repo. If the shared platform repo exists by
-  then, the repos get the three-line caller instead of the copy.
+- *Technique:* set the repository variable `PROJECT_MODULE` (`site`, `bot`) and make sure the App is installed
+  on the repo, then copy the caller `triage.yml` and its test from skillforge verbatim. One PR per repo, tracked
+  by an issue in that repo. (Written before the shared platform repo existed, when the copy would have been the
+  whole workflow.)
 - *Acceptance criteria:*
   - [ ] The first two live criteria of P0-1 hold in skillsite (Module `site`) and in skillbot (Module `bot`).
   - [ ] `diff` between the three `triage.yml` files is empty.
@@ -223,10 +230,13 @@ missing from the board.
 
 ### Future considerations (P2)
 
-- **Shared workflow (planned soon):** `triage.yml` moves into the central public platform repo together with
-  `deploy.yml` (`release-flow.md`, P2), gains a `workflow_call` trigger, and the repos keep a three-line caller
-  with `secrets: inherit`. Because of decision J nothing else changes: the file moves as it is and
-  `PROJECT_MODULE` stays where it is.
+- **Shared workflow.** *Done 2026-09-20 (#133):* `triage.yml` moved into the central public platform repo
+  [`skill-platform-workflows`][workflows] together with `deploy.yml` (`release-flow.md`, P2). It has `workflow_call`
+  as its only trigger, and the repos keep a caller with `secrets: inherit`. Because of decision J nothing else
+  changed: the jobs moved as they were and `PROJECT_MODULE` stays where it is. The hygiene tests moved with the
+  file; this repo's test now guards the caller.
+  - [ ] Live: the first run from `main` is green and names the Module - which proves that
+        `vars.PROJECT_MODULE` inside the called workflow is the calling repo's variable (see *Not verified yet*).
 - **skillcore:** adopt with repo-level variable and secret, once the App is installed there.
 
 ## Trade-offs accepted
@@ -240,8 +250,8 @@ missing from the board.
   public repo). `issues` and `pull_request_target` runs execute the workflow file from `main`, the workflow
   checks out nothing and passes no event data into a shell. The key is read by one pinned first-party action.
   This is the reason for the hygiene rule in the platform contract - it is not optional.
-- **Three copies of one file.** Accepted until the extraction into the shared platform repo, which is close;
-  P0-2's empty `diff` keeps them honest until then.
+- **Three copies of one caller.** The work is one file in the shared platform repo; what each repo copies is
+  the caller, a dozen lines without logic. P0-2's empty `diff` keeps the copies honest.
 - **Configuration outside the repo.** `PROJECT_MODULE` lives in the repo settings: not versioned, not reviewed,
   invisible in a diff. Accepted for a file without repo-specific lines; the red run on a missing or unknown
   value is the safety net.
@@ -275,7 +285,11 @@ missing from the board.
 - Follow [`CLAUDE.md`](../../CLAUDE.md): English only, symbol references instead of line numbers, conventional
   commits, `just check` green before every commit, one PR per slice.
 - Pin every action by full SHA with a version comment, as the existing workflows do.
-- Never add a checkout step to `triage.yml`, and never use `${{ github.event.* }}` inside a `run:` block.
+- Keep this repo's `triage.yml` a caller. The workflow itself is changed in `skill-platform-workflows` - and
+  there: never add a checkout step, and never use `${{ github.event.* }}` inside a `run:` block.
 - App permissions, the org installation and the project's workflow settings are changed by Leon, not by an
   agent; describe the exact setting in the PR instead.
 - Tick the acceptance checkboxes in this file in the PR that fulfils them and flip the status line when P0 is done.
+
+[workflows]: https://github.com/Nachhilfe-Leon-Weimann/skill-platform-workflows
+[workflows-tests]: https://github.com/Nachhilfe-Leon-Weimann/skill-platform-workflows/blob/main/tests/test_workflows.py
