@@ -1638,13 +1638,34 @@
                 "type": "null"
               }
             ],
-            "description": "Client ID of the application client; `null` for a principal that is not a client.",
+            "description": "Client ID of the application client; for a user token, the client the user logged in through.",
             "title": "Client Id"
           },
+          "party_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CRM party the user account belongs to; `null` for an application principal.",
+            "title": "Party Id"
+          },
           "principal_type": {
-            "description": "Kind of principal the token was issued to; `application` for an application client.",
+            "description": "Kind of principal the token was issued to; `application` for an application client, `user` for a user account.",
             "title": "Principal Type",
             "type": "string"
+          },
+          "roles": {
+            "description": "Roles the user holds, sorted - which views to offer. Never authorize on them, only on `scopes`.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
           },
           "scopes": {
             "description": "Scopes the token grants, sorted.",
@@ -1653,12 +1674,28 @@
             },
             "title": "Scopes",
             "type": "array"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User account the token was issued for; `null` for an application principal.",
+            "title": "User Id"
           }
         },
         "required": [
           "principal_type",
           "client_id",
-          "scopes"
+          "scopes",
+          "user_id",
+          "party_id",
+          "roles"
         ],
         "title": "MeResponse",
         "type": "object"

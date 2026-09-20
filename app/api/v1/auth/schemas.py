@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.api.v1.common import ApiModel
 from app.core.auth.principal import Principal
 from app.core.auth.results import CreatedClientSecret
-from app.core.auth.tokens import CreatedAccessToken
+from app.core.auth.tokens import PRINCIPAL_TYPE_USER, CreatedAccessToken
 from app.core.db.models import ApplicationClient, ApplicationClientStatus
 
 
@@ -30,18 +30,28 @@ class MeResponse(ApiModel):
     """What the calling token says about its bearer."""
 
     principal_type: str
-    """Kind of principal the token was issued to; `application` for an application client."""
+    """Kind of principal the token was issued to; `application` for an application client, `user` for a user account."""
     client_id: str | None
-    """Client ID of the application client; `null` for a principal that is not a client."""
+    """Client ID of the application client; for a user token, the client the user logged in through."""
     scopes: list[str]
     """Scopes the token grants, sorted."""
+    user_id: UUID | None
+    """User account the token was issued for; `null` for an application principal."""
+    party_id: UUID | None
+    """CRM party the user account belongs to; `null` for an application principal."""
+    roles: list[str]
+    """Roles the user holds, sorted - which views to offer. Never authorize on them, only on `scopes`."""
 
     @classmethod
     def from_principal(cls, principal: Principal) -> MeResponse:
+        is_user = principal.principal_type == PRINCIPAL_TYPE_USER
         return cls(
             principal_type=principal.principal_type,
             client_id=principal.client_id,
             scopes=sorted(principal.scopes),
+            user_id=principal.principal_id if is_user else None,
+            party_id=principal.party_id,
+            roles=sorted(principal.roles),
         )
 
 
