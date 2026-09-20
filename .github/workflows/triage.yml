@@ -1,8 +1,8 @@
 name: Triage
 
-# Project intake (docs/specs/project-intake.md): issues and PRs land on the org project with Module, assignee
-# and the iteration they closed in. The work is the platform's shared workflow (skill-platform-workflows); this
-# repo contributes the triggers and the repository variable PROJECT_MODULE.
+# Project intake (skillforge: docs/specs/project-intake.md): issues and PRs land on the org project with Module,
+# assignee and the iteration they closed in. The work is the platform's shared workflow
+# (skill-platform-workflows); this repo contributes the triggers and the repository variable PROJECT_MODULE.
 #
 # `issues` and `pull_request_target` run this file from `main`, with the App key, for anyone who opens an issue
 # or a PR. Keep it a caller: no steps, no checkout, no `run:`.
