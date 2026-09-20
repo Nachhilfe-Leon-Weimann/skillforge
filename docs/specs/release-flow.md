@@ -101,6 +101,7 @@ release cycles shipped with the real `git ship` alias.
 | Required status check + `git ship` for a normal PR? | **Works** - same SHA, the green check is already there. **Only then:** live on 2026-09-20 a `git ship` was rejected because one local commit sat on top of the green PR tip (its CI run was cancelled). `gh pr merge <n> -sd --auto` waits for the check instead (used for #123). |
 | ... and for the release PR opened with `GITHUB_TOKEN`? | **Rejected:** `Required status check "check" is expected`. The PR's CI run is created but never runs jobs. |
 | Workarounds without an App? | Closing and reopening the PR as a user starts CI, then shipping works (tested). Starting CI on the release branch via `workflow_dispatch` produced a green check that did **not** satisfy the rule (tested). Hence decision E. |
+| Does a workflow called from another repo get the caller's configuration? | **Yes** (live, `dry_run` dispatch after #133): inside `skill-platform-workflows`' `deploy.yml` the job's `environment: production` is this repo's environment - `secrets.DOKPLOY_API_KEY` (through `secrets: inherit`) and `vars.DOKPLOY_COMPOSE_ID` resolve, as does the org variable `DOKPLOY_BASE_URL`. `job.workflow_repository` / `job.workflow_sha` name the shared repo and the ref behind `@v1` (for an annotated tag the tag object's SHA, which `actions/checkout` resolves), so the script comes from the same ref as the workflow. The nesting `release.yml` -> `deploy.yml` -> shared `deploy.yml` with `secrets: inherit` on both levels is accepted. |
 | What if a step after the action fails in the release-please job? | The release already exists but build and deploy are skipped - a half-done release. Hence P0-3's "nothing after the action" rule and the manual deploy entry point. |
 
 ## Trade-offs accepted
@@ -299,9 +300,10 @@ result.) skillbot's existing deploy notification therefore goes away when it ado
   - [x] The shared `deploy.yml` runs the script of the ref it was called at: it checks out
         `job.workflow_repository` at `job.workflow_sha` - documented by GitHub, unknown to actionlint 1.7.12
         (one `ignore` in the shared repo's `actionlint.yaml`).
-  - [ ] A `dry_run` dispatch of `Deploy` on `main` is green: the called workflow gets the caller's `production`
-        environment (secret and variables) and the org variable, and finds its script. *(only provable on
-        `main`: the job skips every other ref)*
+  - [x] A `dry_run` dispatch of `Deploy` on `main` is green: the called workflow gets the caller's `production`
+        environment (secret and variables) and the org variable, and finds its script. *(2026-09-20, right
+        after #133: the job checked out `skill-platform-workflows` at the ref behind `v1` and the script
+        reported "Dokploy API access and the compose service's deployment list verified; nothing deployed")*
   - [ ] The next release deploys through it.
 - **Code scanning default setup**, if alerts start being read.
 - **A required reviewer on `production`**, if someone other than Leon ever ships.

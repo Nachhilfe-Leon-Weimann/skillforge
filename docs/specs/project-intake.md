@@ -123,14 +123,11 @@ Checked on 2026-09-20 against the live org (read-only API calls).
 | Can the workflow be tried before it is on `main`? | **No.** `issues` and `pull_request_target` run the workflow file of the default branch, so opening the PR that adds `triage.yml` does not trigger it. Its merge might: `closed` fires after the merge, when `main` already has the file. Otherwise the first issue or PR opened after the merge is the live test. |
 | Does it work live? | **Yes, since #128 landed on 2026-09-20.** Merging #128 was the first run (`closed` fires after the merge, when `main` has the file): *Module is already set to "forge"*, *Moved into "Iteration 13"*. The test issue #129 was on the board seconds after it was opened: *Module set to "forge"*, *Assigned leonweimann*. Both runs used the **repo-scoped App token narrowed to `organization-projects: write`** - it can add to the org project and write its fields. Closing #129 started no run and left its iteration empty: `issues` did not listen to `closed` yet (now decision K). |
 | How does the API show a missing issue type? | `GET /repos/{owner}/{repo}/issues/{number}` carries `"type": null`; with a type it is an object with `name`. The reminder's calls were run against #129: comment posted, found again through its marker, deleted. |
+| In the shared platform repo: is `vars.PROJECT_MODULE` inside the *called* workflow the **calling** repo's variable? | **Yes** (live, the merge of #133). The run belongs to the caller: `vars`, `github.event` and the App token's repository are the caller's. No `module` input is needed. |
 | Action versions | `actions/add-to-project` v2.0.0 (`5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd`), `actions/create-github-app-token` v3.2.0 (`bcd2ba49218906704ab6c1aa796996da409d3eb1`, the pin `release.yml` already uses). |
 
 **Not verified yet:**
 
-- In the shared platform repo: that `vars.PROJECT_MODULE` inside a *called* workflow resolves to the **calling**
-  repo's variable. The run belongs to the caller, and GitHub recommends `vars` for exactly this, but its docs
-  do not spell it out. If it does not, the three-line caller passes `module: ${{ vars.PROJECT_MODULE }}` as an
-  input - the repos' configuration stays the same either way.
 - Whether a `pull_request_target` run **triggered by Dependabot** receives the org Actions secret. GitHub treats
   Dependabot runs like fork runs for `pull_request` (no Actions secrets, only Dependabot secrets); its docs are
   not explicit for `pull_request_target`. See *Open questions*.
@@ -235,8 +232,10 @@ missing from the board.
   as its only trigger, and the repos keep a caller with `secrets: inherit`. Because of decision J nothing else
   changed: the jobs moved as they were and `PROJECT_MODULE` stays where it is. The hygiene tests moved with the
   file; this repo's test now guards the caller.
-  - [ ] Live: the first run from `main` is green and names the Module - which proves that
-        `vars.PROJECT_MODULE` inside the called workflow is the calling repo's variable (see *Not verified yet*).
+  - [x] Live: the first run from `main` is green and names the Module - which proves that
+        `vars.PROJECT_MODULE` inside the called workflow is the calling repo's variable. *(the merge of #133,
+        the first run through the caller: "Module is already set to "forge"", "Moved into "Iteration 13"" -
+        the shared repo has no such variable, and an empty one is a red run)*
 - **skillcore:** adopt with repo-level variable and secret, once the App is installed there.
 
 ## Trade-offs accepted
