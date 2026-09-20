@@ -1,7 +1,8 @@
 # Spec: Release flow (one release and deploy pipeline for the whole skill-platform)
 
 > Status: Implemented - P0 on `main`, `v0.4.0` released and deployed through the flow (2026-09-20); one criterion
-> open (manual `deploy.yml` dispatch, P0-4); P1 not started | Platform arc (skillforge first, then skillsite and skillbot)
+> open (manual `deploy.yml` dispatch, P0-4). P1: P1-2 and P1-3 dropped, P1-1 and P1-4 not started.
+> Platform arc (skillforge first, then skillsite and skillbot).
 > This spec is also the decision record (no separate ADR: *Decided defaults*, *Verified behavior* and
 > *Trade-offs accepted* carry the why). Written in skillforge because it is the first adopter; the **platform
 > contract** below is what the other repos copy. Every GitHub behavior this spec relies on was verified in a
@@ -25,8 +26,7 @@ Three mental models for one person is friction on every release. On top of that:
   may pull a different version than the one that was released.
 - **Nothing forces CI to be green on `main`.** The `main` ruleset requires signatures and linear history, but
   no status check.
-- **`codeql.yml` produces alerts nobody reads**, and there are no local hooks, so formatting and commit-message
-  slips are only caught in CI.
+- **`codeql.yml` produces alerts nobody reads.**
 
 ## Goals
 
@@ -53,6 +53,10 @@ Three mental models for one person is friction on every release. On top of that:
   worse than fixing forward. Rollback stays a documented manual procedure.
 - **A CodeQL workflow.** GitHub's code scanning *default setup* can be switched on in the repo settings later
   without any file in the repo.
+- **Local git hooks** (lefthook, pre-commit). Considered as P1-2 and dropped on 2026-09-20: CI is the gate, and
+  with squash merges the PR title is the one commit message that counts.
+- **Deploy notifications** (a Discord message per deploy). Considered as P1-3 and dropped on 2026-09-20: a failed
+  deploy already is a red workflow run.
 - **Central reusable workflows** in a shared repo. Considered for later (P2) once the flow is stable in two repos.
 - **skillcore.** A private library, not deployed; it may adopt the release half later (note: on the Free plan
   org secrets and rulesets do not apply to private repos).
@@ -71,7 +75,7 @@ Three mental models for one person is friction on every release. On top of that:
 | **H - Deploy transport** | Dokploy **API** (`x-api-key`): `compose.deploy`, then poll `deployment.allByCompose` until `done` / `error`, then verify the health endpoint. The deploy webhook is removed. | Authenticated, observable, fails loudly. Endpoints proven in `github-actions-playground`. |
 | **I - Deployed version** | P0 keeps `:latest`; P1 pins `image: ...:vX.Y.Z` in `compose.yml`, rewritten by release-please in the release commit. | One annotated line; `main` then records what prod runs. |
 | **J - Health contract** | Every service with a public HTTP endpoint answers `GET /health` with at least `status` and `version`. Services without HTTP (skillbot) are verified by the Dokploy deployment status alone. | Lets the deploy job prove that the *new* version is the one answering. |
-| **K - Local hooks** | [lefthook](https://github.com/evilmartians/lefthook) with one `lefthook.yml` that only calls `just` recipes; identical across repos. Hooks are a convenience, CI stays the gate. | Language-agnostic (Python and Node repos), single binary, no per-language hook framework. |
+| **K - Local hooks** | None. (Originally: lefthook calling `just` recipes; dropped on 2026-09-20 together with P1-2.) | CI is the gate; a hook can be skipped with `--no-verify` anyway. |
 | **L - Pre-1.0 versioning** | `bump-minor-pre-major: true`: while `0.x`, a breaking change bumps the minor, `feat` bumps the minor, `fix` the patch. | Nothing is live yet; `1.0.0` should be a deliberate decision, not a side effect of one `!`. |
 
 ## Verified behavior
@@ -97,7 +101,8 @@ release cycles shipped with the real `git ship` alias.
 ## Trade-offs accepted
 
 - **Commit messages become load-bearing.** The changelog and the version bump are derived from them; a sloppy
-  message on `main` is a wrong changelog line or a missed bump. P1-2's `commit-msg` hook exists for this.
+  message on `main` is a wrong changelog line or a missed bump. Nothing checks them locally (P1-2 was dropped);
+  with a squash merge the PR title is the message that counts, so it is the thing to get right.
 - **The release workflow holds a Dokploy API key**, which can do more than a single-purpose webhook URL. It
   lives only in the `production` environment, restricted to `main`.
 - **One commit per release is signed by GitHub, not by Leon.** It is mechanical, reviewable as a PR, and the
@@ -132,8 +137,8 @@ What is identical in every repo; everything else is repo-specific detail behind 
   `main`: release-please, then build / publish / deploy when `release_created`), `deploy.yml` (`workflow_call`
   + `workflow_dispatch`; the only place that talks to Dokploy).
 - **Config:** `release-please-config.json` and `.release-please-manifest.json` in the repo root; tags `vX.Y.Z`.
-- **`just` entry points:** `just check` (everything that must be green before a push), `just pre-commit` (the
-  fast subset for the commit hook). CI's `check` job runs at least `just check`.
+- **`just` entry points:** `just check` (everything that must be green before a push). CI's `check` job runs at
+  least `just check`.
 - **Org-level:** variable `RELEASE_APP_CLIENT_ID`, secret `RELEASE_APP_PRIVATE_KEY` (the names skillsite already
   uses), variable `DOKPLOY_BASE_URL`.
 - **Environment `production` (per repo):** secret `DOKPLOY_API_KEY`, variables `DOKPLOY_COMPOSE_ID` and
@@ -232,13 +237,11 @@ stays as a convenience tag only. Rollback procedure documented: set the previous
 dispatch `deploy.yml`. *Criterion:* after a release, `compose.yml` on `main` names the released version and
 prod runs exactly that image.
 
-**P1-2 - Local hooks.** `lefthook.yml`: `pre-commit` -> `just pre-commit` (format check + lint, staged files
-where the tool allows), `commit-msg` -> conventional-commit pattern check, `pre-push` -> `just check`. Installed
-via `lefthook install`; documented in the README. *Criterion:* a non-conventional message is rejected locally;
-`--no-verify` still works (CI is the gate).
+**P1-2 - Local hooks.** *Dropped on 2026-09-20 - see Non-goals.* (Was: lefthook with `pre-commit`, `commit-msg`
+and `pre-push` hooks calling `just` recipes.)
 
-**P1-3 - Deploy notification.** One Discord message per deploy result (skillbot has this today), driven by a
-shared webhook secret. *Criterion:* success and failure both notify, with version and run link.
+**P1-3 - Deploy notification.** *Dropped on 2026-09-20 - see Non-goals.* (Was: one Discord message per deploy
+result.) skillbot's existing deploy notification therefore goes away when it adopts this flow.
 
 **P1-4 - History convention in `CLAUDE.md`.** Decision D as a short rule set, including "one PR per slice" and
 "fold `docs(specs): tick` commits into the slice".
@@ -256,8 +259,8 @@ Order: skillforge (this spec) -> skillsite -> skillbot. Copy first, extract shar
 
 - **skillsite:** `release-type: node` on the root `package.json`; replaces its manual `release.yml` (bot commit
   + tag). Already has the App. Needs the `/health` `version` field and a job named `check`.
-- **skillbot:** `release-type: python`; replaces `build-deploy.yml`; the dev deploy and both webhooks go away;
-  actions get pinned. No HTTP health endpoint -> deployment status only.
+- **skillbot:** `release-type: python`; replaces `build-deploy.yml`; the dev deploy, both webhooks and the Discord
+  deploy notification go away; actions get pinned. No HTTP health endpoint -> deployment status only.
 
 ## Open questions
 
@@ -276,6 +279,7 @@ Order: skillforge (this spec) -> skillsite -> skillbot. Copy first, extract shar
   additional 34 documentation entries.
 - **No ADR.** This spec is the decision record; a separate ADR would repeat *Decided defaults* in prose.
 - **Both merge paths are allowed** - `git ship` and the squash button (decisions C and F).
+- **No local hooks and no deploy notifications** - P1-2 and P1-3 were dropped on 2026-09-20; P1 is P1-1 and P1-4.
 
 ## Success metrics
 
@@ -298,7 +302,7 @@ One PR per requirement, `just check` green on each:
 4. **P0-4** - deploy script and `deploy.yml`; `release.yml` switches from the webhook to it. *Done: #118.*
 5. **P0-5** - cleanup and docs. *Done: #119, plus #121 (the `openapi.json` round-trip fix).* Then merge the
    release PR #117: the first real release through the new flow. *Done 2026-09-20: `v0.4.0`.*
-6. **P1-1 .. P1-4** as independent follow-ups; then skillsite, then skillbot.
+6. **P1-1 and P1-4** as independent follow-ups (P1-2 and P1-3 are dropped); then skillsite, then skillbot.
 
 **Dependency:** Leon extends the App installation and creates the org variable/secret, the `production`
 environment and the Dokploy API key - these cannot be done from a PR.
