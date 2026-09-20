@@ -1,7 +1,8 @@
 name: Triage
 
 # Project intake (docs/specs/project-intake.md): every issue and PR lands on the org project with its Module
-# set and gets its author as assignee when nobody is assigned; a closed PR moves into the current iteration.
+# set and gets its author as assignee when nobody is assigned; a closed issue or PR moves into the current
+# iteration, and an issue that is closed without an issue type gets a comment asking for one.
 #
 # Nothing in this file is repo-specific - the module is the repository variable PROJECT_MODULE - so it can move
 # into the shared platform repo as it is.
@@ -12,7 +13,7 @@ name: Triage
 
 on:
   issues:
-    types: [opened, reopened]
+    types: [opened, reopened, closed]
   pull_request_target:
     types: [opened, reopened, closed]
 
@@ -106,8 +107,8 @@ jobs:
               }'
           echo "Module set to \"$MODULE\"."
 
-      # The iteration of a closed PR says when it was finished - a fact, so it replaces whatever was planned.
-      - name: Move a closed PR into the current iteration
+      # The iteration of a closed item says when it was finished - a fact, so it replaces whatever was planned.
+      - name: Move a closed item into the current iteration
         if: github.event.action == 'closed'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -194,3 +195,40 @@ jobs:
 
           gh api --silent -X POST "repos/$GITHUB_REPOSITORY/issues/$NUMBER/assignees" -f "assignees[]=$AUTHOR"
           echo "Assigned $AUTHOR."
+
+  issue-type:
+    name: Ask for the issue type
+    # An issue type cannot be made mandatory, so a closed issue without one gets a reminder.
+    if: github.event_name == 'issues' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+
+    steps:
+      # Read at run time, not from the event: a type set right before or after closing counts.
+      - name: Comment if the closed issue has no type
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          # Hidden in the comment, so that closing the issue again does not ask twice.
+          MARKER: "<!-- triage:missing-issue-type -->"
+        run: |
+          type=$(gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER" --jq '.type.name // empty')
+          if [ -n "$type" ]; then
+            echo "The issue type is \"$type\"."
+            exit 0
+          fi
+
+          # --paginate prints one array per page; -s collects them.
+          asked=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" \
+            | jq -s --arg marker "$MARKER" '[.[][] | select(.body | contains($marker))] | length')
+          if [ "$asked" -gt 0 ]; then
+            echo "Already asked for the issue type."
+            exit 0
+          fi
+
+          body=$(printf '%s\n\n%s' \
+            "This issue was closed without an **issue type**. Please set one (sidebar -> Type)." "$MARKER")
+          gh api --silent -X POST "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" -f body="$body"
+          echo "Asked for the issue type."

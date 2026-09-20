@@ -44,7 +44,8 @@ tests/               api/, auth/, db/ (db/crm/: the CRM app against Postgres), w
                      (DB tests via @pytest.mark.db)
 .github/             workflows: ci.yml, build.yml, release.yml (release-please -> build -> publish -> deploy),
                      deploy.yml, triage.yml (issues/PRs -> org project + Module + author as assignee;
-                     closed PR -> current iteration; module = repo variable PROJECT_MODULE);
+                     closed issue/PR -> current iteration; issue closed without a type -> comment;
+                     module = repo variable PROJECT_MODULE);
                      scripts/deploy-dokploy.sh (the only code that talks to Dokploy)
 scripts/             coverage_summary.py, dump_openapi.py
 ```
