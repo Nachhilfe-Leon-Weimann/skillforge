@@ -114,6 +114,34 @@ def test_require_scopes_declares_the_scopes_in_openapi_for_both_positions():
     assert paths["/guarded"]["post"]["security"] == [{"OAuth2ClientCredentialsBearer": ["bot:write"]}]
 
 
+async def test_require_scopes_rejects_the_own_variant_for_a_route_that_requires_the_unqualified_scope():
+    settings = _settings()
+    app = _reach_app(settings)
+
+    response = await _request(
+        app,
+        "GET",
+        "/crm/parties",
+        headers=_bearer(settings, scopes=["crm:read:own"]),
+    )
+
+    assert response.status_code == 403
+
+
+async def test_require_scopes_accepts_the_unqualified_scope_for_a_route_that_requires_the_own_variant():
+    settings = _settings()
+    app = _reach_app(settings)
+
+    response = await _request(
+        app,
+        "GET",
+        "/crm/parties/own",
+        headers=_bearer(settings, scopes=["crm:read"]),
+    )
+
+    assert response.status_code == 200
+
+
 async def test_require_application_rejects_non_application_principal():
     app = FastAPI()
 
@@ -163,6 +191,25 @@ def _app(settings: AuthSettings) -> FastAPI:
     @app.post("/guarded", dependencies=[require_scopes("bot:write")])
     async def guarded():
         return {"ok": True}
+
+    return app
+
+
+CrmReadPrincipal = Annotated[Principal, require_scopes("crm:read")]
+CrmReadOwnPrincipal = Annotated[Principal, require_scopes("crm:read:own")]
+
+
+def _reach_app(settings: AuthSettings) -> FastAPI:
+    app = FastAPI()
+    app.dependency_overrides[get_auth_settings] = lambda: settings
+
+    @app.get("/crm/parties")
+    async def parties(principal: CrmReadPrincipal):
+        return {"client_id": principal.client_id}
+
+    @app.get("/crm/parties/own")
+    async def own_parties(principal: CrmReadOwnPrincipal):
+        return {"client_id": principal.client_id}
 
     return app
 
