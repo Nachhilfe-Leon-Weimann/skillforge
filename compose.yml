@@ -1,6 +1,9 @@
+# The image tag is the deployed version: release-please rewrites the annotated `image:` lines in the
+# release commit, so `main` records what prod runs. Change the tag by hand only to roll back (README,
+# "Rolling back"), and then on every service.
 services:
   migrate:
-    image: ghcr.io/nachhilfe-leon-weimann/skillforge:latest
+    image: ghcr.io/nachhilfe-leon-weimann/skillforge:v0.4.0 # x-release-please-version
     pull_policy: always
     restart: "no"
     env_file:
@@ -8,7 +11,7 @@ services:
     command: [ "alembic", "upgrade", "head" ]
 
   app:
-    image: ghcr.io/nachhilfe-leon-weimann/skillforge:latest
+    image: ghcr.io/nachhilfe-leon-weimann/skillforge:v0.4.0 # x-release-please-version
     pull_policy: always
     restart: unless-stopped
     env_file:
@@ -23,7 +26,7 @@ services:
   # Same image as the app, separate entrypoint, pooled DB connection. Runs independently of
   # the app; SKIP LOCKED / idempotent sweeps make multiple replicas safe.
   worker:
-    image: ghcr.io/nachhilfe-leon-weimann/skillforge:latest
+    image: ghcr.io/nachhilfe-leon-weimann/skillforge:v0.4.0 # x-release-please-version
     pull_policy: always
     restart: unless-stopped
     env_file:

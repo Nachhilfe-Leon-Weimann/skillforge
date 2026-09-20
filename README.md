@@ -78,6 +78,24 @@ If a `Release` run fails after the release exists, fix the cause and use **Re-ru
 later job would be skipped while the run turns green. To rebuild only the image, dispatch `Build` for the
 tag; to deploy the current release again, dispatch `Deploy` with its version.
 
+[`compose.yml`](compose.yml) pins the deployed version: the release PR rewrites its `image:` tags to `vX.Y.Z`
+together with the version bump, so `main` names what prod runs and a restart of the stack cannot pull a
+different version. `:latest` is still published, but nothing deploys from it.
+
+### Rolling back
+
+There is no automatic rollback. To go back to an earlier release:
+
+1. Open a PR that sets the earlier tag on every `image:` line of `compose.yml` and merge it. Title it
+   `chore(deploy): roll back to vX.Y.Z` - a `chore` neither shows up in the changelog nor causes a release.
+2. Dispatch `Deploy` with that earlier version; the run fails unless `GET /health` reports it.
+
+Nothing has to be undone afterwards: the next release PR rewrites the tags to its own version.
+
+This rolls back the app, never the database. If a release in between shipped an Alembic migration, the earlier
+image's `migrate` service cannot locate the database's revision and the deployment fails - fix forward
+instead, or first downgrade the schema from the newer image (`alembic downgrade <revision>`).
+
 ## Common commands
 
 | Command | Purpose |

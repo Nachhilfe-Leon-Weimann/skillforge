@@ -21,7 +21,8 @@
       "package-name": "skillforge",
       "extra-files": [
         { "type": "toml", "path": "uv.lock", "jsonpath": "$.package[?(@.name.value=='skillforge')].version" },
-        { "type": "json", "path": "openapi.json", "jsonpath": "$.info.version" }
+        { "type": "json", "path": "openapi.json", "jsonpath": "$.info.version" },
+        { "type": "generic", "path": "compose.yml" }
       ]
     }
   }

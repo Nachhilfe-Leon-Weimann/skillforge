@@ -1,7 +1,8 @@
 # Spec: Release flow (one release and deploy pipeline for the whole skill-platform)
 
 > Status: Implemented - P0 on `main`, `v0.4.0` released and deployed through the flow (2026-09-20);
-> P1: P1-2 and P1-3 dropped, P1-1 and P1-4 not started.
+> P1: P1-1 implemented - `compose.yml` pins the deployed version, the next release is the first to move the pin;
+> P1-4 in #125; P1-2 and P1-3 dropped.
 > Platform arc (skillforge first, then skillsite and skillbot).
 > This spec is also the decision record (no separate ADR: *Decided defaults*, *Verified behavior* and
 > *Trade-offs accepted* carry the why). Written in skillforge because it is the first adopter; the **platform
@@ -73,7 +74,7 @@ Three mental models for one person is friction on every release. On top of that:
 | **F - Signatures** | Feature commits carry Leon's signature when they land via `git ship`, GitHub's when they are squash-merged. The one release commit per version is created through the GitHub API and carries GitHub's signature ("Verified"). Tags are lightweight and unsigned. | Satisfies the `required_signatures` rule; same trust level as today's bump PR. |
 | **G - Gate on `main`** | The `main` ruleset additionally requires the status check **`check`**. Every repo's CI exposes a job with exactly this name. | A fast-forward keeps the commit SHA, so the green check from the PR still counts on push (verified); a squash merge enforces the check itself. A tip without a green check - unpushed, still running or cancelled - is rejected, which is why `--auto` is the default way to merge. |
 | **H - Deploy transport** | Dokploy **API** (`x-api-key`): `compose.deploy`, then poll `deployment.allByCompose` until `done` / `error`, then verify the health endpoint. The deploy webhook is removed. | Authenticated, observable, fails loudly. Endpoints proven in `github-actions-playground`. |
-| **I - Deployed version** | P0 keeps `:latest`; P1 pins `image: ...:vX.Y.Z` in `compose.yml`, rewritten by release-please in the release commit. | One annotated line; `main` then records what prod runs. |
+| **I - Deployed version** | `compose.yml` pins `image: ...:vX.Y.Z`, rewritten by release-please in the release commit (P1-1; P0 deployed `:latest`). | One annotation per `image:` line; `main` then records what prod runs, and a restart cannot pull another version. |
 | **J - Health contract** | Every service with a public HTTP endpoint answers `GET /health` with at least `status` and `version`. Services without HTTP (skillbot) are verified by the Dokploy deployment status alone. | Lets the deploy job prove that the *new* version is the one answering. |
 | **K - Local hooks** | None. (Originally: lefthook calling `just` recipes; dropped on 2026-09-20 together with P1-2.) | CI is the gate; a hook can be skipped with `--no-verify` anyway. |
 | **L - Pre-1.0 versioning** | `bump-minor-pre-major: true`: while `0.x`, a breaking change bumps the minor, `feat` bumps the minor, `fix` the patch. | Nothing is live yet; `1.0.0` should be a deliberate decision, not a side effect of one `!`. |
@@ -90,6 +91,7 @@ release cycles shipped with the real `git ship` alias.
 | Do the `release_created` / `tag_name` / `sha` outputs drive follow-up jobs in the same workflow? | **Yes.** This is how build and deploy are chained - events created with `GITHUB_TOKEN` never start *other* workflows, so an `on: release` trigger is not an option. |
 | Does the release commit pass `required_signatures` + `required_linear_history`? | **Yes.** Commits created through the GitHub API are signed by GitHub (`web-flow`). Observed for `GITHUB_TOKEN` in the probe and confirmed live for the App token: release PR #117 was opened by `skill-platform-release[bot]`, its commit is Verified (committer GitHub), and CI ran on it. |
 | Can `uv.lock` and `openapi.json` follow the version? | **Yes**, via `extra-files`: a `toml` updater with `$.package[?(@.name.value=='<package>')].version` and a `json` updater with `$.info.version`. `uv lock --check` stays consistent. The json updater re-serializes the whole file with JavaScript, so `dump_openapi.py` writes integer-valued floats as integers - otherwise `50.0` comes back as `50` and `just openapi-check` fails on the release PR (found in the final review, not in the probe). A JSONPath that stops matching is a **silent no-op** - CI's `uv sync --locked` is the backstop. |
+| Can the image tag in `compose.yml` follow the version? | **Yes**, via a `generic` `extra-files` entry: on every line carrying `x-release-please-version` the updater replaces the first semver and leaves the `v` in front of it alone. Checked by running the `Generic` updater of release-please 17.6.0 - the version `release-please-action` v5.0.0 locks - against the file: exactly the three `image:` lines went from `v0.4.0` to `v0.5.0`. Not yet seen in a release PR. A line without the annotation is a **silent no-op**, like a stale JSONPath - `test_release_config.py` and the deploy's version check are the backstops. |
 | Does release-please cope with squash-merged PRs? | **Yes** (live): #114-#121 were squash-merged; it reads the squash commit's conventional subject and rebuilt the release PR #117 after every merge. |
 | What does Dokploy answer to `compose.deploy`, and in which order does `deployment.allByCompose` list? | Seen live with `v0.4.0`: the answer holds `composeId`, `message`, `success` - **no deployment id** - and the list is newest-first. So the script identifies its deployment as the newest id that did not exist before the request; that heuristic cannot be replaced by a returned id. |
 | Tag format? | `include-component-in-tag: false` yields plain `vX.Y.Z`, matching the existing tags. |
@@ -113,6 +115,10 @@ release cycles shipped with the real `git ship` alias.
   would keep his signature, but needs a green tip and therefore a wait that `--auto` does for you.
 - **The platform depends on one GitHub App and its private key.** If the App is unavailable, the fallback is
   to close and reopen the release PR as a user so CI runs on it.
+- **For about two minutes per release `main` names an image that does not exist yet** - from the release commit
+  until the image job has pushed `:vX.Y.Z` (longer if that job fails). Only a deploy started by hand in that
+  window is affected: its pull fails and the deployment ends in `error` - compose pulls before it replaces a
+  container, so the running ones stay.
 
 ## Target shape
 
@@ -138,6 +144,8 @@ What is identical in every repo; everything else is repo-specific detail behind 
   `main`: release-please, then build / publish / deploy when `release_created`), `deploy.yml` (`workflow_call`
   + `workflow_dispatch`; the only place that talks to Dokploy).
 - **Config:** `release-please-config.json` and `.release-please-manifest.json` in the repo root; tags `vX.Y.Z`.
+  `compose.yml` pins the deployed image to that tag (`x-release-please-version` on every `image:` line, a
+  `generic` `extra-files` entry).
 - **`just` entry points:** `just check` (everything that must be green before a push). CI's `check` job runs at
   least `just check`.
 - **Org-level:** variable `RELEASE_APP_CLIENT_ID`, secret `RELEASE_APP_PRIVATE_KEY` (the names skillsite already
@@ -234,11 +242,28 @@ What is identical in every repo; everything else is repo-specific detail behind 
 
 ### Nice-to-have (P1)
 
-**P1-1 - Pin the deployed version.** `compose.yml` references `...:vX.Y.Z` with an
-`x-release-please-version` annotation on each `image:` line and a `generic` `extra-files` entry; `:latest`
-stays as a convenience tag only. Rollback procedure documented: set the previous tag in a PR, ship it,
-dispatch `deploy.yml`. *Criterion:* after a release, `compose.yml` on `main` names the released version and
-prod runs exactly that image.
+**P1-1 - Pin the deployed version.**
+- *Technique:* [`compose.yml`](../../compose.yml) references `...:vX.Y.Z` with an `x-release-please-version`
+  annotation on each `image:` line, and `release-please-config.json` lists the file as a `generic`
+  `extra-files` entry: the release commit moves the pin together with the version. `:latest` stays as a
+  convenience tag only; nothing deploys from it. `pull_policy: always` stays too - `Build` can be dispatched
+  again for a tag, and a redeploy has to pick that image up.
+- *Technique:* [`test_release_config.py`](../../tests/test_release_config.py) fails `check` when an `image:`
+  line is unpinned or lost its annotation, when the services disagree on the version, or when the
+  `extra-files` entry is gone - each of them a silent no-op in the release PR. It deliberately does not compare
+  the pin with the project version: a rollback pins an older one.
+- *Technique:* rollback procedure in the [README](../../README.md#rolling-back): set the earlier tag in a
+  `chore(deploy)` PR, merge it, dispatch `deploy.yml` with that version. The next release PR rewrites the pin,
+  so nothing is undone by hand. It rolls back the app only: an earlier image cannot run `alembic upgrade head`
+  against a schema that is ahead of it.
+- *Acceptance criteria:*
+  - [x] `compose.yml` names one released version on every `image:` line. *(`v0.4.0`, the image prod already
+        runs - the PR itself deploys nothing)*
+  - [x] release-please rewrites exactly those lines. *(see Verified behavior: its own `Generic` updater, run
+        against the file)*
+  - [ ] After a release, `compose.yml` on `main` names the released version and prod runs exactly that image.
+        *(shown by the next release, not before; a pin that did not move is a red deploy, because `/health`
+        keeps reporting the old version)*
 
 **P1-2 - Local hooks.** *Dropped on 2026-09-20 - see Non-goals.* (Was: lefthook with `pre-commit`, `commit-msg`
 and `pre-push` hooks calling `just` recipes.)
@@ -308,6 +333,7 @@ One PR per requirement, `just check` green on each:
 5. **P0-5** - cleanup and docs. *Done: #119, plus #121 (the `openapi.json` round-trip fix).* Then merge the
    release PR #117: the first real release through the new flow. *Done 2026-09-20: `v0.4.0`.*
 6. **P1-1 and P1-4** as independent follow-ups (P1-2 and P1-3 are dropped); then skillsite, then skillbot.
+   *P1-1: #126, confirmed by the next release. P1-4: #125.*
 
 **Dependency:** Leon extends the App installation and creates the org variable/secret, the `production`
 environment and the Dokploy API key - these cannot be done from a PR.
