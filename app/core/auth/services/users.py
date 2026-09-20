@@ -331,6 +331,10 @@ async def redeem_action_token(session: AsyncSession, *, plaintext: str, new_pass
     if not meets_password_policy(new_password):
         raise WeakPasswordError(WeakPasswordError.message)
 
+    # Hashed before the lock is taken: Argon2 is slow by design, and every other issue or redeem
+    # on this account would queue behind it. The row lock still decides whether it gets stored.
+    password_hash = hash_password(new_password)
+
     account = await _lock_user_account(session, found.user_account_id)
     token = await _lock_action_token(session, found.id)
     # Only now is the answer authoritative: the look-up above was not serialized against a redeem
@@ -339,7 +343,7 @@ async def redeem_action_token(session: AsyncSession, *, plaintext: str, new_pass
     if token is None or not _is_live(token, now):
         raise InvalidActionTokenError("Unknown, used or expired token")
 
-    account.password_hash = hash_password(new_password)
+    account.password_hash = password_hash
     account.failed_login_count = 0
     account.locked_until = None
     token.used_at = now
