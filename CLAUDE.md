@@ -14,6 +14,7 @@ Everything runs through [`just`](justfile) (which wraps `uv`):
   `just test-one <name>`, `just test-file <path>`.
 - `just openapi` - regenerate `openapi.json`; `just openapi-check` checks for drift (CI).
 - `just bootstrap-skillbot` - seed the initial auth state.
+- `just bootstrap-admin --party-id <uuid> --email <address>` - seed the first admin user account.
 
 DB tests provision an ephemeral Postgres via testcontainers (needs Docker; skipped without it).
 Set `TEST_DB__URL` to run them against an existing database. Running the API locally needs a

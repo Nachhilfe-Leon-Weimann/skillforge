@@ -87,7 +87,7 @@ async def invite_user_account(
         raise AccountPartyNotFoundError(f"No party with id {party_id}")
     if party.type is not PartyType.PERSON:
         raise AccountPartyNotAPersonError(f"Party {party_id} is a company")
-    if await _find_by_party(session, party_id) is not None:
+    if await find_user_account_by_party(session, party_id) is not None:
         raise UserAccountAlreadyExistsError(f"Party {party_id} already has a user account")
 
     normalized = normalize_email(email)
@@ -367,7 +367,8 @@ async def _lock_user_account(session: AsyncSession, user_id: uuid.UUID) -> UserA
     return account
 
 
-async def _find_by_party(session: AsyncSession, party_id: uuid.UUID) -> UserAccount | None:
+async def find_user_account_by_party(session: AsyncSession, party_id: uuid.UUID) -> UserAccount | None:
+    """Return the account of the party, or ``None``: a party has at most one (decision C)."""
     return await session.scalar(select(UserAccount).where(UserAccount.party_id == party_id))
 
 

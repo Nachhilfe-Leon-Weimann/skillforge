@@ -124,7 +124,11 @@ requeue job_id:
 # --- Auth ---
 
 bootstrap-skillbot:
-    uv run python -m app.core.auth.bootstrap
+    uv run python -m app.core.auth.bootstrap skillbot
+
+# Seed the first admin account: just bootstrap-admin --party-id <uuid> --email <address>
+bootstrap-admin *args:
+    uv run python -m app.core.auth.bootstrap admin {{ args }}
 
 # --- Docker ---
 

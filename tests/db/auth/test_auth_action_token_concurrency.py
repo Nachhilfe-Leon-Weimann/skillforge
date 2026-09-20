@@ -8,12 +8,12 @@ import asyncio
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.core.auth import AuthSettings
 from app.core.auth.services.users import invite_user_account, issue_action_token
 from app.core.db import Database
-from app.core.db.models import UserActionToken, UserActionTokenPurpose
+from app.core.db.models import AuthAuditLog, UserActionToken, UserActionTokenPurpose
 from app.services.crm import parties, persons
 
 pytestmark = pytest.mark.db
@@ -73,3 +73,6 @@ async def test_an_overlapping_issue_waits_and_leaves_exactly_one_live_token(db: 
         await second.close()
         async with db.session() as cleanup:
             await parties.delete_party(cleanup, party_id)
+            # The account cascades with the party, the audit log deliberately does not (decision M).
+            # It is committed, so this test has to take its own entries back out.
+            await cleanup.execute(delete(AuthAuditLog).where(AuthAuditLog.principal_id == str(user_id)))
