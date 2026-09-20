@@ -463,10 +463,16 @@ Until the portal exists, everything works from Swagger UI:
   - [x] Deleting a party through `delete_party` removes its account, roles, sessions and action tokens and leaves
         the audit log untouched.
 - _Proven by:_ `test_user_account_tables_migration_is_reversible_and_drops_its_enum_types` in
-  [`test_migration_apply.py`](../../tests/db/test_migration_apply.py) (empty database, then seeded, then the
-  downgrade's `pg_type` check); `test_uppercase_email_violates_the_lowercase_check_constraint` and
+  [`test_migration_apply.py`](../../tests/db/test_migration_apply.py) - the seeded path: it seeds
+  `core.party`/`auth.application_client` before running the 0011 upgrade, seeds the four new tables too, then
+  downgrades and asserts via `pg_type` that the three enum types are gone while the pre-existing rows survive,
+  then upgrades again; the empty-database path is covered by the same file's
+  `test_migrations_apply_match_models_and_reverse` (`base -> head -> base -> head` on a fresh database).
+  `test_uppercase_email_violates_the_lowercase_check_constraint` and
   `test_a_second_account_for_the_same_party_violates_the_unique_constraint` in
-  [`test_auth_user_models.py`](../../tests/db/models/test_auth_user_models.py); and
+  [`test_auth_user_models.py`](../../tests/db/models/test_auth_user_models.py) assert the specific
+  `asyncpg` error class and `constraint_name` (`ck_user_account_email_lowercase` /
+  `user_account_party_id_key`), not just any `IntegrityError`. And
   `test_deleting_a_party_removes_its_account_roles_sessions_and_action_tokens_but_not_the_audit_log` in the same
   file, which calls the unchanged `delete_party`.
 

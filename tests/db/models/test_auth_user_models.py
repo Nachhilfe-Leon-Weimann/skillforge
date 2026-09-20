@@ -5,6 +5,7 @@ import uuid
 from typing import cast
 
 import pytest
+from asyncpg.exceptions import CheckViolationError, PostgresError, UniqueViolationError
 from sqlalchemy import Table, func, select
 from sqlalchemy.exc import IntegrityError
 
@@ -27,11 +28,24 @@ from app.services.crm.parties import delete_party
 pytestmark = pytest.mark.db
 
 
-async def _assert_integrity_error(session, *objects) -> None:
-    with pytest.raises(IntegrityError):
+async def _assert_constraint_violation(
+    session, error_type: type[PostgresError], constraint_name: str, *objects
+) -> None:
+    """Assert the flush fails with *this* constraint, not merely with some ``IntegrityError`` -
+    a generic catch would still pass if the intended constraint were dropped and a different one
+    fired instead. SQLAlchemy's asyncpg dialect wraps the driver error; the raw
+    ``asyncpg.exceptions.PostgresError`` (with its ``constraint_name``) is its ``__cause__``.
+    """
+    with pytest.raises(IntegrityError) as raised:
         async with session.begin_nested():
             session.add_all(objects)
             await session.flush()
+
+    orig = raised.value.orig
+    assert orig is not None
+    cause = orig.__cause__
+    assert isinstance(cause, error_type)
+    assert getattr(cause, "constraint_name", None) == constraint_name
 
 
 async def _person_party(session, *, firstname: str = "Max") -> Party:
@@ -68,8 +82,10 @@ async def test_auth_user_model_metadata():
 async def test_uppercase_email_violates_the_lowercase_check_constraint(session):
     party = await _person_party(session)
 
-    await _assert_integrity_error(
+    await _assert_constraint_violation(
         session,
+        CheckViolationError,
+        "ck_user_account_email_lowercase",
         UserAccount(party_id=party.id, email="Anna@Example.org"),
     )
 
@@ -80,8 +96,10 @@ async def test_a_second_account_for_the_same_party_violates_the_unique_constrain
     session.add(UserAccount(party_id=party.id, email="first@example.org"))
     await session.flush()
 
-    await _assert_integrity_error(
+    await _assert_constraint_violation(
         session,
+        UniqueViolationError,
+        "user_account_party_id_key",
         UserAccount(party_id=party.id, email="second@example.org"),
     )
 
