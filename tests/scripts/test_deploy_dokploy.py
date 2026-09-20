@@ -19,8 +19,9 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[2] / ".github" / "scripts" / "deploy-dokploy.sh"
 API_KEY = "test-key-123"
 
+# The module-level skip must not hide these tests in CI - only skip locally when a tool is missing.
 pytestmark = pytest.mark.skipif(
-    any(shutil.which(tool) is None for tool in ("bash", "curl", "jq")),
+    "CI" not in os.environ and any(shutil.which(tool) is None for tool in ("bash", "curl", "jq")),
     reason="the deploy script needs bash, curl and jq",
 )
 
@@ -34,6 +35,9 @@ class FakeDokploy:
     deploy_calls: list[dict[str, Any]] = field(default_factory=list)
     health_calls: int = 0
     polls: int = 0
+    deploy_started: bool = False
+    # Listings to answer with a transient error once the deployment has started (the wait loop).
+    transient_listing_errors: int = 0
 
     def advance(self) -> None:
         """Each listing moves the new deployment one step closer to its final status."""
@@ -73,6 +77,10 @@ def _handler(state: FakeDokploy) -> type[BaseHTTPRequestHandler]:
             elif not self._authorized():
                 return
             elif path == "/api/deployment.allByCompose":
+                if state.deploy_started and state.transient_listing_errors > 0:
+                    state.transient_listing_errors -= 1
+                    self._send(502, {"message": "Bad Gateway"})
+                    return
                 state.advance()
                 self._send(200, state.deployments)
             else:
@@ -88,6 +96,7 @@ def _handler(state: FakeDokploy) -> type[BaseHTTPRequestHandler]:
                 return
             state.deploy_calls.append(payload)
             state.deployments.insert(0, {"deploymentId": "dep-new", "status": "running", "errorMessage": ""})
+            state.deploy_started = True
             self._send(200, {"success": True})
 
     return Handler
@@ -157,6 +166,29 @@ def test_a_failed_deployment_fails_the_script_with_dokploys_message(dokploy):
     assert result.returncode != 0
     assert "migrate exited with code 1" in result.stderr
     assert state.health_calls == 0
+
+
+def test_a_transient_api_error_while_waiting_is_retried(dokploy):
+    state, base_url = dokploy
+    state.transient_listing_errors = 2
+
+    result = _run(base_url)
+
+    assert result.returncode == 0, result.stderr
+    assert "warning:" in result.stderr
+    assert "HTTP 502" in result.stderr
+    assert state.health_calls >= 1
+
+
+def test_a_cancelled_deployment_without_a_message_fails_clearly(dokploy):
+    state, base_url = dokploy
+    state.final_status = "cancelled"
+
+    result = _run(base_url)
+
+    assert result.returncode != 0
+    assert "cancelled" in result.stderr
+    assert "no error message returned" in result.stderr
 
 
 def test_an_old_version_on_health_fails_after_the_timeout(dokploy):

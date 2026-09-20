@@ -51,8 +51,9 @@ CURL_CONFIG=$WORK_DIR/curl.conf
 	printf 'header = "Accept: application/json"\nheader = "x-api-key: %s"\n' "$DOKPLOY_API_KEY" > "$CURL_CONFIG"
 )
 
-# api METHOD ENDPOINT OUTPUT_FILE [PAYLOAD_FILE] - dies on transport errors and non-2xx answers.
-api()
+# try_api METHOD ENDPOINT OUTPUT_FILE [PAYLOAD_FILE] - like api, but returns 1 and sets the
+# global API_ERROR instead of dying, so a caller that can retry (the wait loop) does not have to.
+try_api()
 {
 	local method=$1 endpoint=$2 output=$3 payload=${4:-} code
 	local -a args=(
@@ -62,16 +63,36 @@ api()
 	if [ "$method" = POST ]; then
 		args+=(--request POST --header 'Content-Type: application/json' --data-binary "@$payload")
 	fi
-	code=$(curl "${args[@]}" "$DOKPLOY_BASE_URL/api/$endpoint") \
-		|| die "Dokploy API request failed: $method /api/$endpoint"
-	[[ "$code" == 2?? ]] \
-		|| die "Dokploy returned HTTP $code for $method /api/$endpoint: $(jq -r '.message // "no message"' "$output" 2> /dev/null || echo "unreadable body")"
+	if ! code=$(curl "${args[@]}" "$DOKPLOY_BASE_URL/api/$endpoint"); then
+		API_ERROR="Dokploy API request failed: $method /api/$endpoint"
+		return 1
+	fi
+	if [[ "$code" != 2?? ]]; then
+		API_ERROR="Dokploy returned HTTP $code for $method /api/$endpoint: $(jq -r '.message // "no message"' "$output" 2> /dev/null || echo "unreadable body")"
+		return 1
+	fi
+}
+
+# api METHOD ENDPOINT OUTPUT_FILE [PAYLOAD_FILE] - dies on transport errors and non-2xx answers.
+api()
+{
+	try_api "$@" || die "$API_ERROR"
+}
+
+# try_list_deployments OUTPUT_FILE - like list_deployments, but returns 1 and sets the global
+# API_ERROR instead of dying.
+try_list_deployments()
+{
+	try_api GET "deployment.allByCompose?composeId=$DOKPLOY_COMPOSE_ID" "$1" || return 1
+	if ! jq -e 'type == "array"' "$1" > /dev/null 2>&1; then
+		API_ERROR="Dokploy returned an invalid deployment list"
+		return 1
+	fi
 }
 
 list_deployments()
 {
-	api GET "deployment.allByCompose?composeId=$DOKPLOY_COMPOSE_ID" "$1"
-	jq -e 'type == "array"' "$1" > /dev/null || die "Dokploy returned an invalid deployment list"
+	try_list_deployments "$1" || die "$API_ERROR"
 }
 
 BEFORE=$WORK_DIR/before.json
@@ -102,7 +123,14 @@ deployment_id=
 deadline=$((SECONDS + DEPLOY_TIMEOUT))
 while :; do
 	((SECONDS < deadline)) || die "Dokploy deployment did not finish within $DEPLOY_TIMEOUT seconds"
-	list_deployments "$WORK_DIR/now.json"
+	# A transient listing failure (transport error, non-2xx, a body that is not a JSON array) does
+	# not fail the job - the deployment carries on regardless and a re-dispatch would only hit
+	# "already running". Warn and try again until the deadline above.
+	if ! try_list_deployments "$WORK_DIR/now.json"; then
+		echo "warning: $API_ERROR" >&2
+		sleep "$POLL_INTERVAL"
+		continue
+	fi
 	deployment=$(jq -c --slurpfile before "$BEFORE" \
 		'[$before[0][].deploymentId] as $known | [.[] | select(.deploymentId | IN($known[]) | not)] | first // empty' \
 		"$WORK_DIR/now.json")
@@ -113,7 +141,7 @@ while :; do
 		case "$status" in
 			done) break ;;
 			error | cancelled)
-				die "Dokploy deployment $status: $(jq -r '.errorMessage // "no error message returned"' <<< "$deployment")"
+				die "Dokploy deployment $status: $(jq -r '(.errorMessage // "") | if . == "" then "no error message returned" else . end' <<< "$deployment")"
 				;;
 		esac
 	fi
