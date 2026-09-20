@@ -235,8 +235,10 @@ shipping it creates the tag and GitHub release, and the `Release` workflow build
 the Python client and calls `deploy.yml`. The deploy script
 ([`deploy-dokploy.sh`](../.github/scripts/deploy-dokploy.sh)) triggers `compose.deploy` over the Dokploy
 API, waits for the deployment to finish and then requires `GET /health` to answer `ok` with the released
-`version` - a failed migration or a stale container is a red workflow. There is no automatic rollback:
-an app rollback would not roll back an Alembic migration.
+`version` - a failed migration or a stale container is a red workflow. Dokploy runs the repo's
+[`compose.yml`](../compose.yml), whose `image:` tags the release commit pins to `vX.Y.Z`: `main` records
+what prod runs. There is no automatic rollback - an app rollback would not roll back an Alembic migration;
+the manual procedure is in the [README](../README.md#rolling-back).
 
 ## Roadmap: capability arcs
 
