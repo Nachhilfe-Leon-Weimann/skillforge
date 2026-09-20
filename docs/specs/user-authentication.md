@@ -590,9 +590,23 @@ Until the portal exists, everything works from Swagger UI:
   `test_bootstrapping_twice_keeps_the_account_and_issues_a_fresh_invitation` and
   `test_bootstrapping_an_account_that_has_a_password_issues_no_token` in
   [`test_auth_admin_bootstrap.py`](../../tests/db/auth/test_auth_admin_bootstrap.py) cover the operator command,
-  and `test_the_invite_and_redeem_flow_logs_neither_the_token_nor_the_password` in
+  whose `--email` is parsed by the API's own rule
+  ([`test_bootstrap_cli.py`](../../tests/auth/test_bootstrap_cli.py)), and
+  `test_the_invite_and_redeem_flow_logs_neither_the_token_nor_the_password` in
   [`test_auth_users_logging.py`](../../tests/db/auth/test_auth_users_logging.py) greps the captured log output of
   the whole flow.
+  What holds when two requests interleave is pinned separately:
+  `test_an_overlapping_redeem_of_the_same_token_is_refused` and
+  `test_an_overlapping_removal_of_the_same_role_is_not_found` in
+  [`test_auth_users_concurrency.py`](../../tests/db/auth/test_auth_users_concurrency.py) (two real transactions),
+  and `test_issuing_reads_the_account_under_the_lock_not_what_the_session_held` plus the three
+  check-then-insert cases in
+  [`test_auth_users_service_guards.py`](../../tests/db/auth/test_auth_users_service_guards.py), which reach past
+  the pre-checks to the constraint underneath. The audit trail of a change is pinned by
+  [`test_auth_users_audit.py`](../../tests/db/auth/test_auth_users_audit.py) - a PATCH that changes nothing
+  records nothing - and the cost of a redeem by
+  `test_the_password_is_hashed_before_the_account_row_is_locked` in
+  [`test_auth_redeem_hashing.py`](../../tests/db/auth/test_auth_redeem_hashing.py).
 
 **P0-6 - Grants.**
 
