@@ -498,13 +498,38 @@ Until the portal exists, everything works from Swagger UI:
   `scheme_name="OAuth2"`; `bind_request_log_context` receives `principal_type`, `user_id` and `party_id` for user
   principals.
 - _Acceptance criteria:_
-  - [ ] `components.securitySchemes` has exactly one key, `OAuth2`, and every secured operation references it;
+  - [x] `components.securitySchemes` has exactly one key, `OAuth2`, and every secured operation references it;
         apart from that key the `security` requirement of every existing operation is unchanged.
-  - [ ] A user token round-trips into a `Principal` with `party_id`, `session_id` and `roles`; an application
+  - [x] A user token round-trips into a `Principal` with `party_id`, `session_id` and `roles`; an application
         token round-trips exactly as before (its claims are byte-compatible, asserted against a fixture).
-  - [ ] A user token missing `party_id` or `sid`, or whose `sub` is not `user:<principal_id>`, is a `401`.
-  - [ ] `GET /auth/me` answers both principal types without a database session (the existing
+  - [x] A user token missing `party_id` or `sid`, or whose `sub` is not `user:<principal_id>`, is a `401`.
+  - [x] `GET /auth/me` answers both principal types without a database session (the existing
         "depends on the principal only" criterion of `crm-api.md` P1-1 still holds).
+- _Proven by:_ `test_the_contract_declares_exactly_one_security_scheme`,
+  `test_every_secured_operation_references_only_that_scheme`,
+  `test_the_scheme_rename_left_every_security_requirement_unchanged` and
+  `test_the_scheme_offers_the_client_credentials_and_the_password_flow` in
+  [`test_openapi_security_scheme.py`](../../tests/api/test_openapi_security_scheme.py) - the third one pins
+  `SECURITY_REQUIREMENTS_AT_THE_RENAME`, the scopes all 66 operations demanded before the rename, so only the key
+  moved. `test_create_and_validate_user_access_token`, `test_user_access_token_claims_match_the_fixture` and
+  `test_application_access_token_claims_match_the_fixture` in
+  [`test_user_tokens.py`](../../tests/auth/test_user_tokens.py) (the round trip and both claim fixtures, the
+  application one asserted claim by claim so a new claim on SkillBot's token breaks it), next to
+  `test_an_application_principal_carries_no_user_claims`, `test_user_access_token_carries_the_canonical_scope` and
+  the rejections in the same file:
+  `test_validate_access_token_rejects_a_user_token_without_its_reach_claims` (both `party_id` and `sid`),
+  `test_validate_access_token_rejects_a_user_token_whose_subject_is_not_its_principal`,
+  `..._with_an_application_subject`, `..._with_an_unusable_party_id`, `..._with_malformed_roles` and
+  `test_validate_access_token_rejects_an_unknown_principal_type`. Over HTTP the same three denials are a `401` in
+  the error envelope: `test_me_with_a_user_token_that_lost_its_party_is_the_401_envelope`,
+  `..._that_lost_its_session_...` and `..._whose_subject_is_not_its_principal_...` in
+  [`test_auth_me_endpoint.py`](../../tests/api/test_auth_me_endpoint.py), which also holds
+  `test_me_reports_the_account_the_party_and_the_roles_of_a_user_token` and the unchanged
+  `test_me_depends_on_the_principal_only` (the route's only parameter is the principal). The request log is
+  covered by `test_request_logging_identifies_the_user_behind_a_request` in
+  [`test_logging.py`](../../tests/test_logging.py) and the guard by
+  `test_require_application_rejects_a_real_user_token` in
+  [`test_dependencies.py`](../../tests/auth/test_dependencies.py).
 
 **P0-5 - Accounts.**
 
