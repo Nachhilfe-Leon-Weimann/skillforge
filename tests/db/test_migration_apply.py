@@ -64,6 +64,24 @@ async def _enum_labels(url: str, schema: str, enum_name: str) -> list[str]:
         await conn.close()
 
 
+async def _type_exists(url: str, schema: str, type_name: str) -> bool:
+    conn = await asyncpg.connect(_asyncpg_dsn(url))
+    try:
+        row = await conn.fetchrow(
+            """
+            SELECT 1
+            FROM pg_type t
+            JOIN pg_namespace n ON n.oid = t.typnamespace
+            WHERE t.typname = $1 AND n.nspname = $2
+            """,
+            type_name,
+            schema,
+        )
+        return row is not None
+    finally:
+        await conn.close()
+
+
 @pytest.fixture
 def migration_db_url(db_url: str):
     """A freshly created, empty database so migrations run from a clean slate."""
@@ -141,3 +159,38 @@ def test_cancelled_operation_status_migration_is_reversible(migration_db_url: st
 
     _alembic(migration_db_url, "upgrade", "head")
     assert asyncio.run(_enum_labels(migration_db_url, "bot", "operation_status")) == _OPERATION_STATUSES_WITH_CANCELLED
+
+
+_USER_ACCOUNT_ENUM_TYPES = ["user_account_status", "user_account_role_name", "user_action_token_purpose"]
+
+_SEED_USER_ACCOUNT_TABLES = """
+INSERT INTO core.party (id, type) VALUES ('11111111-1111-1111-1111-111111111111', 'PERSON');
+INSERT INTO auth.application_client (id, client_id, name)
+    VALUES ('22222222-2222-2222-2222-222222222222', 'seed-client', 'Seed Client');
+INSERT INTO auth.user_account (id, party_id, email, status)
+    VALUES ('33333333-3333-3333-3333-333333333333',
+            '11111111-1111-1111-1111-111111111111', 'seed@example.com', 'invited');
+INSERT INTO auth.user_account_role (user_account_id, role)
+    VALUES ('33333333-3333-3333-3333-333333333333', 'admin');
+INSERT INTO auth.user_session (id, user_account_id, application_client_id, scope, refresh_token_hash, expires_at)
+    VALUES ('44444444-4444-4444-4444-444444444444', '33333333-3333-3333-3333-333333333333',
+            '22222222-2222-2222-2222-222222222222', 'account:self', 'some-hash', now() + interval '30 days');
+INSERT INTO auth.user_action_token (id, user_account_id, purpose, token_hash, expires_at, issued_by)
+    VALUES ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333333',
+            'invitation', 'token-hash', now() + interval '7 days', 'cli');
+"""
+
+
+def test_user_account_tables_migration_is_reversible_and_drops_its_enum_types(migration_db_url: str) -> None:
+    # Forward against an empty database, then seed every new table so the downgrade below runs
+    # against data (not just an empty schema) before the re-upgrade recreates them.
+    _alembic(migration_db_url, "upgrade", "head")
+    assert all(asyncio.run(_type_exists(migration_db_url, "public", name)) for name in _USER_ACCOUNT_ENUM_TYPES)
+
+    asyncio.run(_run_on_server(migration_db_url, _SEED_USER_ACCOUNT_TABLES))
+
+    _alembic(migration_db_url, "downgrade", "0010_subject_title_unique")
+    assert not any(asyncio.run(_type_exists(migration_db_url, "public", name)) for name in _USER_ACCOUNT_ENUM_TYPES)
+
+    _alembic(migration_db_url, "upgrade", "head")
+    assert all(asyncio.run(_type_exists(migration_db_url, "public", name)) for name in _USER_ACCOUNT_ENUM_TYPES)
