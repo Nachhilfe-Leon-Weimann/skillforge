@@ -138,7 +138,8 @@ def resolve_token_scopes(
     """
     normalized_requested_scopes = normalize_scope_set(requested_scopes)
 
-    available_scopes = expand(granted_scopes)
+    granted_ceiling = expand(granted_scopes)
+    available_scopes = granted_ceiling
     if user_scopes is not None:
         available_scopes &= expand(user_scopes)
 
@@ -152,6 +153,9 @@ def resolve_token_scopes(
         token_scopes = canonical(normalized_requested_scopes)
 
     if not token_scopes:
+        if user_scopes is not None and granted_ceiling:
+            raise InvalidClientScopeError("Client grants and user scopes have no scope in common")
+
         raise InvalidClientScopeError("Client has no active scope grants")
 
     return token_scopes
