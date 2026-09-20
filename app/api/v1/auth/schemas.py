@@ -1,14 +1,15 @@
 from datetime import datetime
-from typing import Annotated, Literal, Self
+from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.experimental.missing_sentinel import MISSING
 
 from app.api.v1.common import ApiModel
 from app.core.auth.principal import Principal, UserPrincipal
 from app.core.auth.results import CreatedClientSecret, IssuedActionToken, UserAccountWithRoles
 from app.core.auth.roles import Role
+from app.core.auth.services.users import LoginEmail
 from app.core.auth.tokens import CreatedAccessToken
 from app.core.db.models import (
     ApplicationClient,
@@ -16,12 +17,6 @@ from app.core.db.models import (
     UserAccountRoleName,
     UserAccountStatus,
 )
-
-# The longest e-mail address there is (RFC 5321); the column is `text`, the limit documents the API.
-MAX_EMAIL_LENGTH = 254
-
-# A plain assignment inlines the constraints at the field; a PEP 695 alias would become its own schema.
-LoginEmail = Annotated[EmailStr, StringConstraints(max_length=MAX_EMAIL_LENGTH)]
 
 
 class AccessTokenResponse(BaseModel):

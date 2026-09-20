@@ -26,10 +26,10 @@ from app.core.auth.services.errors import (
     UserRoleNotFoundError,
     WeakPasswordError,
 )
+from app.core.auth.services.users import MAX_EMAIL_LENGTH
 from app.core.db.models import UserAccountRoleName, UserAccountStatus, UserActionTokenPurpose
 
 from .schemas import (
-    MAX_EMAIL_LENGTH,
     ActionTokenResponse,
     InvitedUserAccount,
     PasswordRedeemRequest,

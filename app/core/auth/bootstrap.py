@@ -8,12 +8,17 @@ import argparse
 import asyncio
 import uuid
 
+from pydantic import TypeAdapter, ValidationError
+
 from app.core.auth.config import AuthSettings
 from app.core.auth.scopes import Scope
 from app.core.auth.services import bootstrap_application_client
 from app.core.auth.services.bootstrap import bootstrap_admin_account
+from app.core.auth.services.users import LoginEmail
 from app.core.config import get_settings
 from app.core.db import Database
+
+_LOGIN_EMAIL = TypeAdapter(LoginEmail)
 
 
 async def bootstrap_skillbot() -> None:
@@ -66,15 +71,35 @@ async def bootstrap_admin(*, party_id: uuid.UUID, email: str) -> None:
         print(f"invitation_expires_at={result.invitation.token.expires_at.isoformat()}")
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.core.auth.bootstrap", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("skillbot", help="Seed the SkillBot application client and print its secret.")
     admin = commands.add_parser("admin", help="Seed an admin user account and print its invitation token.")
     admin.add_argument("--party-id", type=uuid.UUID, required=True, help="ID of the person party to bind it to.")
-    admin.add_argument("--email", required=True, help="The login e-mail address of the account.")
+    admin.add_argument(
+        "--email",
+        type=_login_email,
+        required=True,
+        help="The login e-mail address of the account.",
+    )
+    return parser
 
-    arguments = parser.parse_args()
+
+def _login_email(value: str) -> str:
+    """Validate ``--email`` the way the API validates it, before an account exists.
+
+    A typo on the *first* admin could otherwise only be corrected through the admin API - which
+    needs an admin who can log in.
+    """
+    try:
+        return _LOGIN_EMAIL.validate_python(value)
+    except ValidationError:
+        raise argparse.ArgumentTypeError(f"not a valid e-mail address: {value!r}") from None
+
+
+def main() -> None:
+    arguments = build_parser().parse_args()
     if arguments.command == "skillbot":
         asyncio.run(bootstrap_skillbot())
     else:

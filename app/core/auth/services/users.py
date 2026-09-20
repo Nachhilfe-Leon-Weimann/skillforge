@@ -11,8 +11,9 @@ import uuid
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import Annotated, cast
 
+from pydantic import EmailStr, StringConstraints
 from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,6 +58,17 @@ ACTION_TOKEN_BYTES = 32
 REVOKED_BY_ADMIN = "admin"
 REVOKED_ACCOUNT_DISABLED = "account_disabled"
 REVOKED_PASSWORD_RESET = "password_reset"
+
+
+# The longest e-mail address there is (RFC 5321); the column is `text`, the limit documents the rule.
+MAX_EMAIL_LENGTH = 254
+
+LoginEmail = Annotated[EmailStr, StringConstraints(max_length=MAX_EMAIL_LENGTH)]
+"""What counts as a login e-mail address, for the API schema and for `just bootstrap-admin` alike.
+
+A plain assignment rather than a PEP 695 alias: the API inlines the constraints at its field, where
+an alias would become a schema of its own.
+"""
 
 
 def normalize_email(email: str) -> str:
