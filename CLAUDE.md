@@ -84,11 +84,13 @@ DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
   `CHANGELOG.md` or create a tag by hand - ship the `chore(main): release X.Y.Z` PR. Commit messages on
   `main` feed the changelog and the version bump, so conventional types matter (`feat`, `fix`, `!`). Nothing
   deploys on a plain push to `main`; only prod exists.
-- **Merge via `git ship` or GitHub's squash button** - both satisfy `main`'s rulesets (signatures,
-  linear history). `git ship` is a local fast-forward that keeps Leon's signature on every commit; a
-  squash leaves one GitHub-signed commit per PR whose subject carries the PR number. Never the rebase or
-  merge-commit button (unsigned commits, non-linear history). Stacked PRs only work with `git ship`: a
-  squash gives the lower commits new SHAs, so the PR stacked on top conflicts with `main`.
+- **Merge with `gh pr merge <n> --squash --delete-branch --auto`** (short: `-sd --auto`). It waits for the
+  required `check`, then squash-merges: one GitHub-signed commit per PR, subject = PR title + PR number, so
+  the PR title must be the conventional message (for a single-commit PR GitHub takes that commit's subject
+  instead). `git ship` (local fast-forward, keeps Leon's signature) only works when the branch tip already
+  carries a green `check` - `main` rejects an unpushed, still-running or cancelled tip. Never the rebase or
+  merge-commit button (unsigned commits, non-linear history). Keep PRs independent: after a squash, a PR
+  stacked on top conflicts with `main`.
 - Commit style: conventional with PR number, e.g. `feat(api): ... (#34)`.
 
 ## Orientation

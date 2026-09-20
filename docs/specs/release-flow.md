@@ -38,8 +38,8 @@ Three mental models for one person is friction on every release. On top of that:
    version. Tags on `main` plus `CHANGELOG.md` are the condensed view - no release branch.
 4. **The deploy reports the truth.** The workflow talks to the Dokploy API, waits for the deployment to finish
    and verifies the running version. A failed deploy is a red workflow.
-5. **`main` only accepts green commits**, whichever way a PR lands: `git ship` (Leon's signature on every
-   commit) or GitHub's squash button (one GitHub-signed commit per PR).
+5. **`main` only accepts green commits.** PRs land by squash merge with `gh pr merge --auto`, which waits for the
+   check; a local fast-forward (`git ship`) is only accepted when its tip is already green.
 6. **Less machinery than today**, not more. Everything the platform does not need is removed.
 
 ## Non-goals
@@ -67,11 +67,11 @@ Three mental models for one person is friction on every release. On top of that:
 |---|---|---|
 | **A - Release mechanism** | [release-please](https://github.com/googleapis/release-please) (`release-please-action`, pinned by SHA). It keeps one *release PR* up to date (version bump + `CHANGELOG.md`); shipping that PR is the release. | Same tool for Python and Node; version derived from conventional commits; replaces the hand-written bump workflow. Verified with `git ship` and the rulesets; squash merging is release-please's own default. |
 | **B - Environments** | Prod only. One GitHub Environment `production` per repo. | Decided 2026-09-19. |
-| **C - Branching** | Short-lived feature branches -> PR -> onto `main` by `git ship` (fast-forward) or GitHub's squash button; both are allowed. No release branch. Tags `vX.Y.Z` on `main`. | Linear history and signatures already enforced; a second branch would be a second history to keep in sync. |
-| **D - History on `main`** | One PR per slice (not per spec); before shipping, fold fixups and "tick the spec" commits into the slice they belong to. Every commit on `main` is green on its own and conventional. A squash merge does the folding by itself: one PR, one commit, so the PR title must be the conventional message. | ~6-8 commits for an arc like `crm-api.md` instead of ~40 - but not 1-2, which would destroy `git bisect` and the story. |
+| **C - Branching** | Short-lived feature branches -> PR -> squash-merged onto `main` with `gh pr merge <n> -sd --auto` (waits for `check`, deletes the branch). `git ship` (local fast-forward) stays allowed, but only works when the branch tip already carries a green `check`. No release branch. Tags `vX.Y.Z` on `main`. | Linear history and signatures already enforced; a second branch would be a second history to keep in sync. |
+| **D - History on `main`** | One PR per slice (not per spec); before shipping, fold fixups and "tick the spec" commits into the slice they belong to. Every commit on `main` is green on its own and conventional. A squash merge does the folding by itself: one PR, one commit, so the PR title must be the conventional message (for a single-commit PR GitHub takes that commit's subject instead). | ~6-8 commits for an arc like `crm-api.md` instead of ~40 - but not 1-2, which would destroy `git bisect` and the story. |
 | **E - Release PR author** | An org-wide **GitHub App**; release-please runs with its installation token. The App is **`skill-platform-release`** - the installed `skillsite-release-bot`, renamed (no `bot` in the name: GitHub appends `[bot]`, and it keeps clear of *skillbot*) and extended to the other repos. One App per role; it does releases only. | PRs opened with `GITHUB_TOKEN` get no CI run, so the required check (G) would reject the release PR. Verified; see below. |
 | **F - Signatures** | Feature commits carry Leon's signature when they land via `git ship`, GitHub's when they are squash-merged. The one release commit per version is created through the GitHub API and carries GitHub's signature ("Verified"). Tags are lightweight and unsigned. | Satisfies the `required_signatures` rule; same trust level as today's bump PR. |
-| **G - Gate on `main`** | The `main` ruleset additionally requires the status check **`check`**. Every repo's CI exposes a job with exactly this name. | A fast-forward keeps the commit SHA, so the green check from the PR still counts on push (verified); the squash button enforces the check itself. |
+| **G - Gate on `main`** | The `main` ruleset additionally requires the status check **`check`**. Every repo's CI exposes a job with exactly this name. | A fast-forward keeps the commit SHA, so the green check from the PR still counts on push (verified); a squash merge enforces the check itself. A tip without a green check - unpushed, still running or cancelled - is rejected, which is why `--auto` is the default way to merge. |
 | **H - Deploy transport** | Dokploy **API** (`x-api-key`): `compose.deploy`, then poll `deployment.allByCompose` until `done` / `error`, then verify the health endpoint. The deploy webhook is removed. | Authenticated, observable, fails loudly. Endpoints proven in `github-actions-playground`. |
 | **I - Deployed version** | P0 keeps `:latest`; P1 pins `image: ...:vX.Y.Z` in `compose.yml`, rewritten by release-please in the release commit. | One annotated line; `main` then records what prod runs. |
 | **J - Health contract** | Every service with a public HTTP endpoint answers `GET /health` with at least `status` and `version`. Services without HTTP (skillbot) are verified by the Dokploy deployment status alone. | Lets the deploy job prove that the *new* version is the one answering. |
@@ -93,7 +93,7 @@ release cycles shipped with the real `git ship` alias.
 | Does release-please cope with squash-merged PRs? | **Yes** (live): #114-#121 were squash-merged; it reads the squash commit's conventional subject and rebuilt the release PR #117 after every merge. |
 | What does Dokploy answer to `compose.deploy`, and in which order does `deployment.allByCompose` list? | Seen live with `v0.4.0`: the answer holds `composeId`, `message`, `success` - **no deployment id** - and the list is newest-first. So the script identifies its deployment as the newest id that did not exist before the request; that heuristic cannot be replaced by a returned id. |
 | Tag format? | `include-component-in-tag: false` yields plain `vX.Y.Z`, matching the existing tags. |
-| Required status check + `git ship` for a normal PR? | **Works** - same SHA, the green check is already there. |
+| Required status check + `git ship` for a normal PR? | **Works** - same SHA, the green check is already there. **Only then:** live on 2026-09-20 a `git ship` was rejected because one local commit sat on top of the green PR tip (its CI run was cancelled). `gh pr merge <n> -sd --auto` waits for the check instead (used for #123). |
 | ... and for the release PR opened with `GITHUB_TOKEN`? | **Rejected:** `Required status check "check" is expected`. The PR's CI run is created but never runs jobs. |
 | Workarounds without an App? | Closing and reopening the PR as a user starts CI, then shipping works (tested). Starting CI on the release branch via `workflow_dispatch` produced a green check that did **not** satisfy the rule (tested). Hence decision E. |
 | What if a step after the action fails in the release-please job? | The release already exists but build and deploy are skipped - a half-done release. Hence P0-3's "nothing after the action" rule and the manual deploy entry point. |
@@ -107,20 +107,21 @@ release cycles shipped with the real `git ship` alias.
   lives only in the `production` environment, restricted to `main`.
 - **One commit per release is signed by GitHub, not by Leon.** It is mechanical, reviewable as a PR, and the
   same trust level today's bump PR has. Squash-merged PRs are GitHub-signed in the same way.
-- **Stacked PRs only work with `git ship`.** A squash merge gives the lower commits new SHAs, so the PR
-  stacked on top conflicts with `main` - this happened to #118 and #119 after #114-#116 were squashed. When
-  merging with the button, keep PRs independent of each other.
+- **No stacked PRs.** A squash merge gives the lower commits new SHAs, so the PR stacked on top conflicts with
+  `main` - this happened to #118 and #119 after #114-#116 were squashed. Keep PRs independent of each other.
+- **Feature commits on `main` are GitHub-signed, not Leon-signed**, because squash is the default. `git ship`
+  would keep his signature, but needs a green tip and therefore a wait that `--auto` does for you.
 - **The platform depends on one GitHub App and its private key.** If the App is unavailable, the fallback is
   to close and reopen the release PR as a user so CI runs on it.
 
 ## Target shape
 
 ```
-feature branch -> PR (CI: job "check" green) -> git ship or squash -> main
+feature branch -> PR (CI: job "check" green) -> gh pr merge -sd --auto -> main
                                                             |
                           release.yml: release-please (App token) keeps the release PR current
                                                             |
-                  you merge the release PR (git ship or squash; CI green on it) = the release
+                    you merge the release PR (gh pr merge -sd --auto) = the release
                                                             |
         release.yml on that push: tag vX.Y.Z + GitHub release + CHANGELOG.md   (release_created == true)
                                                             |
@@ -144,6 +145,8 @@ What is identical in every repo; everything else is repo-specific detail behind 
 - **Environment `production` (per repo):** secret `DOKPLOY_API_KEY`, variables `DOKPLOY_COMPOSE_ID` and
   `HEALTH_URL` (empty for services without HTTP). Deployment branches restricted to `main`. No required
   reviewer - shipping the release PR already is the approval.
+- **Merging:** `gh pr merge <n> --squash --delete-branch --auto`; the repo settings *Allow auto-merge* and
+  *Automatically delete head branches* are on.
 - **Rulesets:** `main` - no deletion, no force-push, linear history, signatures, required check `check`.
   Tags `v*` - no deletion, no update.
 - **Conventions:** conventional commits; all actions pinned by SHA and kept current by Dependabot (grouped).
@@ -278,7 +281,8 @@ Order: skillforge (this spec) -> skillsite -> skillbot. Copy first, extract shar
   hand. `changelog-sections` keeps it to what a consumer cares about: 26 features and 12 fixes instead of an
   additional 34 documentation entries.
 - **No ADR.** This spec is the decision record; a separate ADR would repeat *Decided defaults* in prose.
-- **Both merge paths are allowed** - `git ship` and the squash button (decisions C and F).
+- **Squash via `gh pr merge <n> -sd --auto` is the default merge path** (decisions C and G). `git ship` stays
+  allowed but needs a green tip; once the required check was live it failed in daily use, which settled it.
 - **No local hooks and no deploy notifications** - P1-2 and P1-3 were dropped on 2026-09-20; P1 is P1-1 and P1-4.
 
 ## Success metrics

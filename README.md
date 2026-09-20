@@ -67,7 +67,7 @@ templates live in `clients/python/templates/`.
 
 Releases are driven by [release-please](https://github.com/googleapis/release-please): it keeps a
 release PR (`chore(main): release X.Y.Z`) up to date with the next version and `CHANGELOG.md`, both
-derived from the conventional commits on `main`. **Merging that PR (`git ship` or the squash button) is the
+derived from the conventional commits on `main`. **Merging that PR (`gh pr merge <n> -sd --auto`) is the
 release** - the `Release` workflow then tags `vX.Y.Z`, builds `ghcr.io/nachhilfe-leon-weimann/skillforge:vX.Y.Z`,
 publishes `skillforge-client==X.Y.Z` and deploys through the Dokploy API, failing unless `GET /health`
 reports the new version. To deploy the current release again: run the `Deploy` workflow by hand.
