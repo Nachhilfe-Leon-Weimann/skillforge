@@ -2,8 +2,9 @@
 
 > Status: Implemented - P0 on `main`, `v0.4.0` released and deployed through the flow (2026-09-20);
 > P1: P1-1 implemented - `compose.yml` pins the deployed version, the next release is the first to move the pin;
-> P1-4 in #125; P1-2 and P1-3 dropped.
-> Platform arc (skillforge first, then skillsite and skillbot).
+> P1-4 in #125; P1-2 and P1-3 dropped. P2 *Shared workflows* done: the deploy lives in
+> [`skill-platform-workflows`][workflows] since 2026-09-20 (#133).
+> Platform arc (skillforge first, then skillbot and skillsite).
 > This spec is also the decision record (no separate ADR: *Decided defaults*, *Verified behavior* and
 > *Trade-offs accepted* carry the why). Written in skillforge because it is the first adopter; the **platform
 > contract** below is what the other repos copy. Every GitHub behavior this spec relies on was verified in a
@@ -58,7 +59,9 @@ Three mental models for one person is friction on every release. On top of that:
   with squash merges the PR title is the one commit message that counts.
 - **Deploy notifications** (a Discord message per deploy). Considered as P1-3 and dropped on 2026-09-20: a failed
   deploy already is a red workflow run.
-- **Central reusable workflows** in a shared repo. Considered for later (P2) once the flow is stable in two repos.
+- **Sharing more than is identical.** The shared repo holds what is the same file in every repo - the deploy
+  with its script, and `triage.yml`. `ci.yml`, `build.yml` and `release.yml` differ per stack and stay per repo,
+  behind the same names.
 - **skillcore.** A private library, not deployed; it may adopt the release half later (note: on the Free plan
   org secrets and rulesets do not apply to private repos).
 
@@ -115,6 +118,11 @@ release cycles shipped with the real `git ship` alias.
   would keep his signature, but needs a green tip and therefore a wait that `--auto` does for you.
 - **The platform depends on one GitHub App and its private key.** If the App is unavailable, the fallback is
   to close and reopen the release PR as a user so CI runs on it.
+- **Every repo's deploy follows a moving tag in another repo.** `@v1` is what makes one fix reach three repos
+  without three PRs, and it means a bad `v1` breaks the deploy everywhere at once. Accepted: nothing deploys
+  without a release, a broken deploy is a red run and not a broken prod, and the way back is moving `v1` onto
+  the earlier release. The shared repo has the same gate on `main` (`check`: actionlint, shellcheck, the script
+  against a fake Dokploy), and its `vX.Y.Z` tags cannot be moved.
 - **For about two minutes per release `main` names an image that does not exist yet** - from the release commit
   until the image job has pushed `:vX.Y.Z` (longer if that job fails). Only a deploy started by hand in that
   window is affected: its pull fails and the deployment ends in `error` - compose pulls before it replaces a
@@ -142,8 +150,13 @@ What is identical in every repo; everything else is repo-specific detail behind 
 
 - **Workflows:** `ci.yml` (PRs and pushes to `main`; contains the job **`check`**), `release.yml` (push to
   `main`: release-please, then build / publish / deploy when `release_created`), `deploy.yml` (`workflow_call`
-  + `workflow_dispatch`; the only place that talks to Dokploy). Outside the release flow, `triage.yml` puts
+  + `workflow_dispatch`; the repo's entry point for a deploy). Outside the release flow, `triage.yml` puts
   issues and PRs on the project board - its contract lives in [`project-intake.md`](project-intake.md).
+- **Shared workflows:** `deploy.yml` and `triage.yml` are callers of the workflows of the same name in the public
+  repo [`skill-platform-workflows`][workflows], referenced as `...@v1` with `secrets: inherit`. Its `deploy.yml` and
+  the script next to it are the only code that talks to Dokploy; it declares the `production` environment and the
+  concurrency group `deploy-production` itself, so a caller declares neither. Moving the tag `v1` rolls a change
+  out to every repo; a change callers have to follow is a `v2`. The README there has the callers to copy.
 - **Config:** `release-please-config.json` and `.release-please-manifest.json` in the repo root; tags `vX.Y.Z`.
   `compose.yml` pins the deployed image to that tag (`x-release-please-version` on every `image:` line, a
   `generic` `extra-files` entry).
@@ -278,14 +291,26 @@ result.) skillbot's existing deploy notification therefore goes away when it ado
 
 ### Future considerations (P2)
 
-- **Shared workflows:** move `deploy.yml` and the deploy script into a public `platform-workflows` repo and
-  call them with `uses: ...@vN` (a public repo cannot call workflows from a private one).
+- **Shared workflows.** *Done 2026-09-20:* `deploy.yml` and the deploy script moved into the public repo
+  [`skill-platform-workflows`][workflows] (`v1.0.0`; a public repo cannot call workflows from a private one),
+  together with `triage.yml` ([`project-intake.md`](project-intake.md)); this repo calls them with
+  `uses: ...@v1` (#133). The script's tests moved with it. Extracted before the second adopter rather than on
+  the third: skillbot and skillsite then start from the callers and never get a copy to keep in sync.
+  - [x] The shared `deploy.yml` runs the script of the ref it was called at: it checks out
+        `job.workflow_repository` at `job.workflow_sha` - documented by GitHub, unknown to actionlint 1.7.12
+        (one `ignore` in the shared repo's `actionlint.yaml`).
+  - [ ] A `dry_run` dispatch of `Deploy` on `main` is green: the called workflow gets the caller's `production`
+        environment (secret and variables) and the org variable, and finds its script. *(only provable on
+        `main`: the job skips every other ref)*
+  - [ ] The next release deploys through it.
 - **Code scanning default setup**, if alerts start being read.
 - **A required reviewer on `production`**, if someone other than Leon ever ships.
 
 ## Adoption in the other repos
 
-Order: skillforge (this spec) -> skillsite -> skillbot. Copy first, extract shared pieces on the third (P2).
+Order: skillforge (this spec) -> skillbot -> skillsite. What is identical comes from the shared repo (see the
+platform contract): a new adopter copies the two callers from its README and `ci.yml`, `build.yml`,
+`release.yml` and the release-please config from here, then adapts those to its stack.
 
 - **skillsite:** `release-type: node` on the root `package.json`; replaces its manual `release.yml` (bot commit
   + tag). Already has the App. Needs the `/health` `version` field and a job named `check`.
@@ -333,8 +358,10 @@ One PR per requirement, `just check` green on each:
 4. **P0-4** - deploy script and `deploy.yml`; `release.yml` switches from the webhook to it. *Done: #118.*
 5. **P0-5** - cleanup and docs. *Done: #119, plus #121 (the `openapi.json` round-trip fix).* Then merge the
    release PR #117: the first real release through the new flow. *Done 2026-09-20: `v0.4.0`.*
-6. **P1-1 and P1-4** as independent follow-ups (P1-2 and P1-3 are dropped); then skillsite, then skillbot.
-   *P1-1: #126, confirmed by the next release. P1-4: #125.*
+6. **P1-1 and P1-4** as independent follow-ups (P1-2 and P1-3 are dropped). *P1-1: #126, confirmed by the next
+   release. P1-4: #125.*
+7. **Shared workflows (P2)** - before the other repos adopt the flow, so that they start from the callers.
+   *Done: `skill-platform-workflows` `v1.0.0`, #133.* Then skillbot, then skillsite.
 
 **Dependency:** Leon extends the App installation and creates the org variable/secret, the `production`
 environment and the Dokploy API key - these cannot be done from a PR.
@@ -349,3 +376,5 @@ environment and the Dokploy API key - these cannot be done from a PR.
 - Repo settings, rulesets, the App installation and Dokploy configuration are changed by Leon, not by an
   agent; describe the exact setting in the PR instead.
 - Tick the acceptance checkboxes in this file in the PR that fulfils them and flip the status line when P0 is done.
+
+[workflows]: https://github.com/Nachhilfe-Leon-Weimann/skill-platform-workflows

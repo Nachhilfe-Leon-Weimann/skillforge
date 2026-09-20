@@ -1,15 +1,11 @@
 name: Triage
 
-# Project intake (docs/specs/project-intake.md): every issue and PR lands on the org project with its Module
-# set and gets its author as assignee when nobody is assigned; a closed issue or PR moves into the current
-# iteration, and an issue that is closed without an issue type gets a comment asking for one.
-#
-# Nothing in this file is repo-specific - the module is the repository variable PROJECT_MODULE - so it can move
-# into the shared platform repo as it is.
+# Project intake (docs/specs/project-intake.md): issues and PRs land on the org project with Module, assignee
+# and the iteration they closed in. The work is the platform's shared workflow (skill-platform-workflows); this
+# repo contributes the triggers and the repository variable PROJECT_MODULE.
 #
 # `issues` and `pull_request_target` run this file from `main`, with the App key, for anyone who opens an issue
-# or a PR. So this workflow never checks out code and never puts `${{ github.event.* }}` into a `run:` block -
-# event data reaches a script through `env:` only.
+# or a PR. Keep it a caller: no steps, no checkout, no `run:`.
 
 on:
   issues:
@@ -19,216 +15,12 @@ on:
 
 permissions: {}
 
-env:
-  PROJECT_URL: https://github.com/orgs/Nachhilfe-Leon-Weimann/projects/2
-  # This repo's option of the project's single-select field "Module" (forge, site, bot).
-  MODULE: ${{ vars.PROJECT_MODULE }}
-
 jobs:
-  board:
-    name: Put on the board, set Module and Iteration
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      # GITHUB_TOKEN cannot reach an org project; the org App can. The token is narrowed to what this job needs.
-      - name: Create App token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          permission-organization-projects: write
-          permission-issues: read
-          permission-pull-requests: read
-
-      # Adding an item that is already on the board returns the existing item - this is also how the later
-      # steps find the item of a PR that is being closed.
-      - name: Add to the project
-        id: add
-        uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
-        with:
-          project-url: ${{ env.PROJECT_URL }}
-          github-token: ${{ steps.app-token.outputs.token }}
-
-      # A Module that is already set was chosen on purpose and stays.
-      - name: Set Module
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          ITEM_ID: ${{ steps.add.outputs.itemId }}
-        run: |
-          if [ -z "$MODULE" ]; then
-            echo "::error::The repository variable PROJECT_MODULE is not set."
-            exit 1
-          fi
-
-          # shellcheck disable=SC2016 # the $names inside the single-quoted queries are GraphQL variables
-          item=$(gh api graphql -f item="$ITEM_ID" -f field=Module -f query='
-            query($item: ID!, $field: String!) {
-              node(id: $item) {
-                ... on ProjectV2Item {
-                  current: fieldValueByName(name: $field) {
-                    ... on ProjectV2ItemFieldSingleSelectValue { name }
-                  }
-                  project {
-                    id
-                    field(name: $field) {
-                      ... on ProjectV2SingleSelectField { id options { id name } }
-                    }
-                  }
-                }
-              }
-            }')
-
-          current=$(jq -r '.data.node.current.name // empty' <<<"$item")
-          if [ -n "$current" ]; then
-            echo "Module is already set to \"$current\"."
-            exit 0
-          fi
-
-          option=$(jq -r --arg module "$MODULE" \
-            '.data.node.project.field.options[]? | select(.name == $module) | .id' <<<"$item")
-          if [ -z "$option" ]; then
-            echo "::error::The project has no Module option named \"$MODULE\"."
-            exit 1
-          fi
-
-          # shellcheck disable=SC2016
-          gh api graphql --silent \
-            -f project="$(jq -r '.data.node.project.id' <<<"$item")" \
-            -f item="$ITEM_ID" \
-            -f field="$(jq -r '.data.node.project.field.id' <<<"$item")" \
-            -f option="$option" \
-            -f query='
-              mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
-                updateProjectV2ItemFieldValue(input: {
-                  projectId: $project, itemId: $item, fieldId: $field, value: { singleSelectOptionId: $option }
-                }) { projectV2Item { id } }
-              }'
-          echo "Module set to \"$MODULE\"."
-
-      # The iteration of a closed item says when it was finished - a fact, so it replaces whatever was planned.
-      - name: Move a closed item into the current iteration
-        if: github.event.action == 'closed'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          ITEM_ID: ${{ steps.add.outputs.itemId }}
-          TZ: Europe/Berlin
-        run: |
-          # shellcheck disable=SC2016
-          item=$(gh api graphql -f item="$ITEM_ID" -f field=Iteration -f query='
-            query($item: ID!, $field: String!) {
-              node(id: $item) {
-                ... on ProjectV2Item {
-                  project {
-                    id
-                    field(name: $field) {
-                      ... on ProjectV2IterationField {
-                        id
-                        configuration { iterations { id title startDate duration } }
-                      }
-                    }
-                  }
-                }
-              }
-            }')
-
-          today=$(date +%F)
-          current=$(jq -r --arg today "$today" '
-            [ .data.node.project.field.configuration.iterations[]?
-              | ((.startDate | strptime("%Y-%m-%d") | mktime) + .duration * 86400 | strftime("%Y-%m-%d")) as $end
-              | select(.startDate <= $today and $today < $end)
-              | "\(.id) \(.title)" ]
-            | first // empty' <<<"$item")
-          if [ -z "$current" ]; then
-            echo "::notice::No iteration covers $today; the iteration stays as it is."
-            exit 0
-          fi
-
-          # shellcheck disable=SC2016
-          gh api graphql --silent \
-            -f project="$(jq -r '.data.node.project.id' <<<"$item")" \
-            -f item="$ITEM_ID" \
-            -f field="$(jq -r '.data.node.project.field.id' <<<"$item")" \
-            -f iteration="${current%% *}" \
-            -f query='
-              mutation($project: ID!, $item: ID!, $field: ID!, $iteration: String!) {
-                updateProjectV2ItemFieldValue(input: {
-                  projectId: $project, itemId: $item, fieldId: $field, value: { iterationId: $iteration }
-                }) { projectV2Item { id } }
-              }'
-          echo "Moved into \"${current#* }\"."
-
-  assign-author:
-    name: Assign the author
-    # Only for a new item, and a bot cannot be an assignee.
-    if: >-
-      github.event.action != 'closed' &&
-      github.event.issue.user.type != 'Bot' && github.event.pull_request.user.type != 'Bot'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+  triage:
+    name: Triage
+    uses: Nachhilfe-Leon-Weimann/skill-platform-workflows/.github/workflows/triage.yml@v1
+    # A called workflow only gets what its caller grants: `assign-author` and `issue-type` write with GITHUB_TOKEN.
     permissions:
       issues: write
       pull-requests: write
-
-    steps:
-      # Read at run time, not from the event: an assignee picked while creating the item always wins.
-      - name: Assign the author if nobody is assigned
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
-          AUTHOR: ${{ github.event.issue.user.login || github.event.pull_request.user.login }}
-        run: |
-          assigned=$(gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER" --jq '.assignees | length')
-          if [ "$assigned" -gt 0 ]; then
-            echo "Already assigned."
-            exit 0
-          fi
-
-          # 204 = can be assigned, 404 = cannot (an outside contributor): that is not a failure.
-          if ! answer=$(gh api "repos/$GITHUB_REPOSITORY/assignees/$AUTHOR" 2>&1); then
-            case "$answer" in
-              *"HTTP 404"*) echo "$AUTHOR cannot be assigned in this repository."; exit 0 ;;
-              *) echo "$answer"; exit 1 ;;
-            esac
-          fi
-
-          gh api --silent -X POST "repos/$GITHUB_REPOSITORY/issues/$NUMBER/assignees" -f "assignees[]=$AUTHOR"
-          echo "Assigned $AUTHOR."
-
-  issue-type:
-    name: Ask for the issue type
-    # An issue type cannot be made mandatory, so a closed issue without one gets a reminder.
-    if: github.event_name == 'issues' && github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      issues: write
-
-    steps:
-      # Read at run time, not from the event: a type set right before or after closing counts.
-      - name: Comment if the closed issue has no type
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ github.event.issue.number }}
-          # Hidden in the comment, so that closing the issue again does not ask twice.
-          MARKER: "<!-- triage:missing-issue-type -->"
-        run: |
-          type=$(gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER" --jq '.type.name // empty')
-          if [ -n "$type" ]; then
-            echo "The issue type is \"$type\"."
-            exit 0
-          fi
-
-          # --paginate prints one array per page; -s collects them.
-          asked=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" \
-            | jq -s --arg marker "$MARKER" '[.[][] | select(.body | contains($marker))] | length')
-          if [ "$asked" -gt 0 ]; then
-            echo "Already asked for the issue type."
-            exit 0
-          fi
-
-          body=$(printf '%s\n\n%s' \
-            "This issue was closed without an **issue type**. Please set one (sidebar -> Type)." "$MARKER")
-          gh api --silent -X POST "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" -f body="$body"
-          echo "Asked for the issue type."
+    secrets: inherit
