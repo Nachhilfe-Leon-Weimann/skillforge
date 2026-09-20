@@ -61,7 +61,7 @@ def create_user_access_token(
     party_id: uuid.UUID,
     session_id: uuid.UUID,
     scopes: Iterable[str] | str,
-    roles: Iterable[str] = (),
+    roles: Iterable[str] | str = (),
     now: datetime | None = None,
 ) -> CreatedAccessToken:
     """Issue an access token for a user account, to ``client_id`` on that user's behalf.
@@ -86,7 +86,7 @@ def create_user_access_token(
     )
     claims["party_id"] = str(party_id)
     claims["sid"] = str(session_id)
-    claims["roles"] = sorted({str(role) for role in roles})
+    claims["roles"] = sorted(_role_values(roles))
 
     return _encode(settings, claims, issued_at=issued_at, expires_at=expires_at, scope=scope)
 
@@ -243,6 +243,15 @@ def _require_roles(claims: dict[str, object]) -> frozenset[str]:
         raise TokenValidationError("Missing or invalid roles claim")
 
     return frozenset(roles)
+
+
+def _role_values(roles: Iterable[str] | str) -> frozenset[str]:
+    """Normalize ``roles`` the way ``_scope_values`` normalizes scopes: a bare ``str`` is a
+    whitespace-separated list of roles, not an iterable of characters."""
+    if isinstance(roles, str):
+        return frozenset(roles.split())
+
+    return frozenset(value for value in (str(role).strip() for role in roles) if value)
 
 
 def _format_scope(scopes: Iterable[str] | str) -> str:

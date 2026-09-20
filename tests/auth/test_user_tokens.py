@@ -88,6 +88,18 @@ def test_user_access_token_carries_the_canonical_scope():
     assert created.scope == "account:self crm:read"
 
 
+def test_user_access_token_takes_a_bare_roles_string_as_a_whitespace_separated_list():
+    """A ``str`` type-checks as ``Iterable[str]``: without special-casing it, one role would be
+    written to the claim character by character - the pitfall ``_scope_values`` documents."""
+    settings = _settings()
+
+    one = _user_token(settings, scopes=["account:self"], roles="admin")
+    several = _user_token(settings, scopes=["account:self"], roles="tutor admin")
+
+    assert _decode(one.access_token, settings)["roles"] == ["admin"]
+    assert _decode(several.access_token, settings)["roles"] == ["admin", "tutor"]
+
+
 def test_create_and_validate_user_access_token():
     settings = _settings()
 
@@ -178,7 +190,7 @@ def _user_token(
     settings: AuthSettings,
     *,
     scopes: list[str],
-    roles: list[str] | None = None,
+    roles: list[str] | str | None = None,
     now: datetime | None = None,
 ) -> CreatedAccessToken:
     return create_user_access_token(
