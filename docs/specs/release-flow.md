@@ -1,7 +1,7 @@
 # Spec: Release flow (one release and deploy pipeline for the whole skill-platform)
 
-> Status: P0 implemented on `main` (2026-09-20) - open: the required check (P0-2) and the first release through
-> the flow (`0.4.0`, release PR #117) | Platform arc (skillforge first, then skillsite and skillbot)
+> Status: Implemented - P0 on `main`, `v0.4.0` released and deployed through the flow (2026-09-20); one criterion
+> open (manual `deploy.yml` dispatch, P0-4); P1 not started | Platform arc (skillforge first, then skillsite and skillbot)
 > This spec is also the decision record (no separate ADR: *Decided defaults*, *Verified behavior* and
 > *Trade-offs accepted* carry the why). Written in skillforge because it is the first adopter; the **platform
 > contract** below is what the other repos copy. Every GitHub behavior this spec relies on was verified in a
@@ -87,6 +87,7 @@ release cycles shipped with the real `git ship` alias.
 | Does the release commit pass `required_signatures` + `required_linear_history`? | **Yes.** Commits created through the GitHub API are signed by GitHub (`web-flow`). Observed for `GITHUB_TOKEN` in the probe and confirmed live for the App token: release PR #117 was opened by `skill-platform-release[bot]`, its commit is Verified (committer GitHub), and CI ran on it. |
 | Can `uv.lock` and `openapi.json` follow the version? | **Yes**, via `extra-files`: a `toml` updater with `$.package[?(@.name.value=='<package>')].version` and a `json` updater with `$.info.version`. `uv lock --check` stays consistent. The json updater re-serializes the whole file with JavaScript, so `dump_openapi.py` writes integer-valued floats as integers - otherwise `50.0` comes back as `50` and `just openapi-check` fails on the release PR (found in the final review, not in the probe). A JSONPath that stops matching is a **silent no-op** - CI's `uv sync --locked` is the backstop. |
 | Does release-please cope with squash-merged PRs? | **Yes** (live): #114-#121 were squash-merged; it reads the squash commit's conventional subject and rebuilt the release PR #117 after every merge. |
+| What does Dokploy answer to `compose.deploy`, and in which order does `deployment.allByCompose` list? | Seen live with `v0.4.0`: the answer holds `composeId`, `message`, `success` - **no deployment id** - and the list is newest-first. So the script identifies its deployment as the newest id that did not exist before the request; that heuristic cannot be replaced by a returned id. |
 | Tag format? | `include-component-in-tag: false` yields plain `vX.Y.Z`, matching the existing tags. |
 | Required status check + `git ship` for a normal PR? | **Works** - same SHA, the green check is already there. |
 | ... and for the release PR opened with `GITHUB_TOKEN`? | **Rejected:** `Required status check "check" is expected`. The PR's CI run is created but never runs jobs. |
@@ -165,15 +166,17 @@ What is identical in every repo; everything else is repo-specific detail behind 
   - [x] The release PR's head commit is shown as *Verified* and its CI run (job `check`) executes and is green.
         *(#117, authored by `skill-platform-release[bot]`; green since the `dump_openapi.py` fix, #121)*
   - [x] `just openapi-check` and `uv sync --locked` pass on the release PR (proves both `extra-files` paths match).
-  - [ ] Merging the release PR (`git ship` or squash) creates tag `vX.Y.Z` and a GitHub release; the PR label
-        becomes `autorelease: tagged`.
+  - [x] Merging the release PR (`git ship` or squash) creates tag `vX.Y.Z` and a GitHub release; the PR label
+        becomes `autorelease: tagged`. *(#117, squash-merged: tag and release `v0.4.0` on the merge commit)*
 
 **P0-2 - CI is a required check.**
 - *Technique:* add `required_status_checks` with context `check` to the `main` ruleset (after P0-1, otherwise
   the release PR cannot be shipped). The job in [`ci.yml`](../../.github/workflows/ci.yml) is already named `check`.
 - *Acceptance criteria:*
-  - [ ] Pushing a commit without a green `check` to `main` is rejected.
-  - [ ] `git ship` of a green PR and of a green release PR both succeed, as does the squash button.
+  - [x] Pushing a commit without a green `check` to `main` is rejected. *(rule active, confirmed through the rules
+        API; the rejection itself was shown in the probe - never test it with a push to `main`)*
+  - [x] `git ship` of a green PR and of a green release PR both succeed, as does the squash button. *(both live under
+        the rule: #122 by `git ship` one minute after the rule was added, #117 by squash)*
 
 **P0-3 - Build and publish hang off `release_created`.**
 - *Technique:* in `release.yml`, the existing image job ([`build.yml`](../../.github/workflows/build.yml), tags
@@ -184,8 +187,9 @@ What is identical in every repo; everything else is repo-specific detail behind 
 - *Acceptance criteria:*
   - [x] A push to `main` that is not a release runs release-please only; build, publish and deploy are skipped.
         *(seen on the pushes of #118, #119 and #121)*
-  - [ ] A release produces the image `ghcr.io/nachhilfe-leon-weimann/skillforge:vX.Y.Z` and
-        `skillforge-client==X.Y.Z` on PyPI, both built from the tagged commit.
+  - [x] A release produces the image `ghcr.io/nachhilfe-leon-weimann/skillforge:vX.Y.Z` and
+        `skillforge-client==X.Y.Z` on PyPI, both built from the tagged commit. *(`v0.4.0`: the image also carries
+        the tagged commit's `sha-` tag)*
 
 **P0-4 - Deploy through the Dokploy API, verified.**
 - *Technique:* `deploy.yml` (environment `production`, concurrency group `deploy-production`, never cancelled)
@@ -202,8 +206,8 @@ What is identical in every repo; everything else is repo-specific detail behind 
 - *Technique:* remove the secret `DEPLOY_WEBHOOK_URL`, rotate the webhook token in Dokploy so the old URL is
   dead, and make sure Dokploy's own auto-deploy on push is off for the service.
 - *Acceptance criteria:*
-  - [ ] A successful release ends with a green `deploy` job whose summary names the Dokploy deployment and
-        the verified version.
+  - [x] A successful release ends with a green `deploy` job whose summary names the Dokploy deployment and
+        the verified version. *(`v0.4.0`: about two and a half minutes from merge to verified prod)*
   - [x] A deployment that ends in `error` (e.g. failing `migrate` service) turns the workflow red. *(script level:
         `test_a_failed_deployment_fails_the_script_with_dokploys_message`; not yet seen live)*
   - [x] A healthy container that reports the *old* version turns the workflow red after the timeout. *(script
@@ -290,11 +294,10 @@ One PR per requirement, `just check` green on each:
    deploy job for now. They cannot be staged: the old version-driven check would find the GitHub release that
    release-please created seconds earlier and skip build and deploy. *Done: #116.*
 3. **P0-2** - required check (settings only, no PR), once a release PR from the App has shown a green `check`.
-   *Open - #117 is green, so the rule can be added now; verify it through the rules API, never with a probe push.*
+   *Done 2026-09-20 (verified through the rules API, never with a probe push).*
 4. **P0-4** - deploy script and `deploy.yml`; `release.yml` switches from the webhook to it. *Done: #118.*
 5. **P0-5** - cleanup and docs. *Done: #119, plus #121 (the `openapi.json` round-trip fix).* Then merge the
-   release PR #117: the first real release through the new flow. *Open.* It closes the remaining boxes of P0-1,
-   P0-3 and P0-4.
+   release PR #117: the first real release through the new flow. *Done 2026-09-20: `v0.4.0`.*
 6. **P1-1 .. P1-4** as independent follow-ups; then skillsite, then skillbot.
 
 **Dependency:** Leon extends the App installation and creates the org variable/secret, the `production`

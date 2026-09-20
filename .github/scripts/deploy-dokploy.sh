@@ -111,7 +111,8 @@ jq -n \
 	--arg description "run=${GITHUB_RUN_ID:-local} attempt=${GITHUB_RUN_ATTEMPT:-1} sha=${RELEASE_SHA:-unknown}" \
 	'{composeId: $composeId, title: $title, description: $description}' > "$PAYLOAD"
 api POST compose.deploy "$WORK_DIR/deploy-response.json" "$PAYLOAD"
-# Only the answer's shape is logged (keys, no values): a returned deployment id could replace the heuristic below.
+# Dokploy answers with composeId, message and success - no deployment id (seen live with v0.4.0), hence the
+# heuristic below. The answer's shape stays logged (keys, no values) in case that ever changes.
 echo "Dokploy accepted the deployment request for v$RELEASE_VERSION (answer: $(jq -r 'if type == "object" then keys | join(", ") else type end' "$WORK_DIR/deploy-response.json" 2> /dev/null || echo unreadable))"
 
 # The new deployment is the newest entry that did not exist before the request - this does not
