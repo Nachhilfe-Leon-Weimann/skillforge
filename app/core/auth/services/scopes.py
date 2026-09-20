@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.models import ApplicationClient, ApplicationClientScopeGrant, PermissionScope
 
 from ..audit import AuditEventType, write_auth_audit_log
-from ..scopes import Scope
+from ..scopes import Scope, canonical, expand
 from .clients import get_application_client
 from .errors import ApplicationClientScopeGrantNotFoundError, InvalidClientScopeError
 
@@ -122,18 +122,39 @@ def resolve_token_scopes(
     *,
     requested_scopes: Iterable[str] | str | None,
     granted_scopes: frozenset[str],
+    user_scopes: frozenset[str] | None = None,
 ) -> frozenset[str]:
+    """Compute the canonical scopes of an issued token (ADR 0008, decision G).
+
+    ``granted_scopes`` are the client's scope grants; they are always the ceiling - client
+    credentials use them directly. For the ``password`` and ``refresh_token`` grants
+    ``user_scopes`` narrows that ceiling further to what the user's roles allow: the client is the
+    ceiling for every scope a user token can carry, ``account:self`` included, with no exemption.
+
+    With no scope requested, the token gets the canonical form of the ceiling; a request is
+    accepted only if every requested scope lies within it, and the token then carries the
+    canonical form of exactly what was requested (requesting fewer scopes is always allowed). A
+    ceiling, or a requested set, that comes out empty is ``invalid_scope``.
+    """
     normalized_requested_scopes = normalize_scope_set(requested_scopes)
+
+    available_scopes = expand(granted_scopes)
+    if user_scopes is not None:
+        available_scopes &= expand(user_scopes)
+
     if not normalized_requested_scopes:
-        if not granted_scopes:
-            raise InvalidClientScopeError("Client has no active scope grants")
-        return granted_scopes
+        token_scopes = canonical(available_scopes)
+    else:
+        missing_scopes = normalized_requested_scopes - available_scopes
+        if missing_scopes:
+            raise InvalidClientScopeError("Requested scopes are not granted")
 
-    missing_scopes = normalized_requested_scopes - granted_scopes
-    if missing_scopes:
-        raise InvalidClientScopeError("Requested scopes are not granted")
+        token_scopes = canonical(normalized_requested_scopes)
 
-    return normalized_requested_scopes
+    if not token_scopes:
+        raise InvalidClientScopeError("Client has no active scope grants")
+
+    return token_scopes
 
 
 def normalize_scope_set(scopes: Iterable[str] | str | None) -> frozenset[str]:

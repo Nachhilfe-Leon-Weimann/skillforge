@@ -43,7 +43,7 @@ async def test_seed_default_scopes_is_idempotent(session):
     second_seed = await seed_default_scopes(session)
     scopes = (await session.execute(select(PermissionScope))).scalars().all()
 
-    expected = {"bot:read", "bot:write", "auth:clients:manage", "crm:read", "crm:write"}
+    expected = {scope.value for scope in Scope}
     assert {scope.key for scope in first_seed} == expected
     assert {scope.key for scope in second_seed} == expected
     assert len(scopes) == len(expected)
