@@ -142,7 +142,8 @@ What is identical in every repo; everything else is repo-specific detail behind 
 
 - **Workflows:** `ci.yml` (PRs and pushes to `main`; contains the job **`check`**), `release.yml` (push to
   `main`: release-please, then build / publish / deploy when `release_created`), `deploy.yml` (`workflow_call`
-  + `workflow_dispatch`; the only place that talks to Dokploy).
+  + `workflow_dispatch`; the only place that talks to Dokploy). Outside the release flow, `triage.yml` puts
+  issues and PRs on the project board - its contract lives in [`project-intake.md`](project-intake.md).
 - **Config:** `release-please-config.json` and `.release-please-manifest.json` in the repo root; tags `vX.Y.Z`.
   `compose.yml` pins the deployed image to that tag (`x-release-please-version` on every `image:` line, a
   `generic` `extra-files` entry).
