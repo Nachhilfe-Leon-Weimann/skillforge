@@ -1,6 +1,8 @@
 """Contract-level assertions over the generated OpenAPI document."""
 
+import json
 import re
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -11,11 +13,25 @@ from app.main import app
 
 HTTP_METHODS = {"get", "put", "post", "delete", "patch", "head", "options", "trace"}
 OPERATION_ID_PATTERN = re.compile(r"(auth|bot|crm|system)_[a-z0-9_]+")
+COMMITTED_OPENAPI_PATH = Path(__file__).resolve().parents[2] / "openapi.json"
 
 
 @pytest.fixture(scope="module")
 def schema() -> dict[str, Any]:
     return app.openapi()
+
+
+def test_committed_contract_survives_a_javascript_round_trip():
+    """release-please's `json` extra-file updater rewrites the whole file with JavaScript's
+    JSON.parse + JSON.stringify. JavaScript has one numeric type, so an integer-valued float like
+    `50.0` comes back as `50`, and `just openapi-check` would then find the file stale on every
+    release PR."""
+    text = COMMITTED_OPENAPI_PATH.read_text()
+    float_tokens: list[str] = []
+    json.loads(text, parse_float=float_tokens.append)
+
+    integer_valued = [token for token in float_tokens if float(token).is_integer()]
+    assert integer_valued == []
 
 
 def _operations(schema: dict[str, Any]) -> list[tuple[str, str, dict[str, Any]]]:

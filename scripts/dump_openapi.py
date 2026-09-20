@@ -10,6 +10,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 # Dummy settings so the app imports for the schema dump
 os.environ.setdefault("DB__URL", "postgresql+asyncpg://schema:dump@localhost/schema")
@@ -23,9 +24,22 @@ from app.main import app  # noqa: E402
 OUTPUT = ROOT / "openapi.json"
 
 
+def _ints_for_integer_valued_floats(value: Any) -> Any:
+    # release-please's `json` extra-file updater re-serializes this file with JavaScript's
+    # JSON.parse/JSON.stringify; JavaScript has one numeric type, so a float like `50.0` would come
+    # back as `50` and `just openapi-check` would flag the file as stale on every release PR.
+    if isinstance(value, dict):
+        return {key: _ints_for_integer_valued_floats(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_ints_for_integer_valued_floats(item) for item in value]
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
 def main() -> None:
-    schema = app.openapi()
-    OUTPUT.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n")
+    schema = _ints_for_integer_valued_floats(app.openapi())
+    OUTPUT.write_text(json.dumps(schema, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
     print(f"Wrote {OUTPUT}")
 
 
