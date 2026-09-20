@@ -43,7 +43,21 @@ OWN_VARIANT: dict[Scope, Scope] = {
 """Maps an unqualified scope to its ``:own``, reach-qualified form (ADR 0008, decision H)."""
 
 
-def expand(scopes: Iterable[Scope | str]) -> frozenset[str]:
+def _scope_values(scopes: Iterable[Scope | str] | str) -> frozenset[str]:
+    """Normalize ``scopes`` to a set of scope value strings.
+
+    A bare ``str`` is treated as a space-separated scope string, like ``normalize_scope_set`` in
+    ``services/scopes.py`` - a plain ``str`` also type-checks as ``Iterable[str]``, so without this
+    case a caller passing one (for example ``expand(session.scope)``, a space-separated text
+    column) would silently get it iterated character by character.
+    """
+    if isinstance(scopes, str):
+        return frozenset(scopes.split())
+
+    return frozenset(str(scope) for scope in scopes)
+
+
+def expand(scopes: Iterable[Scope | str] | str) -> frozenset[str]:
     """Return the closure of ``scopes``: every scope plus the ``:own`` variant of each unqualified
     one it contains.
 
@@ -51,7 +65,7 @@ def expand(scopes: Iterable[Scope | str]) -> frozenset[str]:
     scopes before comparing them against a route's requirement, so a token carrying the unqualified
     scope satisfies a route that asks for the qualified one.
     """
-    values = {str(scope) for scope in scopes}
+    values = _scope_values(scopes)
     expanded = set(values)
     for base, qualified in OWN_VARIANT.items():
         if base.value in values:
@@ -60,14 +74,14 @@ def expand(scopes: Iterable[Scope | str]) -> frozenset[str]:
     return frozenset(expanded)
 
 
-def canonical(scopes: Iterable[Scope | str]) -> frozenset[str]:
+def canonical(scopes: Iterable[Scope | str] | str) -> frozenset[str]:
     """Return the canonical form of ``scopes``: drop ``x:own`` wherever the unqualified ``x`` is
     also present.
 
     The inverse of :func:`expand` on any already-canonical set. A token always carries the
     canonical form - it is redundant to hold both a scope and its own-qualified variant.
     """
-    values = {str(scope) for scope in scopes}
+    values = _scope_values(scopes)
     result = set(values)
     for base, qualified in OWN_VARIANT.items():
         if base.value in values:

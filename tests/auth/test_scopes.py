@@ -45,6 +45,21 @@ def test_canonical_keeps_the_own_variant_when_the_unqualified_scope_is_absent():
     assert canonical({Scope.CRM_READ_OWN}) == {"crm:read:own"}
 
 
+def test_expand_treats_a_bare_string_as_a_space_separated_scope_string():
+    """A ``str`` type-checks as ``Iterable[str]``, so without special-casing it, ``expand`` would
+    iterate it character by character - the same pitfall ``normalize_scope_set`` in
+    ``services/scopes.py`` guards against."""
+    assert expand("crm:read") == {"crm:read", "crm:read:own"}
+
+
+def test_expand_splits_a_multi_scope_string_on_whitespace():
+    assert expand("bot:read crm:read") == {"bot:read", "crm:read", "crm:read:own"}
+
+
+def test_canonical_treats_a_bare_string_as_a_space_separated_scope_string():
+    assert canonical("crm:read crm:read:own") == {"crm:read"}
+
+
 def test_canonical_is_the_inverse_of_expand_on_every_subset_of_scope():
     """Property-style check: for every subset of ``Scope``, expanding it and then taking the
     canonical form yields the same result as taking the canonical form directly - expand never
