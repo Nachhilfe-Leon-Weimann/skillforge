@@ -197,11 +197,15 @@ async def update_user_account(
 ) -> UserAccountWithRoles:
     """Change the given fields; ``None`` means unchanged (both columns are ``NOT NULL``).
 
+    A no-op is not a write: an empty body, or one that repeats what the account already says,
+    changes nothing and records nothing. Every change that does happen gets its own audit entry.
+
     Disabling the account revokes its sessions. An account without a password cannot be activated:
     it has never proven that anybody holds its credential.
     """
     account = await get_user_account(session, user_id)
-    previous_status = account.status
+    email_changed = False
+    status_changed = False
 
     if email is not None:
         normalized = normalize_email(email)
@@ -209,16 +213,26 @@ async def update_user_account(
             await _require_email_unused(session, normalized)
             async with _unique_account(session):
                 account.email = normalized
+            email_changed = True
 
-    if status is not None and status is not previous_status:
+    if status is not None and status is not account.status:
         if status is UserAccountStatus.ACTIVE and account.password_hash is None:
             raise UserAccountStateError(f"User account {user_id} has no password")
         account.status = status
         if status is UserAccountStatus.DISABLED:
             await _revoke_sessions(session, user_id, reason=REVOKED_ACCOUNT_DISABLED)
+        status_changed = True
+
+    if not (email_changed or status_changed):
+        return await load_user_account(session, user_id)
 
     await session.flush()
-    await _audit(session, user_id, _update_event(previous_status, account.status), f"Updated user account by {actor}.")
+    if email_changed:
+        # Never the address itself: it is a personal value, and the entry says which account.
+        await _audit(session, user_id, AuditEventType.USER_ACCOUNT_UPDATED, f"Changed the e-mail address by {actor}.")
+    if status_changed:
+        await _audit(session, user_id, _status_event(account.status), f"Set the status to {account.status} by {actor}.")
+
     return await load_user_account(session, user_id)
 
 
@@ -477,13 +491,12 @@ def _issue_event(purpose: UserActionTokenPurpose) -> AuditEventType:
             return AuditEventType.PASSWORD_RESET_ISSUED
 
 
-def _update_event(previous: UserAccountStatus, current: UserAccountStatus) -> AuditEventType:
-    if previous is not current and current is UserAccountStatus.DISABLED:
+def _status_event(current: UserAccountStatus) -> AuditEventType:
+    """The event of a status that has just changed; the route offers no third value."""
+    if current is UserAccountStatus.DISABLED:
         return AuditEventType.USER_ACCOUNT_DISABLED
-    if previous is UserAccountStatus.DISABLED and current is not UserAccountStatus.DISABLED:
-        return AuditEventType.USER_ACCOUNT_ENABLED
 
-    return AuditEventType.USER_ACCOUNT_UPDATED
+    return AuditEventType.USER_ACCOUNT_ENABLED
 
 
 def _stored_roles(account: UserAccount) -> frozenset[Role]:
