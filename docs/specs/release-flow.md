@@ -37,7 +37,8 @@ Three mental models for one person is friction on every release. On top of that:
    version. Tags on `main` plus `CHANGELOG.md` are the condensed view - no release branch.
 4. **The deploy reports the truth.** The workflow talks to the Dokploy API, waits for the deployment to finish
    and verifies the running version. A failed deploy is a red workflow.
-5. **`main` only accepts green commits**, without giving up `git ship` and Leon's signature on feature commits.
+5. **`main` only accepts green commits**, whichever way a PR lands: `git ship` (Leon's signature on every
+   commit) or GitHub's squash button (one GitHub-signed commit per PR).
 6. **Less machinery than today**, not more. Everything the platform does not need is removed.
 
 ## Non-goals
@@ -59,13 +60,13 @@ Three mental models for one person is friction on every release. On top of that:
 
 | Topic | Decision | Rationale |
 |---|---|---|
-| **A - Release mechanism** | [release-please](https://github.com/googleapis/release-please) (`release-please-action`, pinned by SHA). It keeps one *release PR* up to date (version bump + `CHANGELOG.md`); shipping that PR is the release. | Same tool for Python and Node; version derived from conventional commits; replaces the hand-written bump workflow. Verified with `git ship` and the rulesets. |
+| **A - Release mechanism** | [release-please](https://github.com/googleapis/release-please) (`release-please-action`, pinned by SHA). It keeps one *release PR* up to date (version bump + `CHANGELOG.md`); shipping that PR is the release. | Same tool for Python and Node; version derived from conventional commits; replaces the hand-written bump workflow. Verified with `git ship` and the rulesets; squash merging is release-please's own default. |
 | **B - Environments** | Prod only. One GitHub Environment `production` per repo. | Decided 2026-09-19. |
-| **C - Branching** | Short-lived feature branches -> PR -> `git ship` (fast-forward) onto `main`. No release branch. Tags `vX.Y.Z` on `main`. | Linear history and signatures already enforced; a second branch would be a second history to keep in sync. |
-| **D - History on `main`** | One PR per slice (not per spec); before shipping, fold fixups and "tick the spec" commits into the slice they belong to. Every commit on `main` is green on its own and conventional. | ~6-8 commits for an arc like `crm-api.md` instead of ~40 - but not 1-2, which would destroy `git bisect` and the story. |
+| **C - Branching** | Short-lived feature branches -> PR -> onto `main` by `git ship` (fast-forward) or GitHub's squash button; both are allowed. No release branch. Tags `vX.Y.Z` on `main`. | Linear history and signatures already enforced; a second branch would be a second history to keep in sync. |
+| **D - History on `main`** | One PR per slice (not per spec); before shipping, fold fixups and "tick the spec" commits into the slice they belong to. Every commit on `main` is green on its own and conventional. A squash merge does the folding by itself: one PR, one commit, so the PR title must be the conventional message. | ~6-8 commits for an arc like `crm-api.md` instead of ~40 - but not 1-2, which would destroy `git bisect` and the story. |
 | **E - Release PR author** | An org-wide **GitHub App**; release-please runs with its installation token. The App is **`skill-platform-release`** - the installed `skillsite-release-bot`, renamed (no `bot` in the name: GitHub appends `[bot]`, and it keeps clear of *skillbot*) and extended to the other repos. One App per role; it does releases only. | PRs opened with `GITHUB_TOKEN` get no CI run, so the required check (G) would reject the release PR. Verified; see below. |
-| **F - Signatures** | Feature commits carry Leon's signature (via `git ship`). The one release commit per version is created through the GitHub API and carries GitHub's signature ("Verified"). Tags are lightweight and unsigned. | Satisfies the `required_signatures` rule; same trust level as today's bump PR. |
-| **G - Gate on `main`** | The `main` ruleset additionally requires the status check **`check`**. Every repo's CI exposes a job with exactly this name. | A fast-forward keeps the commit SHA, so the green check from the PR still counts on push. Verified. |
+| **F - Signatures** | Feature commits carry Leon's signature when they land via `git ship`, GitHub's when they are squash-merged. The one release commit per version is created through the GitHub API and carries GitHub's signature ("Verified"). Tags are lightweight and unsigned. | Satisfies the `required_signatures` rule; same trust level as today's bump PR. |
+| **G - Gate on `main`** | The `main` ruleset additionally requires the status check **`check`**. Every repo's CI exposes a job with exactly this name. | A fast-forward keeps the commit SHA, so the green check from the PR still counts on push (verified); the squash button enforces the check itself. |
 | **H - Deploy transport** | Dokploy **API** (`x-api-key`): `compose.deploy`, then poll `deployment.allByCompose` until `done` / `error`, then verify the health endpoint. The deploy webhook is removed. | Authenticated, observable, fails loudly. Endpoints proven in `github-actions-playground`. |
 | **I - Deployed version** | P0 keeps `:latest`; P1 pins `image: ...:vX.Y.Z` in `compose.yml`, rewritten by release-please in the release commit. | One annotated line; `main` then records what prod runs. |
 | **J - Health contract** | Every service with a public HTTP endpoint answers `GET /health` with at least `status` and `version`. Services without HTTP (skillbot) are verified by the Dokploy deployment status alone. | Lets the deploy job prove that the *new* version is the one answering. |
@@ -82,7 +83,7 @@ release cycles shipped with the real `git ship` alias.
 |---|---|
 | Does release-please recognise a release PR merged by fast-forward push? | **Yes.** GitHub marks the PR `MERGED` (merge commit = PR head), the label flips from `autorelease: pending` to `autorelease: tagged`, tag and GitHub release are created. skillforge PRs #112/#113 show the same `MERGED` state. |
 | Do the `release_created` / `tag_name` / `sha` outputs drive follow-up jobs in the same workflow? | **Yes.** This is how build and deploy are chained - events created with `GITHUB_TOKEN` never start *other* workflows, so an `on: release` trigger is not an option. |
-| Does the release commit pass `required_signatures` + `required_linear_history`? | **Yes.** Commits created through the GitHub API are signed by GitHub (`web-flow`). Observed for `GITHUB_TOKEN`; to be re-confirmed for the App token in P0-1. |
+| Does the release commit pass `required_signatures` + `required_linear_history`? | **Yes.** Commits created through the GitHub API are signed by GitHub (`web-flow`). Observed for `GITHUB_TOKEN` in the probe and confirmed live for the App token: release PR #117 was opened by `skill-platform-release[bot]`, its commit is Verified (committer GitHub), and CI ran on it. |
 | Can `uv.lock` and `openapi.json` follow the version? | **Yes**, via `extra-files`: a `toml` updater with `$.package[?(@.name.value=='<package>')].version` and a `json` updater with `$.info.version`. `uv lock --check` stays consistent. The json updater re-serializes the whole file with JavaScript, so `dump_openapi.py` writes integer-valued floats as integers - otherwise `50.0` comes back as `50` and `just openapi-check` fails on the release PR (found in the final review, not in the probe). A JSONPath that stops matching is a **silent no-op** - CI's `uv sync --locked` is the backstop. |
 | Tag format? | `include-component-in-tag: false` yields plain `vX.Y.Z`, matching the existing tags. |
 | Required status check + `git ship` for a normal PR? | **Works** - same SHA, the green check is already there. |
@@ -97,18 +98,21 @@ release cycles shipped with the real `git ship` alias.
 - **The release workflow holds a Dokploy API key**, which can do more than a single-purpose webhook URL. It
   lives only in the `production` environment, restricted to `main`.
 - **One commit per release is signed by GitHub, not by Leon.** It is mechanical, reviewable as a PR, and the
-  same trust level today's bump PR has.
+  same trust level today's bump PR has. Squash-merged PRs are GitHub-signed in the same way.
+- **Stacked PRs only work with `git ship`.** A squash merge gives the lower commits new SHAs, so the PR
+  stacked on top conflicts with `main` - this happened to #118 and #119 after #114-#116 were squashed. When
+  merging with the button, keep PRs independent of each other.
 - **The platform depends on one GitHub App and its private key.** If the App is unavailable, the fallback is
   to close and reopen the release PR as a user so CI runs on it.
 
 ## Target shape
 
 ```
-feature branch -> PR (CI: job "check" green) -> git ship -> main
+feature branch -> PR (CI: job "check" green) -> git ship or squash -> main
                                                             |
                           release.yml: release-please (App token) keeps the release PR current
                                                             |
-                         you ship the release PR (CI green on it) = the release
+                  you merge the release PR (git ship or squash; CI green on it) = the release
                                                             |
         release.yml on that push: tag vX.Y.Z + GitHub release + CHANGELOG.md   (release_created == true)
                                                             |
@@ -158,7 +162,7 @@ What is identical in every repo; everything else is repo-specific detail behind 
         `pyproject.toml`, `uv.lock`, `openapi.json`, `CHANGELOG.md` and the manifest.
   - [ ] The release PR's head commit is shown as *Verified* and its CI run (job `check`) executes and is green.
   - [ ] `just openapi-check` and `uv sync --locked` pass on the release PR (proves both `extra-files` paths match).
-  - [ ] `git ship` of the release PR creates tag `vX.Y.Z` and a GitHub release; the PR label becomes
+  - [ ] Merging the release PR (`git ship` or squash) creates tag `vX.Y.Z` and a GitHub release; the PR label becomes
         `autorelease: tagged`.
 
 **P0-2 - CI is a required check.**
@@ -166,7 +170,7 @@ What is identical in every repo; everything else is repo-specific detail behind 
   the release PR cannot be shipped). The job in [`ci.yml`](../../.github/workflows/ci.yml) is already named `check`.
 - *Acceptance criteria:*
   - [ ] Pushing a commit without a green `check` to `main` is rejected.
-  - [ ] `git ship` of a green PR and of a green release PR both succeed.
+  - [ ] `git ship` of a green PR and of a green release PR both succeed, as does the squash button.
 
 **P0-3 - Build and publish hang off `release_created`.**
 - *Technique:* in `release.yml`, the existing image job ([`build.yml`](../../.github/workflows/build.yml), tags
