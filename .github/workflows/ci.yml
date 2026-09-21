@@ -77,6 +77,9 @@ jobs:
           file: coverage.xml
           language: Python
           label: code-coverage/pytest
+          # The report is a convenience, `check` is the required status: a rejected upload (e.g. code
+          # quality switched off in the repo settings) must not block every PR and the release.
+          fail-on-error: false
 
       - name: Write coverage summary
         if: always()
