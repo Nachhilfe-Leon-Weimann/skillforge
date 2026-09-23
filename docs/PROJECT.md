@@ -19,16 +19,20 @@ frontend.**
 ```mermaid
 flowchart LR
     people([Students, guardians,<br/>tutors, admins])
-    bot["SkillBot<br/>Discord commands<br/>own database"]
+    bot["SkillBot<br/>Discord commands"]
+    botdb[(Bot database)]
     portal["Portal<br/>skillsite, Next.js server"]
     operator([Operator])
-    skillforge["SkillForge<br/>central data, identity,<br/>permissions, domain rules<br/>own database"]
+    skillforge["SkillForge<br/>central data, identity,<br/>permissions, domain rules"]
+    skillforgedb[(SkillForge database)]
 
     people -- Discord --> bot
     people -- browser --> portal
+    bot --- botdb
     bot -- "API: for a person<br/>or for itself" --> skillforge
     portal -- "API: for a person" --> skillforge
     operator -- Swagger UI --> skillforge
+    skillforge --- skillforgedb
 ```
 
 This is the target picture. Parts of today's code still look different - see
