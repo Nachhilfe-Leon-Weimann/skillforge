@@ -14,7 +14,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthSettings
-from app.core.auth.passwords import verify_password
+from app.core.auth.secrets import verify_secret
 from app.core.auth.services.errors import InvalidActionTokenError, UserRoleNotFoundError
 from app.core.auth.services.users import invite_user_account, redeem_action_token, remove_user_role
 from app.core.db import Database
@@ -69,8 +69,8 @@ async def test_an_overlapping_redeem_of_the_same_token_is_refused(db: Database):
         async with db.session(write=False) as check:
             password_hash = await check.scalar(select(UserAccount.password_hash).where(UserAccount.id == user_id))
         assert password_hash is not None
-        assert verify_password(FIRST_PASSWORD, password_hash)
-        assert not verify_password(SECOND_PASSWORD, password_hash)
+        assert verify_secret(FIRST_PASSWORD, password_hash)
+        assert not verify_secret(SECOND_PASSWORD, password_hash)
     finally:
         await first.close()
         await second.close()

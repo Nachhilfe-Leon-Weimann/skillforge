@@ -545,8 +545,10 @@ Until the portal exists, everything works from Swagger UI:
 
 - _Technique:_ `app/core/auth/services/users.py` (invite, get, list, update, roles, issue action token, redeem,
   revoke sessions) and `services/roles.py` (`derive_roles`); `app/api/v1/auth/users.py` and the redeem route;
-  `app/core/auth/passwords.py` for hashing, the dummy hash and the policy; `bootstrap_admin` in
-  [`bootstrap.py`](../../app/core/auth/bootstrap.py) with a `just bootstrap-admin` recipe.
+  `app/core/auth/passwords.py` for the policy and the dummy hash - hashing and token generation are
+  `hash_secret`, `verify_secret`, `digest` and `generate_secret` in [`secrets.py`](../../app/core/auth/secrets.py),
+  the one home of the secret primitives; `bootstrap_admin` in [`bootstrap.py`](../../app/core/auth/bootstrap.py)
+  with a `just bootstrap-admin` recipe.
 - _Acceptance criteria:_
   - [x] Inviting a person party answers `201` with an `invited` account and a token; the same party again is
         `user_account_already_exists`; a company is `account_party_not_a_person`; another account's e-mail is
@@ -612,8 +614,8 @@ Until the portal exists, everything works from Swagger UI:
 
 - _Technique:_ `issue_user_token` and `refresh_user_token` in
   [`services/tokens.py`](../../app/core/auth/services/tokens.py); `ClientTokenForm` becomes `TokenForm`;
-  `create_token` dispatches on the grant; `POST /auth/revoke`; `app/core/auth/sessions.py` for token generation
-  and hashing.
+  `create_token` dispatches on the grant; `POST /auth/revoke`; refresh tokens are generated and hashed with
+  `generate_secret` and `digest` from [`secrets.py`](../../app/core/auth/secrets.py) - no second hashing module.
 - _Acceptance criteria:_
   - [ ] The lifecycle test (database): invite -> redeem -> `password` -> call `/auth/me` -> `refresh_token` ->
         `revoke` -> the revoked refresh token is `invalid_grant`.

@@ -5,7 +5,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select, update
 
-from app.core.auth.services.users import ACTION_TOKEN_PREFIX, hash_action_token
+from app.core.auth.secrets import digest
+from app.core.auth.services.users import ACTION_TOKEN_PREFIX
 from app.core.db.models import UserAccount, UserActionToken
 
 pytestmark = pytest.mark.db
@@ -28,7 +29,7 @@ async def _redeem(client, token: str, password: str = PASSWORD):
 async def _expire(session, token: str) -> None:
     await session.execute(
         update(UserActionToken)
-        .where(UserActionToken.token_hash == hash_action_token(token))
+        .where(UserActionToken.token_hash == digest(token))
         .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
     )
 
@@ -51,9 +52,7 @@ async def test_the_redeemed_token_is_marked_used(client, make_person, session):
 
     await _redeem(client, token)
 
-    used_at = await session.scalar(
-        select(UserActionToken.used_at).where(UserActionToken.token_hash == hash_action_token(token))
-    )
+    used_at = await session.scalar(select(UserActionToken.used_at).where(UserActionToken.token_hash == digest(token)))
     assert used_at is not None
 
 

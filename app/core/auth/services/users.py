@@ -5,8 +5,6 @@ decision C). One-time tokens are stored as a SHA-256 hash; the plaintext exists 
 result of the call that issues it, and never reaches a log or an audit ``detail``.
 """
 
-import hashlib
-import secrets as random_secrets
 import uuid
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
@@ -33,9 +31,10 @@ from app.core.db.models import (
 
 from ..audit import AuditEventType, write_auth_audit_log
 from ..config import AuthSettings
-from ..passwords import hash_password, meets_password_policy
+from ..passwords import meets_password_policy
 from ..results import IssuedActionToken, UserAccountWithRoles
 from ..roles import Role
+from ..secrets import digest, generate_secret, hash_secret
 from .errors import (
     AccountPartyNotAPersonError,
     AccountPartyNotFoundError,
@@ -51,7 +50,6 @@ from .errors import (
 from .roles import derive_roles, derive_roles_for
 
 ACTION_TOKEN_PREFIX = "sf_ua_"
-ACTION_TOKEN_BYTES = 32
 
 # The values ``user_session.revoked_reason`` takes here. ``logout`` and ``reuse_detected`` belong
 # to the grants of P0-6.
@@ -77,14 +75,6 @@ def normalize_email(email: str) -> str:
     A fixed point, and the form the ``ck_user_account_email_lowercase`` check constraint accepts.
     """
     return email.strip().lower()
-
-
-def hash_action_token(plaintext: str) -> str:
-    """The stored form of a one-time token: SHA-256 hex.
-
-    Not Argon2: the token has full entropy, and the lookup needs a deterministic hash.
-    """
-    return hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
 
 
 async def invite_user_account(
@@ -311,12 +301,12 @@ async def issue_action_token(
         .values(invalidated_at=now)
     )
 
-    plaintext = f"{ACTION_TOKEN_PREFIX}{random_secrets.token_urlsafe(ACTION_TOKEN_BYTES)}"
+    plaintext = generate_secret(ACTION_TOKEN_PREFIX)
     token = UserActionToken(
         id=uuid.uuid4(),
         user_account_id=user_id,
         purpose=purpose,
-        token_hash=hash_action_token(plaintext),
+        token_hash=digest(plaintext),
         expires_at=now + timedelta(hours=_expire_hours(settings, purpose)),
         issued_by=actor,
     )
@@ -334,9 +324,7 @@ async def redeem_action_token(session: AsyncSession, *, plaintext: str, new_pass
     the lock are cleared, the token is marked used, and a ``password_reset`` revokes every session
     of the account - an invitation has none to revoke.
     """
-    found = await session.scalar(
-        select(UserActionToken).where(UserActionToken.token_hash == hash_action_token(plaintext))
-    )
+    found = await session.scalar(select(UserActionToken).where(UserActionToken.token_hash == digest(plaintext)))
     # The cheap look-up first: a token that was never live costs neither a hash nor a row lock.
     if found is None or not _is_live(found, datetime.now(UTC)):
         raise InvalidActionTokenError("Unknown, used or expired token")
@@ -345,7 +333,7 @@ async def redeem_action_token(session: AsyncSession, *, plaintext: str, new_pass
 
     # Hashed before the lock is taken: Argon2 is slow by design, and every other issue or redeem
     # on this account would queue behind it. The row lock still decides whether it gets stored.
-    password_hash = hash_password(new_password)
+    password_hash = hash_secret(new_password)
 
     account = await _lock_user_account(session, found.user_account_id)
     token = await _lock_action_token(session, found.id)

@@ -3,11 +3,6 @@ from .dependencies import get_current_principal, require_application, require_sc
 from .principal import ApplicationPrincipal, Principal, PrincipalType, UserPrincipal
 from .results import BootstrappedApplicationClient, CreatedClientSecret
 from .scopes import Scope
-from .secrets import (
-    generate_client_secret,
-    hash_client_secret,
-    verify_client_secret,
-)
 from .services import (
     ApplicationClientAlreadyExistsError,
     ApplicationClientManagementError,
@@ -63,10 +58,8 @@ __all__ = [
     "create_application_client_secret",
     "create_application_access_token",
     "create_client_secret",
-    "generate_client_secret",
     "get_current_principal",
     "get_application_client",
-    "hash_client_secret",
     "grant_application_client_scopes",
     "issue_client_token",
     "list_application_clients",
@@ -77,5 +70,4 @@ __all__ = [
     "seed_default_scopes",
     "update_application_client",
     "validate_access_token",
-    "verify_client_secret",
 ]

@@ -18,17 +18,17 @@ PASSWORD = "correct horse battery staple"
 def steps(monkeypatch) -> list[str]:
     """Record the order of the two slow steps of a redeem."""
     recorded: list[str] = []
-    hash_password, lock = users.hash_password, users._lock_user_account
+    hash_secret, lock = users.hash_secret, users._lock_user_account
 
     def record_hash(password: str) -> str:
         recorded.append("hash")
-        return hash_password(password)
+        return hash_secret(password)
 
     async def record_lock(session, user_id):
         recorded.append("lock")
         return await lock(session, user_id)
 
-    monkeypatch.setattr(users, "hash_password", record_hash)
+    monkeypatch.setattr(users, "hash_secret", record_hash)
     monkeypatch.setattr(users, "_lock_user_account", record_lock)
     return recorded
 
