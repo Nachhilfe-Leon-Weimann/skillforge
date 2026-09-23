@@ -105,5 +105,7 @@ DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
 
 ## Orientation
 
-Big picture in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); the *why* in
+Read [`docs/PROJECT.md`](docs/PROJECT.md) first: what Forge is for, its borders and principles. It
+wins over ADRs and specs - or it is changed first, deliberately. The current structure is in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); the *why* of single decisions in
 [`docs/decisions/`](docs/decisions/).

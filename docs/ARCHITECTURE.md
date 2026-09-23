@@ -1,13 +1,14 @@
 # Architecture
 
 This file describes the **living structure** of SkillForge - what exists *now* and how it fits
-together. The *why* behind larger decisions lives in [`decisions/`](decisions/) (ADRs),
-forward-looking design in [`specs/`](specs/).
+together. What Forge is *for*, its borders and principles, is in the [project sketch](PROJECT.md);
+the *why* behind larger decisions lives in [`decisions/`](decisions/) (ADRs), forward-looking
+design in [`specs/`](specs/).
 
 ## What is SkillForge?
 
-The backend of the skill-platform. It is the **source of truth** for the desired state and
-orchestrates SkillBot (the Discord bot) through three channels:
+The central service of the skill-platform. Today it is the **source of truth** for the desired
+state and orchestrates SkillBot (the Discord bot) through three channels:
 
 - a **REST API** (`/api/v1`, OAuth2-protected),
 - a **job queue** that SkillBot pulls work from,

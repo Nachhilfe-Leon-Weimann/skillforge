@@ -1,9 +1,13 @@
 # SkillForge
 
-Backend of the **skill-platform** and source of truth for SkillBot (the Discord bot).
-SkillForge orchestrates the bot through an OAuth2-protected REST API, a Postgres-backed
-job queue, and two-phase `prepare`/`commit` operations - Forge plans and confirms, the bot
-performs the Discord actions.
+Central service of the **skill-platform** and system of record for the people of the tutoring
+business and how they relate (the CRM). What Forge is for - a hub for central data, identity and
+permissions, not the backend of any one frontend - is laid out in the
+[project sketch](docs/PROJECT.md).
+
+Today SkillForge also orchestrates SkillBot (the Discord bot) through an OAuth2-protected REST
+API, a Postgres-backed job queue, and two-phase `prepare`/`commit` operations - Forge plans and
+confirms, the bot performs the Discord actions.
 
 ```
 HTTP -> app/api/v1        endpoints, schemas, scope checks
