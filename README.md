@@ -1,7 +1,7 @@
 # SkillForge
 
 Central service of the **skill-platform** and system of record for the people of the tutoring
-business and how they relate (the CRM). What Forge is for - a hub for central data, identity and
+business and how they relate (the CRM). What SkillForge is for - a hub for central data, identity and
 permissions, not the backend of any one frontend - is laid out in the
 [project sketch](docs/PROJECT.md).
 

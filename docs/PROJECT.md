@@ -1,75 +1,71 @@
-# Forge - project sketch
+# SkillForge - project sketch
 
-What Forge is for, where its borders are, and the principles every change is measured against.
+What SkillForge is for, where its borders are, and the principles every change is measured against.
 Kept short on purpose, so it can be reread before any larger piece of work. When the intent
 changes, it changes here first; ADRs and specs follow.
 
 ## In one paragraph
 
-Forge is the central service of the skill platform. It keeps the data the whole tutoring business
-relies on - who the people are and how they relate: students, guardians, payers, tutors, companies -
-and it decides who may do what with that data. Showing that data to people is somebody else's job.
-The Discord bot (SkillBot) and the web portal (skillsite) are frontends with their own backends and,
-where they need it, their own storage; they come to Forge when they need central data or a decision.
-**Forge is the hub for central data, not the backend of any single frontend.**
+SkillForge is the central service of the skill platform. It keeps the data the whole tutoring
+business relies on - who the people are and how they relate: students, guardians, payers, tutors,
+companies - and it decides who may do what with that data. Showing that data to people is somebody
+else's job. The Discord bot (SkillBot) and the web portal (skillsite) are frontends with their own
+backends and, where they need it, their own storage; they come to SkillForge when they need central
+data or a decision. **SkillForge is the hub for central data, not the backend of any single
+frontend.**
 
 ## The platform at a glance
 
 ```mermaid
 flowchart LR
-    people([Students, guardians, tutors, admins])
-    operator([Operator])
-    bot["SkillBot<br/>Discord commands"]
+    people([Students, guardians,<br/>tutors, admins])
+    bot["SkillBot<br/>Discord commands<br/>own database"]
     portal["Portal<br/>skillsite, Next.js server"]
-    forge["Forge<br/>central data, identity,<br/>permissions, domain rules"]
-    botdb[(Bot database)]
-    portaldb[("Portal storage,<br/>if needed")]
-    forgedb[(Forge database)]
+    operator([Operator])
+    skillforge["SkillForge<br/>central data, identity,<br/>permissions, domain rules<br/>own database"]
 
     people -- Discord --> bot
     people -- browser --> portal
-    operator -- Swagger UI --> forge
-    bot --- botdb
-    bot -- "API: for a person or for itself" --> forge
-    portal -.- portaldb
-    portal -- "API: for a person" --> forge
-    forge --- forgedb
+    bot -- "API: for a person<br/>or for itself" --> skillforge
+    portal -- "API: for a person" --> skillforge
+    operator -- Swagger UI --> skillforge
 ```
 
 This is the target picture. Parts of today's code still look different - see
 [Where we are](#where-we-are).
 
-## What Forge owns - and what it does not
+## What SkillForge owns - and what it does not
 
-| Forge owns                                                                                      | The frontends own                                                                                                     |
+| SkillForge owns                                                                                 | The frontends own                                                                                                     |
 | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | People and organisations, their roles and relations (the CRM)                                   | How things look and feel: pages, commands, messages                                                                   |
 | Identities: user accounts, how people log in, links to outside accounts (Discord, sevDesk, ...) | Their sessions and screen state                                                                                       |
 | Permissions: which client and which person may do what                                          | Their own picture of the data - for the bot: servers, channels, categories, workspaces, command setups, Discord roles |
 | Domain rules and actions that mean something for the business                                   | Rules that only concern their own medium                                                                              |
 
-The test for a rule: **would the other frontend need the same rule?** Then it belongs in Forge.
-"Only a student's own tutor may act on the student" is a Forge rule. "How many archive categories
-a Discord server holds" is a bot rule.
+The test for a rule: **would the other frontend need the same rule?** Then it belongs in SkillForge.
+"Only a student's own tutor may act on the student" is a SkillForge rule. "How many archive
+categories a Discord server holds" is a bot rule.
 
 ## Principles
 
-1. **Forge is the hub, not a backend.** Frontends ask Forge for central data and decisions. They
-   may keep keys and derived or cached data - the bot has to know whose workspace a channel is - as
-   long as it can be rebuilt from Forge and never flows back. Forge keeps nothing of theirs.
+1. **SkillForge is the hub, not a backend.** Frontends ask SkillForge for central data and
+   decisions. They may keep keys and derived or cached data - the bot has to know whose workspace a
+   channel is - as long as it can be rebuilt from SkillForge and never flows back. SkillForge keeps
+   nothing of theirs.
 2. **Every service owns its data,** in its own database where it needs one - the bot on the same
-   Postgres server as Forge. Central data is reached only through Forge's API, never by reading
-   another service's tables.
-3. **Forge pushes nothing.** It does not know who consumes its data. A frontend asks what changed
-   since it last looked and brings its own state in line; its handlers are idempotent, so asking
-   twice does no harm. Pushing (webhooks) stays an option for the day pulling is too slow.
+   Postgres server as SkillForge. Central data is reached only through SkillForge's API, never by
+   reading another service's tables.
+3. **SkillForge pushes nothing.** It does not know who consumes its data. A frontend asks what
+   changed since it last looked and brings its own state in line; its handlers are idempotent, so
+   asking twice does no harm. Pushing (webhooks) stays an option for the day pulling is too slow.
 4. **The CRM is the system of record.** It holds the intended state of the business and knows
    nothing about Discord or logins. Everybody reads it; nobody writes around it
    ([ADR 0007](decisions/0007-crm-system-of-record.md)).
 5. **One permission system.** Every endpoint declares once what it requires. There is no second,
    frontend-specific rights system, and what was not deliberately opened stays closed.
 6. **Same person, same rights - everywhere.** Whether a tutor acts in the portal or through a
-   Discord command, Forge decides by the same rules.
+   Discord command, SkillForge decides by the same rules.
 7. **The client is the ceiling.** A frontend can never do more for a person than it is allowed to do
    for people at all - and a person can never do more through a frontend than the person may do.
 8. **The account is the door.** Only people with a user account use authenticated features. Admins
@@ -88,8 +84,8 @@ Three questions decide every request.
    - _on behalf of people_ - the most it may ever do for any person.
 2. **For whom?** A frontend that acts for a person presents a token for that person's account. The
    portal gets one when the person logs in with e-mail and password. The bot gets one by telling
-   Forge which Discord user sent the command - something only clients explicitly allowed to do so
-   may do.
+   SkillForge which Discord user sent the command - something only clients explicitly allowed to do
+   so may do.
 
    The two ways are not equally strong. With a password, the person proves who they are; with
    Discord, the bot vouches for them - so the bot's secret speaks for every person linked to
@@ -116,15 +112,15 @@ may see - who pays for a student, for example, is none of the tutor's business.
 
 As of 2026-09.
 
-| Topic           | Today                                                                                                                                                       | Target                                                                                                                              |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Bot state       | Lives in Forge's `bot` schema; Forge checks and plans the Discord changes the bot asks for (two-phase operations); a job queue exists, but nothing feeds it | The bot runs its Discord workflows itself and keeps their state in its own database; Forge provides central data and decisions only |
-| Bot permissions | The bot calls Forge as itself; its own grant system decides what a Discord user may do                                                                      | The bot acts on behalf of the Discord user; Forge decides by the same rules as for the portal                                       |
-| People          | No user accounts; only applications log in (client credentials)                                                                                             | One account per person, created by admins; e-mail and password for the portal, Discord for the bot                                  |
-| Client grants   | One list per client, used for the client itself                                                                                                             | Every grant has a mode: for itself, or on behalf of people                                                                          |
-| Own data        | A scope such as `crm:read` always means every record                                                                                                        | `:own` scopes limit a person to their reach                                                                                         |
-| Change signals  | Parties carry `updated_at`, and the party list filters by `updated_since`; nobody consumes it yet                                                           | Frontends pull what changed and bring their state in line                                                                           |
-| Portal          | Not started                                                                                                                                                 | A Next.js server backend that talks to Forge                                                                                        |
+| Topic           | Today                                                                                                                                                                 | Target                                                                                                                                   |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Bot state       | Lives in SkillForge's `bot` schema; SkillForge checks and plans the Discord changes the bot asks for (two-phase operations); a job queue exists, but nothing feeds it | The bot runs its Discord workflows itself and keeps their state in its own database; SkillForge provides central data and decisions only |
+| Bot permissions | The bot calls SkillForge as itself; its own grant system decides what a Discord user may do                                                                           | The bot acts on behalf of the Discord user; SkillForge decides by the same rules as for the portal                                       |
+| People          | No user accounts; only applications log in (client credentials)                                                                                                       | One account per person, created by admins; e-mail and password for the portal, Discord for the bot                                       |
+| Client grants   | One list per client, used for the client itself                                                                                                                       | Every grant has a mode: for itself, or on behalf of people                                                                               |
+| Own data        | A scope such as `crm:read` always means every record                                                                                                                  | `:own` scopes limit a person to their reach                                                                                              |
+| Change signals  | Parties carry `updated_at`, and the party list filters by `updated_since`; nobody consumes it yet                                                                     | Frontends pull what changed and bring their state in line                                                                                |
+| Portal          | Not started                                                                                                                                                           | A Next.js server backend that talks to SkillForge                                                                                        |
 
 ## Roadmap
 
@@ -144,7 +140,7 @@ Coarse on purpose; the details live in the GitHub project.
 
 ## Words we use
 
-- **Party**: a person or an organisation in the CRM. Everyone Forge knows is a party.
+- **Party**: a person or an organisation in the CRM. Everyone SkillForge knows is a party.
 - **Client**: a registered application - SkillBot, the portal, an operator tool - with its own
   secret.
 - **Account**: a person's access to authenticated features. Belongs to exactly one person party.
@@ -159,7 +155,7 @@ Coarse on purpose; the details live in the GitHub project.
 
 ## How this sketch fits in
 
-- **This sketch** - the intent: what Forge is for, its borders, its principles. Changes rarely.
+- **This sketch** - the intent: what SkillForge is for, its borders, its principles. Changes rarely.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) - what exists now and how it is built.
 - [`decisions/`](decisions/) - one record per decision, with the context it was made in. A record is
   never rewritten; a decision that no longer holds is superseded by a newer one.

@@ -1,7 +1,7 @@
 # Architecture
 
 This file describes the **living structure** of SkillForge - what exists *now* and how it fits
-together. What Forge is *for*, its borders and principles, is in the [project sketch](PROJECT.md);
+together. What SkillForge is *for*, its borders and principles, is in the [project sketch](PROJECT.md);
 the *why* behind larger decisions lives in [`decisions/`](decisions/) (ADRs), forward-looking
 design in [`specs/`](specs/).
 
