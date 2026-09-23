@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0](https://github.com/Nachhilfe-Leon-Weimann/skillforge/compare/v0.4.0...v0.5.0) (2026-09-23)
+
+
+### Features
+
+* **auth:** add reach-qualified scopes and the role mapping ([#136](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/136)) ([9278f51](https://github.com/Nachhilfe-Leon-Weimann/skillforge/commit/9278f51a9916f922ac350e5e346371dd0e433752))
+* **auth:** invite and manage user accounts ([#140](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/140)) ([c44737d](https://github.com/Nachhilfe-Leon-Weimann/skillforge/commit/c44737d985c3e260ce9f6a03417317422e2b8b28))
+* **auth:** issue and validate user tokens ([#139](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/139)) ([7db63c4](https://github.com/Nachhilfe-Leon-Weimann/skillforge/commit/7db63c449bfaceefcf284bb8cf05019a94736af0))
+* **db:** add the user account, session and action token tables ([#137](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/137)) ([3a62ec6](https://github.com/Nachhilfe-Leon-Weimann/skillforge/commit/3a62ec60809b9631baa567f9262b0fa8a60acc90))
+
 ## [0.4.0](https://github.com/Nachhilfe-Leon-Weimann/skillforge/compare/v0.3.0...v0.4.0) (2026-09-20)
 
 
