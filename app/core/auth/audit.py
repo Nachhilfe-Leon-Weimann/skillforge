@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.models import AuthAuditLog
 
+from .principal import PrincipalType
+
 
 class AuditEventType(StrEnum):
     """What an ``AuthAuditLog`` entry records.
@@ -39,7 +41,7 @@ class AuditEventType(StrEnum):
 async def write_auth_audit_log(
     session: AsyncSession,
     *,
-    principal_type: str | None,
+    principal_type: PrincipalType | None,
     principal_id: str | uuid.UUID | None,
     event_type: str,
     success: bool,
@@ -70,7 +72,7 @@ async def write_user_account_audit_log(
     """
     await write_auth_audit_log(
         session,
-        principal_type="user",
+        principal_type=PrincipalType.USER,
         principal_id=user_id,
         event_type=event_type,
         success=True,

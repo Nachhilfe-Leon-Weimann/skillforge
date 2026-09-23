@@ -13,6 +13,7 @@ from app.core.db.models import (
 
 from ..audit import AuditEventType, write_auth_audit_log
 from ..config import AuthSettings
+from ..principal import PrincipalType
 from ..results import BootstrappedAdminAccount, BootstrappedApplicationClient
 from ..scopes import Scope, parse_scopes
 from .accounts import find_user_account_by_party
@@ -50,7 +51,7 @@ async def bootstrap_application_client(
         created_client = True
         await write_auth_audit_log(
             session,
-            principal_type="application",
+            principal_type=PrincipalType.APPLICATION,
             principal_id=client.id,
             event_type=AuditEventType.APPLICATION_CLIENT_CREATED,
             success=True,

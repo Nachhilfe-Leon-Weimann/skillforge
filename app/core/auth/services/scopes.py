@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.models import ApplicationClient, ApplicationClientScopeGrant, PermissionScope
 
 from ..audit import AuditEventType, write_auth_audit_log
+from ..principal import PrincipalType
 from ..scopes import Scope, canonical, expand, parse_scopes
 from .clients import get_application_client
 from .errors import ApplicationClientScopeGrantNotFoundError, InvalidClientScopeError
@@ -60,7 +61,7 @@ async def revoke_application_client_scope(
     await session.flush()
     await write_auth_audit_log(
         session,
-        principal_type="application",
+        principal_type=PrincipalType.APPLICATION,
         principal_id=client.id,
         event_type=AuditEventType.SCOPE_GRANT_REMOVED,
         success=True,
@@ -107,7 +108,7 @@ async def grant_client_scopes(
         session.add(ApplicationClientScopeGrant(application_client=client, permission_scope=permission_scope))
         await write_auth_audit_log(
             session,
-            principal_type="application",
+            principal_type=PrincipalType.APPLICATION,
             principal_id=client.id,
             event_type=AuditEventType.SCOPE_GRANT_ADDED,
             success=True,

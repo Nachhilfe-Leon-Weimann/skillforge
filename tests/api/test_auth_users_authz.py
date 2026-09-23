@@ -13,7 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from app.api.v1.common import ErrorResponse
-from app.core.auth import AuthSettings, Principal, Scope, create_application_access_token
+from app.core.auth import AuthSettings, Principal, Scope, UserPrincipal, create_application_access_token
 from app.core.auth import dependencies as auth_dependencies
 from app.core.auth.dependencies import get_auth_settings, get_current_principal
 from app.core.auth.services import action_tokens as action_tokens_service
@@ -82,11 +82,12 @@ async def test_the_redeem_route_answers_403_for_a_user_principal_whatever_its_sc
     """It logs a user in on their behalf, so it is a client's route (spec: route map)."""
 
     async def user_principal() -> Principal:
-        return Principal(
-            principal_type="user",
+        return UserPrincipal(
             principal_id=uuid4(),
-            subject=f"user:{uuid4()}",
-            scopes=frozenset({str(Scope.AUTH_USERS_LOGIN), str(Scope.AUTH_USERS_MANAGE)}),
+            client_id="portal",
+            scopes=frozenset({Scope.AUTH_USERS_LOGIN, Scope.AUTH_USERS_MANAGE}),
+            party_id=uuid4(),
+            session_id=uuid4(),
         )
 
     async with _client() as client:

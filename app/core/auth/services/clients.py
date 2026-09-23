@@ -9,6 +9,7 @@ from app.core.db.models import (
 )
 
 from ..audit import AuditEventType, write_auth_audit_log
+from ..principal import PrincipalType
 from .errors import ApplicationClientAlreadyExistsError, ApplicationClientNotFoundError
 
 
@@ -64,7 +65,7 @@ async def create_application_client(
     await session.flush()
     await write_auth_audit_log(
         session,
-        principal_type="application",
+        principal_type=PrincipalType.APPLICATION,
         principal_id=client.id,
         event_type=AuditEventType.APPLICATION_CLIENT_CREATED,
         success=True,
@@ -100,7 +101,7 @@ async def update_application_client(
 
     await write_auth_audit_log(
         session,
-        principal_type="application",
+        principal_type=PrincipalType.APPLICATION,
         principal_id=client.id,
         event_type=event_type,
         success=True,

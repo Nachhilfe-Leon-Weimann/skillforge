@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.models import ApplicationClientSecret
 
 from ..audit import AuditEventType, write_auth_audit_log
+from ..principal import PrincipalType
 from ..results import CreatedClientSecret
 from ..secrets import SECRET_PREFIX, generate_secret, hash_secret
 from .clients import get_application_client
@@ -32,7 +33,7 @@ async def create_client_secret(
     await session.flush()
     await write_auth_audit_log(
         session,
-        principal_type="application",
+        principal_type=PrincipalType.APPLICATION,
         principal_id=application_client_id,
         event_type=AuditEventType.CLIENT_SECRET_CREATED,
         success=True,
@@ -79,7 +80,7 @@ async def revoke_application_client_secret(
     await session.flush()
     await write_auth_audit_log(
         session,
-        principal_type="application",
+        principal_type=PrincipalType.APPLICATION,
         principal_id=client.id,
         event_type=AuditEventType.CLIENT_SECRET_REVOKED,
         success=True,

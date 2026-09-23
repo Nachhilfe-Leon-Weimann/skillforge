@@ -26,7 +26,7 @@ Postgres reachable via `DB__URL`.
 app/
   main.py            FastAPI entry point (root route + app wiring)
   api/system/        health.py (/health + /health/live, /health/dependencies[/{name}], /health/workers[/{name}])
-  api/v1/            endpoints: auth/ (token, clients, me), bot/ (runtime, jobs, operations,
+  api/v1/            endpoints: auth/ (token, me, clients, users, password), bot/ (runtime, jobs, operations,
                      command_envs, students, tutors, users, authz), crm/ (parties, persons, companies,
                      roles, contact_infos, relations, subjects; params + schemas); common/ (shared API
                      vocabulary: error envelope + handlers, error_responses, Page/PageParams, DBSession,

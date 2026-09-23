@@ -35,6 +35,11 @@ class Principal(ABC):
     def subject(self) -> str:
         """The token's ``sub`` claim, derived from the principal and checked against it on validation."""
 
+    @property
+    def actor(self) -> str:
+        """How the principal is recorded as the one who asked: ``<principal_type>:<principal_id>``."""
+        return f"{self.principal_type}:{self.principal_id}"
+
 
 @dataclass(frozen=True, kw_only=True)
 class ApplicationPrincipal(Principal):

@@ -94,7 +94,7 @@ async def invite_user(
         party_id=request.party_id,
         email=request.email,
         roles=request.roles,
-        actor=_actor(principal),
+        actor=principal.actor,
     )
     return InvitedUserAccount.from_created(created)
 
@@ -131,7 +131,7 @@ async def update_user(
     Disabling an account revokes its sessions right away; the access tokens already handed out
     expire within 15 minutes.
     """
-    view = await users_service.update_user_account(session, user_id, **request.model_dump(), actor=_actor(principal))
+    view = await users_service.update_user_account(session, user_id, **request.model_dump(), actor=principal.actor)
     return UserAccountDetail.from_model(view)
 
 
@@ -140,7 +140,7 @@ async def add_user_role(
     user_id: UserId, role: StoredRole, session: DBSession, principal: ManageUsers
 ) -> UserAccountDetail:
     """Give the account a stored role. Idempotent: holding it already changes nothing."""
-    view = await users_service.add_user_role(session, user_id, role=role, actor=_actor(principal))
+    view = await users_service.add_user_role(session, user_id, role=role, actor=principal.actor)
     return UserAccountDetail.from_model(view)
 
 
@@ -151,7 +151,7 @@ async def add_user_role(
 )
 async def remove_user_role(user_id: UserId, role: StoredRole, session: DBSession, principal: ManageUsers) -> None:
     """Take a stored role away. The roles the CRM derives cannot be removed here."""
-    await users_service.remove_user_role(session, user_id, role=role, actor=_actor(principal))
+    await users_service.remove_user_role(session, user_id, role=role, actor=principal.actor)
 
 
 @router.post(
@@ -171,7 +171,7 @@ async def issue_invitation(
         settings,
         user_id=user_id,
         purpose=UserActionTokenPurpose.INVITATION,
-        actor=_actor(principal),
+        actor=principal.actor,
     )
     return ActionTokenResponse.from_issued_token(issued)
 
@@ -193,7 +193,7 @@ async def issue_password_reset(
         settings,
         user_id=user_id,
         purpose=UserActionTokenPurpose.PASSWORD_RESET,
-        actor=_actor(principal),
+        actor=principal.actor,
     )
     return ActionTokenResponse.from_issued_token(issued)
 
@@ -205,9 +205,4 @@ async def issue_password_reset(
 )
 async def revoke_user_sessions(user_id: UserId, session: DBSession, principal: ManageUsers) -> None:
     """Revoke every session of the account, so no refresh token of it works any more."""
-    await sessions_service.revoke_user_sessions(session, user_id, actor=_actor(principal))
-
-
-def _actor(principal: Principal) -> str:
-    """Who asked, as it is recorded on the token row and in the audit entry."""
-    return f"{principal.principal_type}:{principal.principal_id}"
+    await sessions_service.revoke_user_sessions(session, user_id, actor=principal.actor)

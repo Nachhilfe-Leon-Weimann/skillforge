@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Security, status
 
 from app.api.v1.common import DBSession, error_responses
-from app.core.auth import Principal, Scope, require_application
+from app.core.auth import ApplicationPrincipal, Scope, require_application
 from app.core.auth.services import action_tokens as action_tokens_service
 from app.core.auth.services.errors import InvalidActionTokenError, WeakPasswordError
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/password")
 
 # One declaration: the scope reaches the nested ``get_current_principal`` - and with it the
 # operation's `security` and its 403 - and ``require_application`` refuses a user token.
-LoginClient = Annotated[Principal, Security(require_application, scopes=[Scope.AUTH_USERS_LOGIN])]
+LoginClient = Annotated[ApplicationPrincipal, Security(require_application, scopes=[Scope.AUTH_USERS_LOGIN])]
 
 
 @router.post(
@@ -37,10 +37,5 @@ async def redeem_password(request: PasswordRedeemRequest, session: DBSession, pr
         session,
         plaintext=request.token,
         new_password=request.new_password,
-        actor=_actor(principal),
+        actor=principal.actor,
     )
-
-
-def _actor(principal: Principal) -> str:
-    """Who asked, as it is recorded in the audit entry."""
-    return f"{principal.principal_type}:{principal.principal_id}"
