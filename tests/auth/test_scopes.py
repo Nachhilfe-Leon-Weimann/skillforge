@@ -3,7 +3,7 @@ from itertools import combinations
 import pytest
 
 from app.core.auth import Scope
-from app.core.auth.scopes import OWN_VARIANT, canonical, expand
+from app.core.auth.scopes import OWN_VARIANT, canonical, expand, format_scopes, parse_scopes
 
 
 @pytest.mark.parametrize("scope", list(Scope))
@@ -45,33 +45,23 @@ def test_canonical_keeps_the_own_variant_when_the_unqualified_scope_is_absent():
     assert canonical({Scope.CRM_READ_OWN}) == {"crm:read:own"}
 
 
-def test_expand_treats_a_bare_string_as_a_space_separated_scope_string():
-    """A ``str`` type-checks as ``Iterable[str]``, so without special-casing it, ``expand`` would
-    iterate it character by character - the same pitfall ``normalize_scope_set`` in
-    ``services/scopes.py`` guards against."""
-    assert expand("crm:read") == {"crm:read", "crm:read:own"}
+def test_parse_scopes_splits_an_oauth2_scope_string_at_whitespace():
+    assert parse_scopes(" bot:read\tcrm:read  ") == {"bot:read", "crm:read"}
 
 
-def test_expand_splits_a_multi_scope_string_on_whitespace():
-    assert expand("bot:read crm:read") == {"bot:read", "crm:read", "crm:read:own"}
+def test_parse_scopes_takes_an_iterable_value_by_value_and_drops_empty_values():
+    """A ``str`` is split, anything else iterated - so a single scope string is never taken apart
+    character by character."""
+    assert parse_scopes([Scope.BOT_READ, " crm:read ", "", "  "]) == {"bot:read", "crm:read"}
 
 
-def test_canonical_treats_a_bare_string_as_a_space_separated_scope_string():
-    assert canonical("crm:read crm:read:own") == {"crm:read"}
+def test_parse_scopes_reads_none_as_no_scope():
+    assert parse_scopes(None) == frozenset()
 
 
-def test_canonical_strips_the_values_of_an_iterable_before_comparing_them():
-    """A padded value has to normalize like the bare one, or the `:own` variant survives next to a
-    scope that is present after all - and `_format_scope` strips it into the token anyway."""
-    assert canonical(["crm:read ", "crm:read:own"]) == {"crm:read"}
-
-
-def test_expand_strips_the_values_of_an_iterable_before_comparing_them():
-    assert expand([" crm:read"]) == {"crm:read", "crm:read:own"}
-
-
-def test_expand_drops_empty_values_of_an_iterable():
-    assert expand(["bot:read", "", "  "]) == {"bot:read"}
+def test_format_scopes_is_the_sorted_inverse_of_parse_scopes():
+    assert format_scopes({"crm:read", "bot:read"}) == "bot:read crm:read"
+    assert parse_scopes(format_scopes({"crm:read", "bot:read"})) == {"bot:read", "crm:read"}
 
 
 def test_canonical_is_the_inverse_of_expand_on_every_subset_of_scope():

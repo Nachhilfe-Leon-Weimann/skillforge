@@ -1,17 +1,39 @@
+"""Access tokens: a ``Principal``, signed.
+
+``create_access_token`` writes a principal into the claims of a JWT and ``validate_access_token``
+reads it back. The claims are declared once, as one pydantic model per principal type that
+``principal_type`` tells apart - issuing and validating use the same declaration, so they cannot
+drift apart.
+"""
+
 import uuid
+from abc import abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any, Literal, Self
 
 import jwt
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    Field,
+    PlainSerializer,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
 
 from .config import AuthSettings
-from .principal import Principal
-from .scopes import canonical
+from .principal import ApplicationPrincipal, Principal, PrincipalType, UserPrincipal
+from .roles import Role
+from .scopes import canonical, format_scopes, parse_scopes
 
-PRINCIPAL_TYPE_APPLICATION = "application"
-PRINCIPAL_TYPE_USER = "user"
 TOKEN_TYPE_BEARER = "bearer"
+
+# Checked by PyJWT itself; the claims that say who the token speaks for are the models' business.
+_REGISTERED_CLAIMS = ["iss", "aud", "sub", "iat", "exp", "jti"]
 
 
 class TokenValidationError(ValueError):
@@ -27,106 +49,108 @@ class CreatedAccessToken:
     scope: str
 
 
-def create_application_access_token(
+def _from_scope_string(value: object) -> object:
+    """On the wire the claim is an OAuth2 scope string; anything else is left to the set validation."""
+    return parse_scopes(value) if isinstance(value, str) else value
+
+
+def _not_empty(scopes: frozenset[str]) -> frozenset[str]:
+    if not scopes:
+        raise ValueError("scopes must not be empty")
+
+    return scopes
+
+
+ScopeClaim = Annotated[
+    frozenset[str],
+    BeforeValidator(_from_scope_string),
+    AfterValidator(_not_empty),
+    PlainSerializer(format_scopes, return_type=str),
+]
+"""The ``scope`` claim: a space-separated string on the wire, a non-empty set in Python."""
+
+RolesClaim = Annotated[frozenset[Role], PlainSerializer(sorted, return_type=list[Role])]
+"""The ``roles`` claim: a sorted list on the wire; an unknown role makes the token invalid."""
+
+
+class _Claims(BaseModel):
+    """What every access token says about the principal it speaks for.
+
+    The registered claims (``iss``, ``aud``, ``iat``, ``exp``, ``jti``) are PyJWT's to check and are
+    ignored here.
+    """
+
+    sub: str
+    principal_id: uuid.UUID
+    azp: str = Field(min_length=1)
+    scope: ScopeClaim
+
+    @abstractmethod
+    def to_principal(self) -> Principal: ...
+
+    @model_validator(mode="after")
+    def _subject_names_the_principal(self) -> Self:
+        # Compared with the canonical spelling: Forge writes ``sub`` from the principal, so a token
+        # whose ``sub`` spells it any other way was not written by Forge.
+        if self.sub != self.to_principal().subject:
+            raise ValueError("sub does not name the principal of the token")
+
+        return self
+
+
+class _ApplicationClaims(_Claims):
+    principal_type: Literal[PrincipalType.APPLICATION]
+
+    def to_principal(self) -> ApplicationPrincipal:
+        return ApplicationPrincipal(principal_id=self.principal_id, client_id=self.azp, scopes=self.scope)
+
+
+class _UserClaims(_Claims):
+    principal_type: Literal[PrincipalType.USER]
+    party_id: uuid.UUID
+    sid: uuid.UUID
+    roles: RolesClaim
+
+    def to_principal(self) -> UserPrincipal:
+        return UserPrincipal(
+            principal_id=self.principal_id,
+            client_id=self.azp,
+            scopes=self.scope,
+            party_id=self.party_id,
+            session_id=self.sid,
+            roles=self.roles,
+        )
+
+
+_ACCESS_CLAIMS: TypeAdapter[_ApplicationClaims | _UserClaims] = TypeAdapter(
+    Annotated[_ApplicationClaims | _UserClaims, Field(discriminator="principal_type")]
+)
+
+
+def create_access_token(
     settings: AuthSettings,
+    principal: Principal,
     *,
-    principal_id: uuid.UUID,
-    client_id: str,
-    scopes: Iterable[str] | str,
     now: datetime | None = None,
 ) -> CreatedAccessToken:
-    issued_at = _normalize_datetime(now or datetime.now(UTC))
-    expires_at = issued_at + timedelta(minutes=settings.access_token_expire_minutes)
-    scope = _format_scope(scopes)
+    """Issue an access token that speaks for ``principal``.
 
-    claims = _base_claims(
-        settings,
-        subject=f"app:{client_id}",
-        principal_type=PRINCIPAL_TYPE_APPLICATION,
-        principal_id=principal_id,
-        client_id=client_id,
-        scope=scope,
-        issued_at=issued_at,
-        expires_at=expires_at,
-    )
-
-    return _encode(settings, claims, issued_at=issued_at, expires_at=expires_at, scope=scope)
-
-
-def create_user_access_token(
-    settings: AuthSettings,
-    *,
-    principal_id: uuid.UUID,
-    client_id: str,
-    party_id: uuid.UUID,
-    session_id: uuid.UUID,
-    scopes: Iterable[str] | str,
-    roles: Iterable[str] | str = (),
-    now: datetime | None = None,
-) -> CreatedAccessToken:
-    """Issue an access token for a user account, to ``client_id`` on that user's behalf.
-
-    ``principal_id`` is the ``auth.user_account`` row, ``session_id`` the ``auth.user_session`` the
-    login opened. ``roles`` are informational - Forge authorizes by scope only (ADR 0008) - and the
-    scope claim is canonical, so a token never carries both a scope and its ``:own`` variant.
+    The scope claim is canonical: a token never carries both a scope and its ``:own`` variant
+    (ADR 0008, decision H). An empty scope is refused - every token grants something.
     """
     issued_at = _normalize_datetime(now or datetime.now(UTC))
     expires_at = issued_at + timedelta(minutes=settings.access_token_expire_minutes)
-    scope = _format_scope(canonical(scopes))
+    claims = _claims_of(principal)
 
-    claims = _base_claims(
-        settings,
-        subject=f"user:{principal_id}",
-        principal_type=PRINCIPAL_TYPE_USER,
-        principal_id=principal_id,
-        client_id=client_id,
-        scope=scope,
-        issued_at=issued_at,
-        expires_at=expires_at,
-    )
-    claims["party_id"] = str(party_id)
-    claims["sid"] = str(session_id)
-    claims["roles"] = sorted(_role_values(roles))
-
-    return _encode(settings, claims, issued_at=issued_at, expires_at=expires_at, scope=scope)
-
-
-def _base_claims(
-    settings: AuthSettings,
-    *,
-    subject: str,
-    principal_type: str,
-    principal_id: uuid.UUID,
-    client_id: str,
-    scope: str,
-    issued_at: datetime,
-    expires_at: datetime,
-) -> dict[str, object]:
-    """The claims every access token carries, whatever it was issued for."""
-    return {
-        "iss": settings.issuer,
-        "aud": settings.audience,
-        "sub": subject,
-        "principal_type": principal_type,
-        "principal_id": str(principal_id),
-        "azp": client_id,
-        "scope": scope,
-        "iat": issued_at,
-        "exp": expires_at,
-        "jti": str(uuid.uuid4()),
-    }
-
-
-def _encode(
-    settings: AuthSettings,
-    claims: dict[str, object],
-    *,
-    issued_at: datetime,
-    expires_at: datetime,
-    scope: str,
-) -> CreatedAccessToken:
     access_token = jwt.encode(
-        claims,
+        {
+            "iss": settings.issuer,
+            "aud": settings.audience,
+            **claims,
+            "iat": issued_at,
+            "exp": expires_at,
+            "jti": str(uuid.uuid4()),
+        },
         settings.secret_key.get_secret_value(),
         algorithm=settings.algorithm,
     )
@@ -136,11 +160,27 @@ def _encode(
         token_type=TOKEN_TYPE_BEARER,
         expires_at=expires_at,
         expires_in=int((expires_at - issued_at).total_seconds()),
-        scope=scope,
+        scope=claims["scope"],
     )
 
 
+def create_application_access_token(
+    settings: AuthSettings,
+    *,
+    principal_id: uuid.UUID,
+    client_id: str,
+    scopes: Iterable[str],
+    now: datetime | None = None,
+) -> CreatedAccessToken:
+    """Shorthand for ``create_access_token`` with an ``ApplicationPrincipal``, for the callers that
+    mint an application token straight from its parts."""
+    principal = ApplicationPrincipal(principal_id=principal_id, client_id=client_id, scopes=parse_scopes(scopes))
+    return create_access_token(settings, principal, now=now)
+
+
 def validate_access_token(token: str, settings: AuthSettings) -> Principal:
+    """Return the principal ``token`` speaks for; any token Forge did not issue as it stands is a
+    ``TokenValidationError``."""
     try:
         claims = jwt.decode(
             token,
@@ -148,123 +188,28 @@ def validate_access_token(token: str, settings: AuthSettings) -> Principal:
             algorithms=[settings.algorithm],
             issuer=settings.issuer,
             audience=settings.audience,
-            options={
-                "require": [
-                    "iss",
-                    "aud",
-                    "sub",
-                    "principal_type",
-                    "principal_id",
-                    "azp",
-                    "scope",
-                    "iat",
-                    "exp",
-                    "jti",
-                ],
-            },
+            options={"require": _REGISTERED_CLAIMS},
         )
-    except jwt.PyJWTError as exc:
+        principal_claims = _ACCESS_CLAIMS.validate_python(claims)
+    except (jwt.PyJWTError, ValidationError) as exc:
         raise TokenValidationError("Invalid access token") from exc
 
-    return _claims_to_principal(claims)
+    return principal_claims.to_principal()
 
 
-def _claims_to_principal(claims: dict[str, object]) -> Principal:
-    """Turn decoded claims into a principal, validating what the token's type has to carry."""
-    principal_type = claims.get("principal_type")
-    if principal_type == PRINCIPAL_TYPE_APPLICATION:
-        return _application_principal(claims)
-    if principal_type == PRINCIPAL_TYPE_USER:
-        return _user_principal(claims)
+def _claims_of(principal: Principal) -> dict[str, Any]:
+    """The claims that say who ``principal`` is, validated and in their wire form."""
+    claims: dict[str, object] = {
+        "sub": principal.subject,
+        "principal_type": principal.principal_type,
+        "principal_id": principal.principal_id,
+        "azp": principal.client_id,
+        "scope": canonical(principal.scopes),
+    }
+    if isinstance(principal, UserPrincipal):
+        claims |= {"party_id": principal.party_id, "sid": principal.session_id, "roles": principal.roles}
 
-    raise TokenValidationError("Unsupported principal type")
-
-
-def _application_principal(claims: dict[str, object]) -> Principal:
-    client_id = _require_str_claim(claims, "azp")
-    subject = _require_str_claim(claims, "sub")
-    if subject != f"app:{client_id}":
-        raise TokenValidationError("Invalid subject")
-
-    return Principal(
-        principal_type=PRINCIPAL_TYPE_APPLICATION,
-        principal_id=_require_uuid_claim(claims, "principal_id"),
-        subject=subject,
-        scopes=_require_scopes(claims),
-        client_id=client_id,
-    )
-
-
-def _user_principal(claims: dict[str, object]) -> Principal:
-    client_id = _require_str_claim(claims, "azp")
-    # Compared as written, not as parsed: ``uuid.UUID`` also accepts the hyphen-less, uppercase,
-    # brace and urn forms, so a parsed comparison would let the two claims disagree textually.
-    principal_id = _require_str_claim(claims, "principal_id")
-    subject = _require_str_claim(claims, "sub")
-    if subject != f"user:{principal_id}":
-        raise TokenValidationError("Invalid subject")
-
-    return Principal(
-        principal_type=PRINCIPAL_TYPE_USER,
-        principal_id=_require_uuid_claim(claims, "principal_id"),
-        subject=subject,
-        scopes=_require_scopes(claims),
-        client_id=client_id,
-        party_id=_require_uuid_claim(claims, "party_id"),
-        session_id=_require_uuid_claim(claims, "sid"),
-        roles=_require_roles(claims),
-    )
-
-
-def _require_str_claim(claims: dict[str, object], name: str) -> str:
-    value = claims.get(name)
-    if not isinstance(value, str) or not value:
-        raise TokenValidationError(f"Missing or invalid {name} claim")
-
-    return value
-
-
-def _require_uuid_claim(claims: dict[str, object], name: str) -> uuid.UUID:
-    try:
-        return uuid.UUID(_require_str_claim(claims, name))
-    except ValueError as exc:
-        raise TokenValidationError(f"Invalid {name} claim") from exc
-
-
-def _require_scopes(claims: dict[str, object]) -> frozenset[str]:
-    scopes = frozenset(_require_str_claim(claims, "scope").split())
-    if not scopes:
-        raise TokenValidationError("Missing token scope")
-
-    return scopes
-
-
-def _require_roles(claims: dict[str, object]) -> frozenset[str]:
-    roles = claims.get("roles")
-    if not isinstance(roles, list) or not all(isinstance(role, str) and role for role in roles):
-        raise TokenValidationError("Missing or invalid roles claim")
-
-    return frozenset(roles)
-
-
-def _role_values(roles: Iterable[str] | str) -> frozenset[str]:
-    """Normalize ``roles`` the way ``_scope_values`` normalizes scopes: a bare ``str`` is a
-    whitespace-separated list of roles, not an iterable of characters."""
-    if isinstance(roles, str):
-        return frozenset(roles.split())
-
-    return frozenset(value for value in (str(role).strip() for role in roles) if value)
-
-
-def _format_scope(scopes: Iterable[str] | str) -> str:
-    if isinstance(scopes, str):
-        normalized_scopes = sorted(set(scopes.split()))
-    else:
-        normalized_scopes = sorted({str(scope).strip() for scope in scopes if str(scope).strip()})
-    if not normalized_scopes:
-        raise ValueError("scopes must not be empty")
-
-    return " ".join(normalized_scopes)
+    return _ACCESS_CLAIMS.dump_python(_ACCESS_CLAIMS.validate_python(claims), mode="json")
 
 
 def _normalize_datetime(value: datetime) -> datetime:

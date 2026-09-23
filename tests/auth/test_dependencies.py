@@ -9,8 +9,9 @@ from pydantic import SecretStr
 from app.core.auth import (
     AuthSettings,
     Principal,
+    UserPrincipal,
+    create_access_token,
     create_application_access_token,
-    create_user_access_token,
     require_application,
     require_scopes,
 )
@@ -18,7 +19,7 @@ from app.core.auth.dependencies import get_auth_settings, get_current_principal
 
 BotWritePrincipal = Annotated[Principal, require_scopes("bot:write")]
 CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
-ApplicationPrincipal = Annotated[Principal, Depends(require_application)]
+ApplicationOnly = Annotated[Principal, Depends(require_application)]
 
 
 async def test_get_current_principal_returns_principal_for_valid_token():
@@ -153,17 +154,18 @@ async def test_require_application_rejects_non_application_principal():
     app = FastAPI()
 
     async def fake_principal() -> Principal:
-        return Principal(
-            principal_type="user",
+        return UserPrincipal(
             principal_id=uuid4(),
-            subject="user:123",
+            client_id="portal",
             scopes=frozenset({"bot:read"}),
+            party_id=uuid4(),
+            session_id=uuid4(),
         )
 
     app.dependency_overrides[get_current_principal] = fake_principal
 
     @app.get("/application-only")
-    async def application_only(principal: ApplicationPrincipal):
+    async def application_only(principal: ApplicationOnly):
         return {"principal_type": principal.principal_type}
 
     response = await _request(app, "GET", "/application-only")
@@ -178,17 +180,17 @@ async def test_require_application_rejects_a_real_user_token():
     app.dependency_overrides[get_auth_settings] = lambda: settings
 
     @app.get("/application-only")
-    async def application_only(principal: ApplicationPrincipal):
+    async def application_only(principal: ApplicationOnly):
         return {"principal_type": principal.principal_type}
 
-    token = create_user_access_token(
-        settings,
+    user = UserPrincipal(
         principal_id=uuid4(),
         client_id="portal",
+        scopes=frozenset({"account:self", "bot:read"}),
         party_id=uuid4(),
         session_id=uuid4(),
-        scopes=["account:self", "bot:read"],
     )
+    token = create_access_token(settings, user)
 
     response = await _request(
         app,

@@ -1662,7 +1662,7 @@
           "roles": {
             "description": "Roles the user holds, sorted - which views to offer. Never authorize on them, only on `scopes`.",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Role"
             },
             "title": "Roles",
             "type": "array"
@@ -2686,6 +2686,17 @@
         ],
         "title": "RelationResponse",
         "type": "object"
+      },
+      "Role": {
+        "description": "A view a user account holds; an account can hold several.\n\n`student`, `tutor` and `guardian` follow from the CRM, `admin` is assigned to the account.",
+        "enum": [
+          "student",
+          "tutor",
+          "guardian",
+          "admin"
+        ],
+        "title": "Role",
+        "type": "string"
       },
       "StudentActivationCommitRequest": {
         "properties": {

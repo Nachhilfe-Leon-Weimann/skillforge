@@ -1,6 +1,6 @@
 from .config import AuthSettings
 from .dependencies import get_current_principal, require_application, require_scopes
-from .principal import Principal
+from .principal import ApplicationPrincipal, Principal, PrincipalType, UserPrincipal
 from .results import BootstrappedApplicationClient, CreatedClientSecret
 from .scopes import Scope
 from .secrets import (
@@ -33,8 +33,8 @@ from .services import (
 from .tokens import (
     CreatedAccessToken,
     TokenValidationError,
+    create_access_token,
     create_application_access_token,
-    create_user_access_token,
     validate_access_token,
 )
 
@@ -44,6 +44,7 @@ __all__ = [
     "ApplicationClientNotFoundError",
     "ApplicationClientScopeGrantNotFoundError",
     "ApplicationClientSecretNotFoundError",
+    "ApplicationPrincipal",
     "AuthSettings",
     "BootstrappedApplicationClient",
     "ClientCredentialsError",
@@ -52,14 +53,16 @@ __all__ = [
     "InvalidClientCredentialsError",
     "InvalidClientScopeError",
     "Principal",
+    "PrincipalType",
     "Scope",
     "TokenValidationError",
+    "UserPrincipal",
     "bootstrap_application_client",
+    "create_access_token",
     "create_application_client",
     "create_application_client_secret",
     "create_application_access_token",
     "create_client_secret",
-    "create_user_access_token",
     "generate_client_secret",
     "get_current_principal",
     "get_application_client",

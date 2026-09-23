@@ -14,8 +14,9 @@ from pydantic import SecretStr
 
 from app.api.v1.auth.me import get_me
 from app.api.v1.common import ErrorResponse
-from app.core.auth import AuthSettings, Scope, create_application_access_token, create_user_access_token
+from app.core.auth import AuthSettings, Scope, UserPrincipal, create_access_token, create_application_access_token
 from app.core.auth.dependencies import get_auth_settings
+from app.core.auth.roles import Role
 from app.main import app
 
 ME = "/api/v1/auth/me"
@@ -41,7 +42,7 @@ async def test_me_reports_the_principal_type_the_client_and_the_sorted_scopes():
 
 async def test_me_reports_the_account_the_party_and_the_roles_of_a_user_token():
     async with _client() as client:
-        response = await client.get(ME, headers=_user_auth_headers(roles=["tutor", "admin"]))
+        response = await client.get(ME, headers=_user_auth_headers(roles={Role.TUTOR, Role.ADMIN}))
 
     assert response.status_code == 200
     assert response.json() == {
@@ -134,16 +135,16 @@ def _auth_headers(*scopes: Scope) -> dict[str, str]:
     return {"Authorization": f"Bearer {token.access_token}"}
 
 
-def _user_auth_headers(*, roles: list[str]) -> dict[str, str]:
-    token = create_user_access_token(
-        _auth_settings(),
+def _user_auth_headers(*, roles: set[Role]) -> dict[str, str]:
+    user = UserPrincipal(
         principal_id=USER_ID,
         client_id="portal",
+        scopes=frozenset({Scope.ACCOUNT_SELF, Scope.CRM_READ_OWN}),
         party_id=PARTY_ID,
         session_id=SESSION_ID,
-        scopes=[Scope.ACCOUNT_SELF, Scope.CRM_READ_OWN],
-        roles=roles,
+        roles=frozenset(roles),
     )
+    token = create_access_token(_auth_settings(), user)
     return {"Authorization": f"Bearer {token.access_token}"}
 
 

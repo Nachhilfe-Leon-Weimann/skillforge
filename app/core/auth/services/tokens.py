@@ -7,8 +7,10 @@ from app.core.db.models import ApplicationClientSecret, ApplicationClientStatus
 
 from ..audit import AuditEventType, write_auth_audit_log
 from ..config import AuthSettings
+from ..principal import ApplicationPrincipal
+from ..scopes import parse_scopes
 from ..secrets import verify_client_secret
-from ..tokens import CreatedAccessToken, create_application_access_token
+from ..tokens import CreatedAccessToken, create_access_token
 from .clients import find_application_client
 from .errors import ClientCredentialsError, InvalidClientCredentialsError
 from .scopes import granted_active_scope_keys, resolve_token_scopes
@@ -41,18 +43,13 @@ async def issue_client_token(
 
         granted_scopes = granted_active_scope_keys(client.scope_grants)
         token_scopes = resolve_token_scopes(
-            requested_scopes=requested_scopes,
+            requested_scopes=parse_scopes(requested_scopes),
             granted_scopes=granted_scopes,
         )
 
         matching_secret.last_used_at = issued_at
-        token = create_application_access_token(
-            settings,
-            principal_id=client.id,
-            client_id=client.client_id,
-            scopes=token_scopes,
-            now=issued_at,
-        )
+        principal = ApplicationPrincipal(principal_id=client.id, client_id=client.client_id, scopes=token_scopes)
+        token = create_access_token(settings, principal, now=issued_at)
     except ClientCredentialsError as exc:
         await write_auth_audit_log(
             session,

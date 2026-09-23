@@ -12,11 +12,13 @@ from app.api.v1.common import register_exception_handlers
 from app.core.auth import (
     AuthSettings,
     Principal,
+    UserPrincipal,
+    create_access_token,
     create_application_access_token,
-    create_user_access_token,
     require_scopes,
 )
 from app.core.auth.dependencies import get_auth_settings
+from app.core.auth.roles import Role
 from app.core.logging import LogFormat, LoggingSettings, LogLevel, configure_logging, register_request_logging
 
 BotWritePrincipal = Annotated[Principal, require_scopes("bot:write")]
@@ -90,18 +92,19 @@ async def test_request_logging_identifies_the_user_behind_a_request(capsys):
 
     @app.get("/parties")
     async def parties(principal: CrmReadOwnPrincipal):
+        assert isinstance(principal, UserPrincipal)
         return {"party_id": str(principal.party_id)}
 
     user_id, party_id, session_id = uuid4(), uuid4(), uuid4()
-    token = create_user_access_token(
-        _settings(),
+    user = UserPrincipal(
         principal_id=user_id,
         client_id="portal",
+        scopes=frozenset({"crm:read:own"}),
         party_id=party_id,
         session_id=session_id,
-        scopes=["crm:read:own"],
-        roles=["student"],
+        roles=frozenset({Role.STUDENT}),
     )
+    token = create_access_token(_settings(), user)
     capsys.readouterr()
 
     response = await _request(app, "GET", "/parties", headers={"Authorization": f"Bearer {token.access_token}"})

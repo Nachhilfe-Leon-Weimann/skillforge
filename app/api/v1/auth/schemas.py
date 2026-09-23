@@ -4,9 +4,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.v1.common import ApiModel
-from app.core.auth.principal import Principal
+from app.core.auth.principal import Principal, UserPrincipal
 from app.core.auth.results import CreatedClientSecret
-from app.core.auth.tokens import PRINCIPAL_TYPE_USER, CreatedAccessToken
+from app.core.auth.roles import Role
+from app.core.auth.tokens import CreatedAccessToken
 from app.core.db.models import ApplicationClient, ApplicationClientStatus
 
 
@@ -39,19 +40,19 @@ class MeResponse(ApiModel):
     """User account the token was issued for; `null` for an application principal."""
     party_id: UUID | None
     """CRM party the user account belongs to; `null` for an application principal."""
-    roles: list[str]
+    roles: list[Role]
     """Roles the user holds, sorted - which views to offer. Never authorize on them, only on `scopes`."""
 
     @classmethod
     def from_principal(cls, principal: Principal) -> MeResponse:
-        is_user = principal.principal_type == PRINCIPAL_TYPE_USER
+        user = principal if isinstance(principal, UserPrincipal) else None
         return cls(
             principal_type=principal.principal_type,
             client_id=principal.client_id,
             scopes=sorted(principal.scopes),
-            user_id=principal.principal_id if is_user else None,
-            party_id=principal.party_id,
-            roles=sorted(principal.roles),
+            user_id=user.principal_id if user else None,
+            party_id=user.party_id if user else None,
+            roles=sorted(user.roles) if user else [],
         )
 
 
