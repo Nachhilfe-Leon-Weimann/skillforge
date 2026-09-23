@@ -4,9 +4,10 @@ import pytest
 from pydantic import SecretStr
 
 from app.core.auth import AuthSettings
-from app.core.auth.services import users
+from app.core.auth.services import action_tokens
+from app.core.auth.services.action_tokens import redeem_action_token
 from app.core.auth.services.errors import InvalidActionTokenError, WeakPasswordError
-from app.core.auth.services.users import invite_user_account, redeem_action_token
+from app.core.auth.services.users import invite_user_account
 
 pytestmark = pytest.mark.db
 
@@ -18,7 +19,7 @@ PASSWORD = "correct horse battery staple"
 def steps(monkeypatch) -> list[str]:
     """Record the order of the two slow steps of a redeem."""
     recorded: list[str] = []
-    hash_secret, lock = users.hash_secret, users._lock_user_account
+    hash_secret, lock = action_tokens.hash_secret, action_tokens.lock_user_account
 
     def record_hash(password: str) -> str:
         recorded.append("hash")
@@ -28,14 +29,14 @@ def steps(monkeypatch) -> list[str]:
         recorded.append("lock")
         return await lock(session, user_id)
 
-    monkeypatch.setattr(users, "hash_secret", record_hash)
-    monkeypatch.setattr(users, "_lock_user_account", record_lock)
+    monkeypatch.setattr(action_tokens, "hash_secret", record_hash)
+    monkeypatch.setattr(action_tokens, "lock_user_account", record_lock)
     return recorded
 
 
 async def _invite(session, party, email: str = "anna@example.org") -> str:
-    _, invitation = await invite_user_account(session, SETTINGS, party_id=party.id, email=email, actor="test")
-    return invitation.plaintext
+    created = await invite_user_account(session, SETTINGS, party_id=party.id, email=email, actor="test")
+    return created.invitation.plaintext
 
 
 async def test_the_password_is_hashed_before_the_account_row_is_locked(session, make_person, steps):

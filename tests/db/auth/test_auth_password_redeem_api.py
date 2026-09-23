@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select, update
 
 from app.core.auth.secrets import digest
-from app.core.auth.services.users import ACTION_TOKEN_PREFIX
+from app.core.auth.services.action_tokens import ACTION_TOKEN_PREFIX
 from app.core.db.models import UserAccount, UserActionToken
 
 pytestmark = pytest.mark.db

@@ -1,13 +1,13 @@
 from fastapi import APIRouter
 
-from . import clients, me, token, users
+from . import clients, me, password, token, users
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 router.include_router(token.router)
 router.include_router(me.router)
 router.include_router(clients.router)
 router.include_router(users.router)
-router.include_router(users.password_router)
+router.include_router(password.router)
 
 __all__ = [
     "router",

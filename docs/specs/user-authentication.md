@@ -543,8 +543,11 @@ Until the portal exists, everything works from Swagger UI:
 
 **P0-5 - Accounts.**
 
-- _Technique:_ `app/core/auth/services/users.py` (invite, get, list, update, roles, issue action token, redeem,
-  revoke sessions) and `services/roles.py` (`derive_roles`); `app/api/v1/auth/users.py` and the redeem route;
+- _Technique:_ the account services split by concern, like the client ones - `services/users.py` (invite, load,
+  list, update, stored roles), `services/action_tokens.py` (issue, redeem), `services/sessions.py`
+  (`SessionRevokedReason`, revoke) and `services/accounts.py` (get and lock an account row, the base the other
+  three build on) - plus `services/roles.py` (`derive_roles`); `LoginEmail` and `normalize_email` in
+  `app/core/auth/inputs.py`; `app/api/v1/auth/users.py` and the redeem route in `app/api/v1/auth/password.py`;
   `app/core/auth/passwords.py` for the policy and the dummy hash - hashing and token generation are
   `hash_secret`, `verify_secret`, `digest` and `generate_secret` in [`secrets.py`](../../app/core/auth/secrets.py),
   the one home of the secret primitives; `bootstrap_admin` in [`bootstrap.py`](../../app/core/auth/bootstrap.py)
@@ -614,8 +617,10 @@ Until the portal exists, everything works from Swagger UI:
 
 - _Technique:_ `issue_user_token` and `refresh_user_token` in
   [`services/tokens.py`](../../app/core/auth/services/tokens.py); `ClientTokenForm` becomes `TokenForm`;
-  `create_token` dispatches on the grant; `POST /auth/revoke`; refresh tokens are generated and hashed with
-  `generate_secret` and `digest` from [`secrets.py`](../../app/core/auth/secrets.py) - no second hashing module.
+  `create_token` dispatches on the grant; `POST /auth/revoke`; sessions are opened, rotated and revoked in
+  [`services/sessions.py`](../../app/core/auth/services/sessions.py), and their refresh tokens are generated and
+  hashed with `generate_secret` and `digest` from [`secrets.py`](../../app/core/auth/secrets.py) - no second
+  hashing module.
 - _Acceptance criteria:_
   - [ ] The lifecycle test (database): invite -> redeem -> `password` -> call `/auth/me` -> `refresh_token` ->
         `revoke` -> the revoked refresh token is `invalid_grant`.

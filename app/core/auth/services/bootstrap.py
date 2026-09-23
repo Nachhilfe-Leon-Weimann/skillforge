@@ -15,16 +15,12 @@ from ..audit import AuditEventType, write_auth_audit_log
 from ..config import AuthSettings
 from ..results import BootstrappedAdminAccount, BootstrappedApplicationClient
 from ..scopes import Scope, parse_scopes
+from .accounts import find_user_account_by_party
+from .action_tokens import issue_action_token
 from .clients import find_application_client
 from .scopes import grant_client_scopes, seed_default_scopes
 from .secrets import client_has_usable_secret, create_client_secret
-from .users import (
-    add_user_role,
-    find_user_account_by_party,
-    invite_user_account,
-    issue_action_token,
-    load_user_account,
-)
+from .users import add_user_role, invite_user_account
 
 BOOTSTRAP_ACTOR = "cli"
 """What the operator commands record as the issuer, where a request records its principal."""
@@ -101,7 +97,7 @@ async def bootstrap_admin_account(
     """
     existing = await find_user_account_by_party(session, party_id)
     if existing is None:
-        view, invitation = await invite_user_account(
+        created = await invite_user_account(
             session,
             settings,
             party_id=party_id,
@@ -109,7 +105,9 @@ async def bootstrap_admin_account(
             roles=[UserAccountRoleName.ADMIN],
             actor=BOOTSTRAP_ACTOR,
         )
-        return BootstrappedAdminAccount(account=view.account, created_account=True, invitation=invitation)
+        return BootstrappedAdminAccount(
+            account=created.view.account, created_account=True, invitation=created.invitation
+        )
 
     view = await add_user_role(session, existing.id, role=UserAccountRoleName.ADMIN, actor=BOOTSTRAP_ACTOR)
     invitation = None
@@ -122,7 +120,4 @@ async def bootstrap_admin_account(
             actor=BOOTSTRAP_ACTOR,
         )
 
-    # Loaded again at the end: taking the account's row lock re-reads it, which leaves the roles
-    # of the object loaded before it behind.
-    account = (await load_user_account(session, existing.id)).account
-    return BootstrappedAdminAccount(account=account, created_account=False, invitation=invitation)
+    return BootstrappedAdminAccount(account=view.account, created_account=False, invitation=invitation)

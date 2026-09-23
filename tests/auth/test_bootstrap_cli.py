@@ -5,7 +5,7 @@ import uuid
 import pytest
 
 from app.core.auth.bootstrap import build_parser
-from app.core.auth.services.users import normalize_email
+from app.core.auth.inputs import normalize_email
 
 PARTY_ID = "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
 

@@ -11,10 +11,10 @@ import uuid
 from pydantic import TypeAdapter, ValidationError
 
 from app.core.auth.config import AuthSettings
+from app.core.auth.inputs import LoginEmail
 from app.core.auth.scopes import Scope
 from app.core.auth.services import bootstrap_application_client
 from app.core.auth.services.bootstrap import bootstrap_admin_account
-from app.core.auth.services.users import LoginEmail
 from app.core.config import get_settings
 from app.core.db import Database
 

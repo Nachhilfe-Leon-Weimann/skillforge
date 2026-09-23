@@ -1,38 +1,32 @@
-"""The admin surface of user accounts plus the route that redeems a one-time token.
-
-Everything under `/users` is guarded by `auth:users:manage`. `POST /password/redeem` is guarded by
-``require_application`` with `auth:users:login`: a user token must never redeem a token, no matter
-what it carries.
-"""
+"""The admin surface of user accounts; everything under `/users` is guarded by `auth:users:manage`."""
 
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Security, status
+from fastapi import APIRouter, Depends, Path, Query, status
 from pydantic import Field
 
 from app.api.v1.common import DBSession, Page, PageParams, error_responses
-from app.core.auth import AuthSettings, Principal, Scope, require_application, require_scopes
+from app.core.auth import AuthSettings, Principal, Scope, require_scopes
 from app.core.auth.dependencies import get_auth_settings
+from app.core.auth.inputs import MAX_EMAIL_LENGTH
+from app.core.auth.services import action_tokens as action_tokens_service
+from app.core.auth.services import sessions as sessions_service
 from app.core.auth.services import users as users_service
 from app.core.auth.services.errors import (
     AccountPartyNotAPersonError,
     AccountPartyNotFoundError,
-    InvalidActionTokenError,
     UserAccountAlreadyExistsError,
     UserAccountNotFoundError,
     UserAccountStateError,
     UserEmailAlreadyInUseError,
     UserRoleNotFoundError,
-    WeakPasswordError,
 )
-from app.core.auth.services.users import MAX_EMAIL_LENGTH
 from app.core.db.models import UserAccountRoleName, UserAccountStatus, UserActionTokenPurpose
 
 from .schemas import (
     ActionTokenResponse,
     InvitedUserAccount,
-    PasswordRedeemRequest,
     UserAccountCreateRequest,
     UserAccountDetail,
     UserAccountListItem,
@@ -40,13 +34,8 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/users")
-password_router = APIRouter(prefix="/password")
 
 ManageUsers = Annotated[Principal, require_scopes(Scope.AUTH_USERS_MANAGE)]
-# The redeem route acts on behalf of a user, so it is a client's to call. One declaration: the scope
-# reaches the nested ``get_current_principal`` - and with it the operation's `security` and its 403 -
-# and ``require_application`` refuses a user token whatever it carries.
-LoginClient = Annotated[Principal, Security(require_application, scopes=[Scope.AUTH_USERS_LOGIN])]
 AuthConfig = Annotated[AuthSettings, Depends(get_auth_settings)]
 
 UserId = Annotated[
@@ -99,7 +88,7 @@ async def invite_user(
     The token is in the response and nowhere else - Forge stores only its hash and cannot show it
     again. Pass it to the user; they set their password at `POST /auth/password/redeem`.
     """
-    view, invitation = await users_service.invite_user_account(
+    created = await users_service.invite_user_account(
         session,
         settings,
         party_id=request.party_id,
@@ -107,7 +96,7 @@ async def invite_user(
         roles=request.roles,
         actor=_actor(principal),
     )
-    return InvitedUserAccount.from_invitation(view, invitation)
+    return InvitedUserAccount.from_created(created)
 
 
 @router.get("", dependencies=[require_scopes(Scope.AUTH_USERS_MANAGE)])
@@ -177,7 +166,7 @@ async def issue_invitation(
 
     Earlier unused invitations stop working.
     """
-    issued = await users_service.issue_action_token(
+    issued = await action_tokens_service.issue_action_token(
         session,
         settings,
         user_id=user_id,
@@ -199,7 +188,7 @@ async def issue_password_reset(
 
     Earlier unused resets stop working; nothing else changes until the token is redeemed.
     """
-    issued = await users_service.issue_action_token(
+    issued = await action_tokens_service.issue_action_token(
         session,
         settings,
         user_id=user_id,
@@ -216,26 +205,7 @@ async def issue_password_reset(
 )
 async def revoke_user_sessions(user_id: UserId, session: DBSession, principal: ManageUsers) -> None:
     """Revoke every session of the account, so no refresh token of it works any more."""
-    await users_service.revoke_user_sessions(session, user_id, actor=_actor(principal))
-
-
-@password_router.post(
-    "/redeem",
-    status_code=status.HTTP_204_NO_CONTENT,
-    responses=error_responses(InvalidActionTokenError, WeakPasswordError),
-)
-async def redeem_password(request: PasswordRedeemRequest, session: DBSession, principal: LoginClient) -> None:
-    """Set a password with an invitation or a password-reset token.
-
-    An unknown, used, expired or replaced token answers the same body, so a caller cannot tell
-    which of the four it was. Redeeming a reset revokes every session of the account.
-    """
-    await users_service.redeem_action_token(
-        session,
-        plaintext=request.token,
-        new_password=request.new_password,
-        actor=_actor(principal),
-    )
+    await sessions_service.revoke_user_sessions(session, user_id, actor=_actor(principal))
 
 
 def _actor(principal: Principal) -> str:

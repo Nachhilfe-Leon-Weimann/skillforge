@@ -1,18 +1,15 @@
-"""User accounts: invitation, administration and the redemption of a one-time token.
+"""User accounts: invitation and administration.
 
 An account belongs to exactly one person party and is created by invitation only (ADR 0008,
-decision C). One-time tokens are stored as a SHA-256 hash; the plaintext exists once, in the
-result of the call that issues it, and never reaches a log or an audit ``detail``.
+decision C). Its one-time tokens are ``action_tokens``', its sessions ``sessions``'; reading and
+locking an account row is ``accounts``'.
 """
 
 import uuid
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
-from typing import Annotated, cast
 
-from pydantic import EmailStr, StringConstraints
-from sqlalchemy import CursorResult, func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -24,57 +21,27 @@ from app.core.db.models import (
     UserAccountRole,
     UserAccountRoleName,
     UserAccountStatus,
-    UserActionToken,
     UserActionTokenPurpose,
-    UserSession,
 )
 
-from ..audit import AuditEventType, write_auth_audit_log
+from ..audit import AuditEventType, write_user_account_audit_log
 from ..config import AuthSettings
-from ..passwords import meets_password_policy
-from ..results import IssuedActionToken, UserAccountWithRoles
+from ..inputs import normalize_email
+from ..results import CreatedUserAccount, UserAccountWithRoles
 from ..roles import Role
-from ..secrets import digest, generate_secret, hash_secret
+from .accounts import find_user_account_by_party, get_user_account, lock_user_account
+from .action_tokens import issue_action_token
 from .errors import (
     AccountPartyNotAPersonError,
     AccountPartyNotFoundError,
-    InvalidActionTokenError,
     UserAccountAlreadyExistsError,
     UserAccountManagementError,
-    UserAccountNotFoundError,
     UserAccountStateError,
     UserEmailAlreadyInUseError,
     UserRoleNotFoundError,
-    WeakPasswordError,
 )
 from .roles import derive_roles, derive_roles_for
-
-ACTION_TOKEN_PREFIX = "sf_ua_"
-
-# The values ``user_session.revoked_reason`` takes here. ``logout`` and ``reuse_detected`` belong
-# to the grants of P0-6.
-REVOKED_BY_ADMIN = "admin"
-REVOKED_ACCOUNT_DISABLED = "account_disabled"
-REVOKED_PASSWORD_RESET = "password_reset"
-
-
-# The longest e-mail address there is (RFC 5321); the column is `text`, the limit documents the rule.
-MAX_EMAIL_LENGTH = 254
-
-LoginEmail = Annotated[EmailStr, StringConstraints(max_length=MAX_EMAIL_LENGTH)]
-"""What counts as a login e-mail address, for the API schema and for `just bootstrap-admin` alike.
-
-A plain assignment rather than a PEP 695 alias: the API inlines the constraints at its field, where
-an alias would become a schema of its own.
-"""
-
-
-def normalize_email(email: str) -> str:
-    """The stored form of a login e-mail address: trimmed and lowercased (decision D).
-
-    A fixed point, and the form the ``ck_user_account_email_lowercase`` check constraint accepts.
-    """
-    return email.strip().lower()
+from .sessions import SessionRevokedReason, revoke_sessions
 
 
 async def invite_user_account(
@@ -85,7 +52,7 @@ async def invite_user_account(
     email: str,
     roles: Iterable[UserAccountRoleName] = (),
     actor: str,
-) -> tuple[UserAccountWithRoles, IssuedActionToken]:
+) -> CreatedUserAccount:
     """Create an ``invited`` account for a person party and issue its invitation token."""
     party = await session.get(Party, party_id)
     if party is None:
@@ -107,7 +74,7 @@ async def invite_user_account(
     )
     async with _unique_account(session):
         session.add(account)
-    await _audit(
+    await write_user_account_audit_log(
         session,
         account.id,
         AuditEventType.USER_ACCOUNT_INVITED,
@@ -121,23 +88,7 @@ async def invite_user_account(
         purpose=UserActionTokenPurpose.INVITATION,
         actor=actor,
     )
-    return await load_user_account(session, account.id), invitation
-
-
-async def get_user_account(session: AsyncSession, user_id: uuid.UUID) -> UserAccount:
-    """Return the account behind ``user_id``, with its stored roles loaded.
-
-    A ``select`` rather than ``session.get``: the latter answers from the identity map without
-    applying the loader option, and the unloaded collection would then be read after the response
-    has left the session.
-    """
-    account = await session.scalar(
-        select(UserAccount).where(UserAccount.id == user_id).options(selectinload(UserAccount.roles))
-    )
-    if account is None:
-        raise UserAccountNotFoundError(f"No user account with id {user_id}")
-
-    return account
+    return CreatedUserAccount(view=await load_user_account(session, account.id), invitation=invitation)
 
 
 async def load_user_account(session: AsyncSession, user_id: uuid.UUID) -> UserAccountWithRoles:
@@ -222,7 +173,7 @@ async def update_user_account(
             raise UserAccountStateError(f"User account {user_id} has no password")
         account.status = status
         if status is UserAccountStatus.DISABLED:
-            await _revoke_sessions(session, user_id, reason=REVOKED_ACCOUNT_DISABLED)
+            await revoke_sessions(session, user_id, reason=SessionRevokedReason.ACCOUNT_DISABLED)
         status_changed = True
 
     if not (email_changed or status_changed):
@@ -231,9 +182,13 @@ async def update_user_account(
     await session.flush()
     if email_changed:
         # Never the address itself: it is a personal value, and the entry says which account.
-        await _audit(session, user_id, AuditEventType.USER_ACCOUNT_UPDATED, f"Changed the e-mail address by {actor}.")
+        await write_user_account_audit_log(
+            session, user_id, AuditEventType.USER_ACCOUNT_UPDATED, f"Changed the e-mail address by {actor}."
+        )
     if status_changed:
-        await _audit(session, user_id, _status_event(account.status), f"Set the status to {account.status} by {actor}.")
+        await write_user_account_audit_log(
+            session, user_id, _status_event(account.status), f"Set the status to {account.status} by {actor}."
+        )
 
     return await load_user_account(session, user_id)
 
@@ -246,12 +201,13 @@ async def add_user_role(
     The account row is locked first, so two overlapping requests cannot both insert the same
     primary key.
     """
-    await _lock_user_account(session, user_id)
-    account = await get_user_account(session, user_id)
+    account = await lock_user_account(session, user_id)
     if role not in {stored.role for stored in account.roles}:
         account.roles.append(UserAccountRole(role=role))
         await session.flush()
-        await _audit(session, user_id, AuditEventType.USER_ROLE_ADDED, f"Added role {role.value} by {actor}.")
+        await write_user_account_audit_log(
+            session, user_id, AuditEventType.USER_ROLE_ADDED, f"Added role {role.value} by {actor}."
+        )
 
     return await load_user_account(session, user_id)
 
@@ -262,170 +218,16 @@ async def remove_user_role(session: AsyncSession, user_id: uuid.UUID, *, role: U
     Locked like ``add_user_role``: two overlapping removals would otherwise both find the row and
     the second would delete what is no longer there.
     """
-    await _lock_user_account(session, user_id)
-    account = await get_user_account(session, user_id)
+    account = await lock_user_account(session, user_id)
     stored = next((held for held in account.roles if held.role is role), None)
     if stored is None:
         raise UserRoleNotFoundError(f"User account {user_id} does not hold the role {role.value}")
 
     account.roles.remove(stored)
     await session.flush()
-    await _audit(session, user_id, AuditEventType.USER_ROLE_REMOVED, f"Removed role {role.value} by {actor}.")
-
-
-async def issue_action_token(
-    session: AsyncSession,
-    settings: AuthSettings,
-    *,
-    user_id: uuid.UUID,
-    purpose: UserActionTokenPurpose,
-    actor: str,
-) -> IssuedActionToken:
-    """Issue a one-time token and invalidate the account's earlier unused ones of that purpose.
-
-    The account row is locked for the whole operation: two requests arriving together would
-    otherwise both invalidate what they found and then both insert, leaving two live tokens.
-    """
-    account = await _lock_user_account(session, user_id)
-    _require_purpose_allowed(account, purpose)
-
-    now = datetime.now(UTC)
-    await session.execute(
-        update(UserActionToken)
-        .where(
-            UserActionToken.user_account_id == user_id,
-            UserActionToken.purpose == purpose,
-            UserActionToken.used_at.is_(None),
-            UserActionToken.invalidated_at.is_(None),
-        )
-        .values(invalidated_at=now)
+    await write_user_account_audit_log(
+        session, user_id, AuditEventType.USER_ROLE_REMOVED, f"Removed role {role.value} by {actor}."
     )
-
-    plaintext = generate_secret(ACTION_TOKEN_PREFIX)
-    token = UserActionToken(
-        id=uuid.uuid4(),
-        user_account_id=user_id,
-        purpose=purpose,
-        token_hash=digest(plaintext),
-        expires_at=now + timedelta(hours=_expire_hours(settings, purpose)),
-        issued_by=actor,
-    )
-    session.add(token)
-    await session.flush()
-    await _audit(session, user_id, _issue_event(purpose), f"Issued a {purpose.value} token by {actor}.")
-
-    return IssuedActionToken(plaintext=plaintext, token=token)
-
-
-async def redeem_action_token(session: AsyncSession, *, plaintext: str, new_password: str, actor: str) -> UserAccount:
-    """Set the account's password from a one-time token, whatever its purpose.
-
-    An ``invited`` account becomes ``active``; a ``disabled`` one stays disabled. The counter and
-    the lock are cleared, the token is marked used, and a ``password_reset`` revokes every session
-    of the account - an invitation has none to revoke.
-    """
-    found = await session.scalar(select(UserActionToken).where(UserActionToken.token_hash == digest(plaintext)))
-    # The cheap look-up first: a token that was never live costs neither a hash nor a row lock.
-    if found is None or not _is_live(found, datetime.now(UTC)):
-        raise InvalidActionTokenError("Unknown, used or expired token")
-    if not meets_password_policy(new_password):
-        raise WeakPasswordError(WeakPasswordError.message)
-
-    # Hashed before the lock is taken: Argon2 is slow by design, and every other issue or redeem
-    # on this account would queue behind it. The row lock still decides whether it gets stored.
-    password_hash = hash_secret(new_password)
-
-    account = await _lock_user_account(session, found.user_account_id)
-    token = await _lock_action_token(session, found.id)
-    # Only now is the answer authoritative: the look-up above was not serialized against a redeem
-    # or an issue that was running at the same time, and either may have spent this token since.
-    now = datetime.now(UTC)
-    if token is None or not _is_live(token, now):
-        raise InvalidActionTokenError("Unknown, used or expired token")
-
-    account.password_hash = password_hash
-    account.failed_login_count = 0
-    account.locked_until = None
-    token.used_at = now
-
-    activated = account.status is UserAccountStatus.INVITED
-    if activated:
-        account.status = UserAccountStatus.ACTIVE
-    if token.purpose is UserActionTokenPurpose.PASSWORD_RESET:
-        await _revoke_sessions(session, account.id, reason=REVOKED_PASSWORD_RESET)
-
-    await session.flush()
-    await _audit(session, account.id, AuditEventType.PASSWORD_SET, f"Set the password via {token.purpose.value}.")
-    if activated:
-        await _audit(session, account.id, AuditEventType.USER_ACCOUNT_ACTIVATED, f"Activated by {actor}.")
-
-    return account
-
-
-async def revoke_user_sessions(session: AsyncSession, user_id: uuid.UUID, *, actor: str) -> int:
-    """Revoke every live session of the account on an administrator's request.
-
-    Returns how many were revoked. The access tokens already handed out stay valid until they
-    expire (decision K).
-    """
-    await get_user_account(session, user_id)
-    revoked = await _revoke_sessions(session, user_id, reason=REVOKED_BY_ADMIN)
-    if revoked:
-        await _audit(session, user_id, AuditEventType.SESSION_REVOKED, f"Revoked {revoked} session(s) by {actor}.")
-
-    return revoked
-
-
-async def _revoke_sessions(session: AsyncSession, user_id: uuid.UUID, *, reason: str) -> int:
-    """Revoke the live sessions of the account and return how many there were.
-
-    A session that is already revoked keeps its reason and its timestamp: the first revocation is
-    the one that happened.
-    """
-    statement = (
-        update(UserSession)
-        .where(UserSession.user_account_id == user_id, UserSession.revoked_at.is_(None))
-        .values(revoked_at=datetime.now(UTC), revoked_reason=reason)
-    )
-    # execute() is typed as Result, but a Core UPDATE always yields a CursorResult with rowcount.
-    result = cast(CursorResult, await session.execute(statement))
-    return result.rowcount
-
-
-async def _lock_action_token(session: AsyncSession, token_id: uuid.UUID) -> UserActionToken | None:
-    """Re-read the token row with its own lock, past whatever the session still holds of it."""
-    return await session.scalar(
-        select(UserActionToken)
-        .where(UserActionToken.id == token_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-
-
-def _is_live(token: UserActionToken, now: datetime) -> bool:
-    """Whether the token can still be redeemed: not used, not replaced, not expired."""
-    return token.used_at is None and token.invalidated_at is None and token.expires_at > now
-
-
-async def _lock_user_account(session: AsyncSession, user_id: uuid.UUID) -> UserAccount:
-    """Return the account with its row locked until the transaction ends.
-
-    ``populate_existing`` is what makes the lock worth taking: an account the session already
-    holds would otherwise keep the attributes it was loaded with, and every check made after the
-    lock would run on data from before it.
-    """
-    account = await session.scalar(
-        select(UserAccount).where(UserAccount.id == user_id).with_for_update().execution_options(populate_existing=True)
-    )
-    if account is None:
-        raise UserAccountNotFoundError(f"No user account with id {user_id}")
-
-    return account
-
-
-async def find_user_account_by_party(session: AsyncSession, party_id: uuid.UUID) -> UserAccount | None:
-    """Return the account of the party, or ``None``: a party has at most one (decision C)."""
-    return await session.scalar(select(UserAccount).where(UserAccount.party_id == party_id))
 
 
 async def _require_email_unused(session: AsyncSession, email: str) -> None:
@@ -470,31 +272,6 @@ def _conflict_for(exc: IntegrityError) -> UserAccountManagementError | None:
             return None
 
 
-def _require_purpose_allowed(account: UserAccount, purpose: UserActionTokenPurpose) -> None:
-    """An invitation is for an account without a password, a reset for one that has one."""
-    has_password = account.password_hash is not None
-    if purpose is UserActionTokenPurpose.INVITATION and has_password:
-        raise UserAccountStateError(f"User account {account.id} already has a password")
-    if purpose is UserActionTokenPurpose.PASSWORD_RESET and not has_password:
-        raise UserAccountStateError(f"User account {account.id} has no password yet")
-
-
-def _expire_hours(settings: AuthSettings, purpose: UserActionTokenPurpose) -> int:
-    match purpose:
-        case UserActionTokenPurpose.INVITATION:
-            return settings.invitation_expire_hours
-        case UserActionTokenPurpose.PASSWORD_RESET:
-            return settings.password_reset_expire_hours
-
-
-def _issue_event(purpose: UserActionTokenPurpose) -> AuditEventType:
-    match purpose:
-        case UserActionTokenPurpose.INVITATION:
-            return AuditEventType.INVITATION_ISSUED
-        case UserActionTokenPurpose.PASSWORD_RESET:
-            return AuditEventType.PASSWORD_RESET_ISSUED
-
-
 def _status_event(current: UserAccountStatus) -> AuditEventType:
     """The event of a status that has just changed; the route offers no third value."""
     if current is UserAccountStatus.DISABLED:
@@ -505,16 +282,3 @@ def _status_event(current: UserAccountStatus) -> AuditEventType:
 
 def _stored_roles(account: UserAccount) -> frozenset[Role]:
     return frozenset(Role(stored.role.value) for stored in account.roles)
-
-
-async def _audit(session: AsyncSession, user_id: uuid.UUID, event_type: AuditEventType, detail: str) -> None:
-    """Record what happened to the account. ``detail`` never carries a secret or an e-mail address."""
-    await write_auth_audit_log(
-        session,
-        # The subject of the entry, like the client services record the client they changed.
-        principal_type="user",
-        principal_id=user_id,
-        event_type=event_type,
-        success=True,
-        detail=detail,
-    )

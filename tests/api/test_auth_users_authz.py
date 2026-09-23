@@ -16,7 +16,7 @@ from app.api.v1.common import ErrorResponse
 from app.core.auth import AuthSettings, Principal, Scope, create_application_access_token
 from app.core.auth import dependencies as auth_dependencies
 from app.core.auth.dependencies import get_auth_settings, get_current_principal
-from app.core.auth.services import users as users_service
+from app.core.auth.services import action_tokens as action_tokens_service
 from app.core.db.dependencies import get_db_session
 from app.main import app
 
@@ -110,7 +110,7 @@ async def test_the_redeem_route_validates_the_token_once(monkeypatch):
         return None
 
     monkeypatch.setattr(auth_dependencies, "validate_access_token", counting)
-    monkeypatch.setattr(users_service, "redeem_action_token", redeemed)
+    monkeypatch.setattr(action_tokens_service, "redeem_action_token", redeemed)
     async with _client() as client:
         response = await client.post(
             REDEEM_PATH, json=BODIES[f"POST {REDEEM_PATH}"], headers=_auth_headers(Scope.AUTH_USERS_LOGIN)

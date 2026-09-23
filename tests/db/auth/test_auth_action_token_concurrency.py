@@ -11,7 +11,8 @@ from pydantic import SecretStr
 from sqlalchemy import delete, func, select
 
 from app.core.auth import AuthSettings
-from app.core.auth.services.users import invite_user_account, issue_action_token
+from app.core.auth.services.action_tokens import issue_action_token
+from app.core.auth.services.users import invite_user_account
 from app.core.db import Database
 from app.core.db.models import AuthAuditLog, UserActionToken, UserActionTokenPurpose
 from app.services.crm import parties, persons
@@ -24,14 +25,14 @@ SETTINGS = AuthSettings(secret_key=SecretStr("test-signing-secret-with-at-least-
 async def test_an_overlapping_issue_waits_and_leaves_exactly_one_live_token(db: Database):
     async with db.session() as setup:
         party_id = (await persons.create_person(setup, firstname="Race", lastname="Condition")).id
-        view, _ = await invite_user_account(
+        created = await invite_user_account(
             setup,
             SETTINGS,
             party_id=party_id,
             email="race.condition@example.org",
             actor="cli",
         )
-        user_id = view.account.id
+        user_id = created.view.account.id
 
     async def issue(session):
         return await issue_action_token(

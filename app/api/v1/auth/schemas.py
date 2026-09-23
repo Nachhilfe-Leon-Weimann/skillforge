@@ -6,10 +6,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.experimental.missing_sentinel import MISSING
 
 from app.api.v1.common import ApiModel
+from app.core.auth.inputs import LoginEmail
 from app.core.auth.principal import Principal, UserPrincipal
-from app.core.auth.results import CreatedClientSecret, IssuedActionToken, UserAccountWithRoles
+from app.core.auth.results import CreatedClientSecret, CreatedUserAccount, IssuedActionToken, UserAccountWithRoles
 from app.core.auth.roles import Role
-from app.core.auth.services.users import LoginEmail
 from app.core.auth.tokens import CreatedAccessToken
 from app.core.db.models import (
     ApplicationClient,
@@ -209,10 +209,10 @@ class InvitedUserAccount(UserAccountDetail):
     """The invitation to pass on to the user. Redeemed at `POST /auth/password/redeem`."""
 
     @classmethod
-    def from_invitation(cls, view: UserAccountWithRoles, invitation: IssuedActionToken) -> Self:
+    def from_created(cls, created: CreatedUserAccount) -> Self:
         return cls(
-            **UserAccountDetail.from_model(view).model_dump(),
-            invitation=ActionTokenResponse.from_issued_token(invitation),
+            **UserAccountDetail.from_model(created.view).model_dump(),
+            invitation=ActionTokenResponse.from_issued_token(created.invitation),
         )
 
 

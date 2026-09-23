@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import select
 
-from app.core.auth.services.users import ACTION_TOKEN_PREFIX
+from app.core.auth.services.action_tokens import ACTION_TOKEN_PREFIX
 from app.core.db.models import (
     AuthAuditLog,
     UserAccount,

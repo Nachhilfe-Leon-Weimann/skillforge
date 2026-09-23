@@ -55,3 +55,24 @@ async def write_auth_audit_log(
         )
     )
     await session.flush()
+
+
+async def write_user_account_audit_log(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    event_type: AuditEventType,
+    detail: str,
+) -> None:
+    """Record what happened to a user account. ``detail`` never carries a secret or an e-mail address.
+
+    The account is the subject of the entry, the way the client services record the client they
+    changed; who asked is part of ``detail``.
+    """
+    await write_auth_audit_log(
+        session,
+        principal_type="user",
+        principal_id=user_id,
+        event_type=event_type,
+        success=True,
+        detail=detail,
+    )

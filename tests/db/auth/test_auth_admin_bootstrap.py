@@ -7,9 +7,9 @@ from pydantic import SecretStr
 from sqlalchemy import func, select
 
 from app.core.auth import AuthSettings
+from app.core.auth.services.action_tokens import redeem_action_token
 from app.core.auth.services.bootstrap import BOOTSTRAP_ACTOR, bootstrap_admin_account
 from app.core.auth.services.errors import AccountPartyNotAPersonError, AccountPartyNotFoundError
-from app.core.auth.services.users import redeem_action_token
 from app.core.db.models import UserAccount, UserAccountRoleName, UserActionToken
 
 pytestmark = pytest.mark.db

@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthSettings
 from app.core.auth.secrets import verify_secret
+from app.core.auth.services.action_tokens import redeem_action_token
 from app.core.auth.services.errors import InvalidActionTokenError, UserRoleNotFoundError
-from app.core.auth.services.users import invite_user_account, redeem_action_token, remove_user_role
+from app.core.auth.services.users import invite_user_account, remove_user_role
 from app.core.db import Database
 from app.core.db.models import AuthAuditLog, UserAccount, UserAccountRoleName
 from app.services.crm import parties, persons
@@ -32,10 +33,8 @@ async def _invited(db: Database, *, email: str, roles=()) -> tuple[uuid.UUID, uu
     """Create a committed person with a user account; returns ``(party_id, user_id, token)``."""
     async with db.session() as setup:
         party_id = (await persons.create_person(setup, firstname="Race", lastname="Condition")).id
-        view, invitation = await invite_user_account(
-            setup, SETTINGS, party_id=party_id, email=email, roles=roles, actor="cli"
-        )
-        return party_id, view.account.id, invitation.plaintext
+        created = await invite_user_account(setup, SETTINGS, party_id=party_id, email=email, roles=roles, actor="cli")
+        return party_id, created.view.account.id, created.invitation.plaintext
 
 
 async def _clean_up(db: Database, party_id: uuid.UUID, user_id: uuid.UUID) -> None:

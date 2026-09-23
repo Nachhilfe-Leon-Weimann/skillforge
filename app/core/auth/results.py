@@ -40,6 +40,14 @@ class UserAccountWithRoles:
 
 
 @dataclass(frozen=True)
+class CreatedUserAccount:
+    """An invited account and its invitation: the one time the invitation's plaintext exists."""
+
+    view: UserAccountWithRoles
+    invitation: IssuedActionToken
+
+
+@dataclass(frozen=True)
 class BootstrappedAdminAccount:
     """What ``bootstrap_admin`` did: the account, whether it had to create it, and a fresh
     invitation while the account has no password."""
