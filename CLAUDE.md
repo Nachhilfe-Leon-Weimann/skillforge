@@ -105,7 +105,8 @@ DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
 
 ## Orientation
 
-Read [`docs/PROJECT.md`](docs/PROJECT.md) first: what Forge is for, its borders and principles. It
-wins over ADRs and specs - or it is changed first, deliberately. The current structure is in
+Read [`docs/PROJECT.md`](docs/PROJECT.md) first: what Forge is for, its borders and principles. An ADR
+that contradicts it is superseded by a new ADR, a contradicting spec is updated - or the sketch is
+changed first, deliberately. The current structure is in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); the *why* of single decisions in
 [`docs/decisions/`](docs/decisions/).
