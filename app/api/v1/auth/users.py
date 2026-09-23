@@ -1,14 +1,14 @@
 """The admin surface of user accounts plus the route that redeems a one-time token.
 
 Everything under `/users` is guarded by `auth:users:manage`. `POST /password/redeem` is guarded by
-`auth:users:login` *and* by ``require_application``: a user token must never redeem a token, no
-matter what it carries.
+``require_application`` with `auth:users:login`: a user token must never redeem a token, no matter
+what it carries.
 """
 
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, Security, status
 from pydantic import Field
 
 from app.api.v1.common import DBSession, Page, PageParams, error_responses
@@ -43,9 +43,10 @@ router = APIRouter(prefix="/users")
 password_router = APIRouter(prefix="/password")
 
 ManageUsers = Annotated[Principal, require_scopes(Scope.AUTH_USERS_MANAGE)]
-# The redeem route acts on behalf of a user, so it is a client's to call: the scope requirement
-# lands in the operation's `security`, ``require_application`` refuses a user token whatever it carries.
-LoginClient = Annotated[Principal, Depends(require_application)]
+# The redeem route acts on behalf of a user, so it is a client's to call. One declaration: the scope
+# reaches the nested ``get_current_principal`` - and with it the operation's `security` and its 403 -
+# and ``require_application`` refuses a user token whatever it carries.
+LoginClient = Annotated[Principal, Security(require_application, scopes=[Scope.AUTH_USERS_LOGIN])]
 AuthConfig = Annotated[AuthSettings, Depends(get_auth_settings)]
 
 UserId = Annotated[
@@ -221,7 +222,6 @@ async def revoke_user_sessions(user_id: UserId, session: DBSession, principal: M
 @password_router.post(
     "/redeem",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[require_scopes(Scope.AUTH_USERS_LOGIN)],
     responses=error_responses(InvalidActionTokenError, WeakPasswordError),
 )
 async def redeem_password(request: PasswordRedeemRequest, session: DBSession, principal: LoginClient) -> None:

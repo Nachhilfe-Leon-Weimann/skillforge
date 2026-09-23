@@ -14,7 +14,9 @@ from pydantic import SecretStr
 
 from app.api.v1.common import ErrorResponse
 from app.core.auth import AuthSettings, Principal, Scope, create_application_access_token
+from app.core.auth import dependencies as auth_dependencies
 from app.core.auth.dependencies import get_auth_settings, get_current_principal
+from app.core.auth.services import users as users_service
 from app.core.db.dependencies import get_db_session
 from app.main import app
 
@@ -93,6 +95,29 @@ async def test_the_redeem_route_answers_403_for_a_user_principal_whatever_its_sc
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Application principal required", "code": "forbidden"}
+
+
+async def test_the_redeem_route_validates_the_token_once(monkeypatch):
+    """One guard declaration: the scope and the principal type are checked on a single validation."""
+    validate = auth_dependencies.validate_access_token
+    validations: list[str] = []
+
+    def counting(token: str, settings: AuthSettings) -> Principal:
+        validations.append(token)
+        return validate(token, settings)
+
+    async def redeemed(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(auth_dependencies, "validate_access_token", counting)
+    monkeypatch.setattr(users_service, "redeem_action_token", redeemed)
+    async with _client() as client:
+        response = await client.post(
+            REDEEM_PATH, json=BODIES[f"POST {REDEEM_PATH}"], headers=_auth_headers(Scope.AUTH_USERS_LOGIN)
+        )
+
+    assert response.status_code == 204
+    assert len(validations) == 1
 
 
 async def _override_db_session() -> AsyncIterator[object]:
