@@ -1638,13 +1638,34 @@
                 "type": "null"
               }
             ],
-            "description": "Client ID of the application client; `null` for a principal that is not a client.",
+            "description": "Client ID of the application client; for a user token, the client the user logged in through.",
             "title": "Client Id"
           },
+          "party_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CRM party the user account belongs to; `null` for an application principal.",
+            "title": "Party Id"
+          },
           "principal_type": {
-            "description": "Kind of principal the token was issued to; `application` for an application client.",
+            "description": "Kind of principal the token was issued to; `application` for an application client, `user` for a user account.",
             "title": "Principal Type",
             "type": "string"
+          },
+          "roles": {
+            "description": "Roles the user holds, sorted - which views to offer. Never authorize on them, only on `scopes`.",
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "title": "Roles",
+            "type": "array"
           },
           "scopes": {
             "description": "Scopes the token grants, sorted.",
@@ -1653,12 +1674,28 @@
             },
             "title": "Scopes",
             "type": "array"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User account the token was issued for; `null` for an application principal.",
+            "title": "User Id"
           }
         },
         "required": [
           "principal_type",
           "client_id",
-          "scopes"
+          "scopes",
+          "user_id",
+          "party_id",
+          "roles"
         ],
         "title": "MeResponse",
         "type": "object"
@@ -2650,6 +2687,17 @@
         "title": "RelationResponse",
         "type": "object"
       },
+      "Role": {
+        "description": "A view a user account holds; an account can hold several.\n\n`student`, `tutor` and `guardian` follow from the CRM, `admin` is assigned to the account.",
+        "enum": [
+          "student",
+          "tutor",
+          "guardian",
+          "admin"
+        ],
+        "title": "Role",
+        "type": "string"
+      },
       "StudentActivationCommitRequest": {
         "properties": {
           "channel_id": {
@@ -3162,9 +3210,23 @@
       }
     },
     "securitySchemes": {
-      "OAuth2ClientCredentialsBearer": {
+      "OAuth2": {
         "flows": {
           "clientCredentials": {
+            "scopes": {
+              "account:self": "Manage the caller's own account. Also guarantees a user token never has an empty scope.",
+              "auth:clients:manage": "Manage application clients.",
+              "auth:users:login": "Log users in on their behalf (password / refresh_token grants, redeem, revoke). Never part of a user's scopes.",
+              "auth:users:manage": "Invite, disable and reset user accounts; assign stored roles.",
+              "bot:read": "Read bot API surface.",
+              "bot:write": "Write bot API surface.",
+              "crm:read": "Read parties, relations and subjects.",
+              "crm:read:own": "Read parties within the caller's reach.",
+              "crm:write": "Create, change and delete parties, relations and subjects."
+            },
+            "tokenUrl": "/api/v1/auth/token"
+          },
+          "password": {
             "scopes": {
               "account:self": "Manage the caller's own account. Also guarantees a user token never has an empty scope.",
               "auth:clients:manage": "Manage application clients.",
@@ -3323,7 +3385,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "auth:clients:manage"
             ]
           }
@@ -3443,7 +3505,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "auth:clients:manage"
             ]
           }
@@ -3566,7 +3628,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "auth:clients:manage"
             ]
           }
@@ -3697,7 +3759,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "auth:clients:manage"
             ]
           }
@@ -3848,7 +3910,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "auth:clients:manage"
             ]
           }
@@ -3979,7 +4041,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "auth:clients:manage"
             ]
           }
@@ -4112,7 +4174,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "auth:clients:manage"
             ]
           }
@@ -4244,7 +4306,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "auth:clients:manage"
             ]
           }
@@ -4297,7 +4359,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": []
+            "OAuth2": []
           }
         ],
         "summary": "Get Me",
@@ -4525,7 +4587,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -4657,7 +4719,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -4792,7 +4854,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -4953,7 +5015,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -5062,7 +5124,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -5176,7 +5238,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -5301,7 +5363,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -5443,7 +5505,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -5596,7 +5658,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -5795,7 +5857,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -5920,7 +5982,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -6063,7 +6125,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -6222,7 +6284,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -6327,7 +6389,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -6451,7 +6513,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -6568,7 +6630,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -6702,7 +6764,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -6819,7 +6881,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -6953,7 +7015,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:read"
             ]
           }
@@ -7085,7 +7147,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -7243,7 +7305,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -7387,7 +7449,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -7555,7 +7617,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -7699,7 +7761,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -7877,7 +7939,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -8021,7 +8083,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -8199,7 +8261,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -8331,7 +8393,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -8489,7 +8551,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -8633,7 +8695,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -8801,7 +8863,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -8918,7 +8980,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -9043,7 +9105,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -9194,7 +9256,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -9322,7 +9384,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -9461,7 +9523,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "bot:write"
             ]
           }
@@ -9566,7 +9628,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -9706,7 +9768,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -9929,7 +9991,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:read"
             ]
           }
@@ -10070,7 +10132,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -10198,7 +10260,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:read"
             ]
           }
@@ -10356,7 +10418,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -10494,7 +10556,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -10675,7 +10737,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -10869,7 +10931,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:read"
             ]
           }
@@ -11020,7 +11082,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -11192,7 +11254,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -11307,7 +11369,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -11447,7 +11509,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -11576,7 +11638,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -11724,7 +11786,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -11853,7 +11915,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -12001,7 +12063,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -12126,7 +12188,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:read"
             ]
           }
@@ -12247,7 +12309,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -12389,7 +12451,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }
@@ -12546,7 +12608,7 @@
         },
         "security": [
           {
-            "OAuth2ClientCredentialsBearer": [
+            "OAuth2": [
               "crm:write"
             ]
           }

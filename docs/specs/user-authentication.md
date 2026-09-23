@@ -148,8 +148,8 @@ change. **Forge authorizes by scope only; it never branches on a role.**
 | Token carries  | Principal                             | Result                                                  |
 | -------------- | ------------------------------------- | ------------------------------------------------------- |
 | `crm:read`     | any                                   | `Access.all()` - no query                               |
-| `crm:read:own` | has a `party_id`                      | `Access.of(reach)` - one query on `core.party_relation` |
-| `crm:read:own` | no `party_id` (an application client) | `403`                                                   |
+| `crm:read:own` | a `UserPrincipal`                     | `Access.of(reach)` - one query on `core.party_relation` |
+| `crm:read:own` | an `ApplicationPrincipal`             | `403`                                                   |
 | neither        | any                                   | `403`                                                   |
 
 `Access` (frozen dataclass, `app/core/auth/reach.py`) exposes `party_ids: frozenset[UUID] | None` (`None` = all)
@@ -262,7 +262,7 @@ session's `expires_at`); both are `null` for `client_credentials`.
 **`refresh_token`:** authenticate the client and check `auth:users:login` as above, then look the hash up.
 
 - It matches `refresh_token_hash` of a live, unexpired session of **this** client whose account is `active`:
-  re-derive roles, compute scopes with `expand(session.scope)` as an additional ceiling, rotate
+  re-derive roles, compute scopes with `expand(parse_scopes(session.scope))` as an additional ceiling, rotate
   (`previous <- current`, `rotated_at = now`), answer with both tokens.
 - The account is no longer `active`: revoke the session (`account_disabled`), answer `invalid_grant`.
 - It matches `previous_refresh_token_hash`: within 10 seconds of `rotated_at` answer `invalid_grant` and leave the
@@ -284,10 +284,15 @@ sid             "<user_session.id>"
 roles           ["admin", "tutor"]        sorted; informational
 ```
 
-`Principal` in [`principal.py`](../../app/core/auth/principal.py) gains `party_id: UUID | None = None`,
-`session_id: UUID | None = None` and `roles: frozenset[str] = frozenset()`. `_claims_to_principal` branches on
-`principal_type` and validates the claims of each type strictly (a user token without `party_id` or `sid`, or with
-a `sub` that does not match `principal_id`, is invalid).
+`Principal` in [`principal.py`](../../app/core/auth/principal.py) becomes the abstract base of two frozen
+dataclasses: `ApplicationPrincipal` and `UserPrincipal`, which adds `party_id`, `session_id` and
+`roles: frozenset[Role]`. `principal_type` (`PrincipalType`) is a class constant and `subject` is derived, so a
+principal cannot contradict its own type. Code that needs a user narrows with `isinstance` or `match` - the type
+then guarantees the `party_id`, where an optional field would have to be checked. A token is a signed principal:
+`create_access_token(settings, principal)` in [`tokens.py`](../../app/core/auth/tokens.py) writes it,
+`validate_access_token` reads it back, and both go through one pydantic declaration of the claims - one model per
+principal type, told apart by `principal_type` as a discriminated union. A user token without `party_id` or `sid`,
+with an unknown role, or whose `sub` is not the canonical `user:<principal_id>`, is invalid.
 
 The security scheme in [`security.py`](../../app/core/auth/security.py) declares a `password` flow next to
 `clientCredentials`, so Swagger UI's "Authorize" dialog logs a user in. The class `OAuth2ClientCredentialsBearer`
@@ -493,18 +498,48 @@ Until the portal exists, everything works from Swagger UI:
 
 **P0-4 - User principal.**
 
-- _Technique:_ `create_user_access_token` next to `create_application_access_token`; `_claims_to_principal`
-  branches on the type; the new `Principal` fields; `MeResponse` extended; `OAuth2Bearer` with both flows and
+- _Technique:_ `ApplicationPrincipal` / `UserPrincipal` under the abstract `Principal`; `create_access_token`
+  for both types, with `create_application_access_token` as the application token's shorthand; the claims as a
+  pydantic discriminated union on `principal_type`; one scope normalizer, `parse_scopes`, where scopes enter,
+  and `expand` / `canonical` over sets; `MeResponse` extended; `OAuth2Bearer` with both flows and
   `scheme_name="OAuth2"`; `bind_request_log_context` receives `principal_type`, `user_id` and `party_id` for user
   principals.
 - _Acceptance criteria:_
-  - [ ] `components.securitySchemes` has exactly one key, `OAuth2`, and every secured operation references it;
+  - [x] `components.securitySchemes` has exactly one key, `OAuth2`, and every secured operation references it;
         apart from that key the `security` requirement of every existing operation is unchanged.
-  - [ ] A user token round-trips into a `Principal` with `party_id`, `session_id` and `roles`; an application
+  - [x] A user token round-trips into a `UserPrincipal` with `party_id`, `session_id` and `roles`; an application
         token round-trips exactly as before (its claims are byte-compatible, asserted against a fixture).
-  - [ ] A user token missing `party_id` or `sid`, or whose `sub` is not `user:<principal_id>`, is a `401`.
-  - [ ] `GET /auth/me` answers both principal types without a database session (the existing
+  - [x] A user token missing `party_id` or `sid`, or whose `sub` is not `user:<principal_id>`, is a `401`.
+  - [x] `GET /auth/me` answers both principal types without a database session (the existing
         "depends on the principal only" criterion of `crm-api.md` P1-1 still holds).
+- _Proven by:_ `test_the_contract_declares_exactly_one_security_scheme`,
+  `test_every_secured_operation_references_only_that_scheme`,
+  `test_the_scheme_rename_left_every_security_requirement_unchanged` and
+  `test_the_scheme_offers_the_client_credentials_and_the_password_flow` in
+  [`test_openapi_security_scheme.py`](../../tests/api/test_openapi_security_scheme.py) - the third one pins
+  `SECURITY_REQUIREMENTS_AT_THE_RENAME`, the scopes all 66 operations demanded before the rename, so only the key
+  moved. `test_a_user_token_validates_back_into_the_user_principal_it_was_issued_for`,
+  `test_user_access_token_claims_match_the_fixture` and
+  `test_application_access_token_claims_match_the_fixture` in
+  [`test_user_tokens.py`](../../tests/auth/test_user_tokens.py) (the round trip and both claim fixtures, the
+  application one asserted claim by claim so a new claim on SkillBot's token breaks it), next to
+  `test_an_application_token_validates_back_into_an_application_principal`,
+  `test_user_access_token_carries_the_canonical_scope` and the rejections in the same file:
+  `test_validate_access_token_rejects_a_user_token_without_its_reach_claims` (both `party_id` and `sid`),
+  `test_validate_access_token_rejects_a_user_token_whose_subject_is_not_its_principal`,
+  `..._whose_subject_is_not_canonically_spelled` (`sub` must be the one spelling Forge writes, whatever
+  spelling `uuid.UUID` would also parse), `..._with_an_application_subject`, `..._with_an_unusable_party_id`,
+  `..._with_malformed_roles` (including an unknown role), `..._without_a_usable_scope` and
+  `test_validate_access_token_rejects_an_unknown_principal_type`. Over HTTP the same three denials are a `401` in
+  the error envelope: `test_me_with_a_user_token_that_lost_its_party_is_the_401_envelope`,
+  `..._that_lost_its_session_...` and `..._whose_subject_is_not_its_principal_...` in
+  [`test_auth_me_endpoint.py`](../../tests/api/test_auth_me_endpoint.py), which also holds
+  `test_me_reports_the_account_the_party_and_the_roles_of_a_user_token` and the unchanged
+  `test_me_depends_on_the_principal_only` (the route's only parameter is the principal). The request log is
+  covered by `test_request_logging_identifies_the_user_behind_a_request` in
+  [`test_logging.py`](../../tests/test_logging.py) and the guard by
+  `test_require_application_rejects_a_real_user_token` in
+  [`test_dependencies.py`](../../tests/auth/test_dependencies.py).
 
 **P0-5 - Accounts.**
 
@@ -621,8 +656,8 @@ wave are merged.
 | 2    | **P0-4** user principal, **P0-5** accounts | P0-4: P0-2. P0-5: P0-2 and P0-3                   |
 | 3    | **P0-6** grants, **P0-7** reach            | P0-6: all of the above. P0-7: P0-2 and P0-4 only  |
 
-- **P0-7 does not wait for the login flow.** Its tests mint user tokens with `create_user_access_token` (P0-4),
-  the way the CRM tests mint application tokens today.
+- **P0-7 does not wait for the login flow.** Its tests mint user tokens with `create_access_token` and a
+  `UserPrincipal` (P0-4), the way the CRM tests mint application tokens today.
 - **`openapi.json` is generated, so it is never merged by hand.** Within a wave both PRs change it; the PR that
   merges second rebases onto `main`, takes either side of the file, reruns `just openapi` and `just check-all`.
   The other overlaps (`schemas.py`, the exports of `app/core/auth/__init__.py`) are appends.

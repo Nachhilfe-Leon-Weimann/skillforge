@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Set
 from enum import StrEnum
 from typing import Self
 
@@ -43,21 +43,29 @@ OWN_VARIANT: dict[Scope, Scope] = {
 """Maps an unqualified scope to its ``:own``, reach-qualified form (ADR 0008, decision H)."""
 
 
-def _scope_values(scopes: Iterable[Scope | str] | str) -> frozenset[str]:
-    """Normalize ``scopes`` to a set of scope value strings.
+def parse_scopes(scopes: str | Iterable[str] | None) -> frozenset[str]:
+    """Turn scopes the way a caller hands them in into a set - the one normalizer of scopes.
 
-    A bare ``str`` is treated as a space-separated scope string, like ``normalize_scope_set`` in
-    ``services/scopes.py`` - a plain ``str`` also type-checks as ``Iterable[str]``, so without this
-    case a caller passing one (for example ``expand(session.scope)``, a space-separated text
-    column) would silently get it iterated character by character.
+    An OAuth2 scope string (RFC 6749, section 3.3) is split at whitespace; any other iterable,
+    ``Scope`` members included, is taken value by value, stripped, empty values dropped; ``None``
+    is no scope. It runs where scopes enter: the token form, a token claim, a stored scope
+    column. Past it everything is a set, which is why ``expand`` and ``canonical`` take a
+    ``Set`` - a ``str`` is not one, so it cannot slip in and be iterated character by character.
     """
+    if scopes is None:
+        return frozenset()
     if isinstance(scopes, str):
         return frozenset(scopes.split())
 
-    return frozenset(str(scope) for scope in scopes)
+    return frozenset(value for scope in scopes if (value := scope.strip()))
 
 
-def expand(scopes: Iterable[Scope | str] | str) -> frozenset[str]:
+def format_scopes(scopes: Iterable[str]) -> str:
+    """The OAuth2 scope string of ``scopes``: sorted and space-separated, the inverse of ``parse_scopes``."""
+    return " ".join(sorted(scopes))
+
+
+def expand(scopes: Set[str]) -> frozenset[str]:
     """Return the closure of ``scopes``: every scope plus the ``:own`` variant of each unqualified
     one it contains.
 
@@ -65,26 +73,14 @@ def expand(scopes: Iterable[Scope | str] | str) -> frozenset[str]:
     scopes before comparing them against a route's requirement, so a token carrying the unqualified
     scope satisfies a route that asks for the qualified one.
     """
-    values = _scope_values(scopes)
-    expanded = set(values)
-    for base, qualified in OWN_VARIANT.items():
-        if base.value in values:
-            expanded.add(qualified.value)
-
-    return frozenset(expanded)
+    return frozenset(scopes) | {own for base, own in OWN_VARIANT.items() if base in scopes}
 
 
-def canonical(scopes: Iterable[Scope | str] | str) -> frozenset[str]:
+def canonical(scopes: Set[str]) -> frozenset[str]:
     """Return the canonical form of ``scopes``: drop ``x:own`` wherever the unqualified ``x`` is
     also present.
 
     The inverse of :func:`expand` on any already-canonical set. A token always carries the
     canonical form - it is redundant to hold both a scope and its own-qualified variant.
     """
-    values = _scope_values(scopes)
-    result = set(values)
-    for base, qualified in OWN_VARIANT.items():
-        if base.value in values:
-            result.discard(qualified.value)
-
-    return frozenset(result)
+    return frozenset(scopes) - {own for base, own in OWN_VARIANT.items() if base in scopes}

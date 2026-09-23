@@ -9,11 +9,20 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from app.api.v1.common import register_exception_handlers
-from app.core.auth import AuthSettings, Principal, create_application_access_token, require_scopes
+from app.core.auth import (
+    AuthSettings,
+    Principal,
+    UserPrincipal,
+    create_access_token,
+    create_application_access_token,
+    require_scopes,
+)
 from app.core.auth.dependencies import get_auth_settings
+from app.core.auth.roles import Role
 from app.core.logging import LogFormat, LoggingSettings, LogLevel, configure_logging, register_request_logging
 
 BotWritePrincipal = Annotated[Principal, require_scopes("bot:write")]
+CrmReadOwnPrincipal = Annotated[Principal, require_scopes("crm:read:own")]
 
 
 def test_logging_settings_default_to_skillforge_app_name():
@@ -72,6 +81,42 @@ async def test_request_logging_includes_auth_context_for_missing_scopes(capsys):
     assert event["client_id"] == "skillbot"
     assert event["required_scopes"] == ["bot:write"]
     assert event["missing_scopes"] == ["bot:write"]
+
+
+async def test_request_logging_identifies_the_user_behind_a_request(capsys):
+    """A user token says who called: the account and its party, never the session or a secret."""
+    configure_logging(LoggingSettings(level=LogLevel.INFO, format=LogFormat.JSON))
+    app = FastAPI()
+    app.dependency_overrides[get_auth_settings] = _settings
+    register_request_logging(app)
+
+    @app.get("/parties")
+    async def parties(principal: CrmReadOwnPrincipal):
+        assert isinstance(principal, UserPrincipal)
+        return {"party_id": str(principal.party_id)}
+
+    user_id, party_id, session_id = uuid4(), uuid4(), uuid4()
+    user = UserPrincipal(
+        principal_id=user_id,
+        client_id="portal",
+        scopes=frozenset({"crm:read:own"}),
+        party_id=party_id,
+        session_id=session_id,
+        roles=frozenset({Role.STUDENT}),
+    )
+    token = create_access_token(_settings(), user)
+    capsys.readouterr()
+
+    response = await _request(app, "GET", "/parties", headers={"Authorization": f"Bearer {token.access_token}"})
+
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    completed = next(event for event in events if event["event"] == "http_request_completed")
+
+    assert response.status_code == 200
+    assert completed["principal_type"] == "user"
+    assert completed["user_id"] == str(user_id)
+    assert completed["party_id"] == str(party_id)
+    assert str(session_id) not in json.dumps(completed)
 
 
 async def test_request_logging_stays_silent_for_healthy_probe(capsys):
