@@ -29,6 +29,28 @@
         "title": "AccessTokenResponse",
         "type": "object"
       },
+      "ActionTokenResponse": {
+        "description": "A one-time token, to hand to the user.",
+        "properties": {
+          "expires_at": {
+            "description": "When the token stops working. Issuing a new one of the same purpose invalidates this one.",
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "token": {
+            "description": "The token itself. It is stored as a hash only, so this is the one time it can be read.",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at"
+        ],
+        "title": "ActionTokenResponse",
+        "type": "object"
+      },
       "ApplicationClientCreateRequest": {
         "properties": {
           "client_id": {
@@ -1145,6 +1167,96 @@
         ],
         "title": "HealthStatus",
         "type": "string"
+      },
+      "InvitedUserAccount": {
+        "description": "Body of `POST /users`: the invited account plus its one-time invitation token.",
+        "properties": {
+          "created_at": {
+            "description": "When the account was invited.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "description": "The login e-mail address, stored lowercased.",
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "description": "ID of the user account; the `principal_id` of the tokens issued for it.",
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "invitation": {
+            "$ref": "#/components/schemas/ActionTokenResponse",
+            "description": "The invitation to pass on to the user. Redeemed at `POST /auth/password/redeem`."
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the account last logged in; `null` until the first login.",
+            "title": "Last Login At"
+          },
+          "locked_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Until when the account is locked out after failed logins; `null` while it is not locked.",
+            "title": "Locked Until"
+          },
+          "party_id": {
+            "description": "ID of the person party the account belongs to.",
+            "format": "uuid",
+            "title": "Party Id",
+            "type": "string"
+          },
+          "roles": {
+            "description": "Every role the account holds, stored and derived, sorted.",
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/UserAccountStatus",
+            "description": "`invited` until the invitation is redeemed, then `active`; `disabled` cannot log in."
+          },
+          "updated_at": {
+            "description": "When the account was last changed.",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "party_id",
+          "email",
+          "status",
+          "roles",
+          "last_login_at",
+          "created_at",
+          "locked_until",
+          "updated_at",
+          "invitation"
+        ],
+        "title": "InvitedUserAccount",
+        "type": "object"
       },
       "JobClaimRequest": {
         "properties": {
@@ -2297,6 +2409,41 @@
         "title": "Page[SubjectResponse]",
         "type": "object"
       },
+      "Page_UserAccountListItem_": {
+        "properties": {
+          "items": {
+            "description": "The items of this page, in the order of the list.",
+            "items": {
+              "$ref": "#/components/schemas/UserAccountListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "The page size that was applied.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Number of items skipped before this page.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Number of items matching the request across all pages.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[UserAccountListItem]",
+        "type": "object"
+      },
       "PartyDetail": {
         "discriminator": {
           "mapping": {
@@ -2375,6 +2522,33 @@
         ],
         "title": "PartyType",
         "type": "string"
+      },
+      "PasswordRedeemRequest": {
+        "description": "Body of `POST /password/redeem`: a one-time token and the password to set with it.",
+        "properties": {
+          "new_password": {
+            "description": "The password to set: between 12 and 128 characters, no further rules.",
+            "examples": [
+              "correct horse battery staple"
+            ],
+            "title": "New Password",
+            "type": "string"
+          },
+          "token": {
+            "description": "The invitation or password-reset token the user was given.",
+            "examples": [
+              "sf_ua_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            ],
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "new_password"
+        ],
+        "title": "PasswordRedeemRequest",
+        "type": "object"
       },
       "PersonCreateRequest": {
         "description": "Body of `POST /persons`.",
@@ -3160,6 +3334,237 @@
           }
         },
         "title": "TutorRoleRequest",
+        "type": "object"
+      },
+      "UserAccountCreateRequest": {
+        "description": "Body of `POST /users`: whom to invite.",
+        "properties": {
+          "email": {
+            "description": "The login e-mail address. Stored lowercased and unique across all accounts.",
+            "examples": [
+              "anna.schmidt@example.org"
+            ],
+            "format": "email",
+            "maxLength": 254,
+            "title": "Email",
+            "type": "string"
+          },
+          "party_id": {
+            "description": "ID of the person party the account belongs to. A company cannot hold one.",
+            "examples": [
+              "7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"
+            ],
+            "format": "uuid",
+            "title": "Party Id",
+            "type": "string"
+          },
+          "roles": {
+            "description": "Stored roles to give the account. The other roles follow from the CRM and cannot be set.",
+            "examples": [
+              [
+                "admin"
+              ]
+            ],
+            "items": {
+              "$ref": "#/components/schemas/UserAccountRoleName"
+            },
+            "title": "Roles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "party_id",
+          "email"
+        ],
+        "title": "UserAccountCreateRequest",
+        "type": "object"
+      },
+      "UserAccountDetail": {
+        "description": "A user account with everything an administrator needs. Never the hash or the login counter.",
+        "properties": {
+          "created_at": {
+            "description": "When the account was invited.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "description": "The login e-mail address, stored lowercased.",
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "description": "ID of the user account; the `principal_id` of the tokens issued for it.",
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the account last logged in; `null` until the first login.",
+            "title": "Last Login At"
+          },
+          "locked_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Until when the account is locked out after failed logins; `null` while it is not locked.",
+            "title": "Locked Until"
+          },
+          "party_id": {
+            "description": "ID of the person party the account belongs to.",
+            "format": "uuid",
+            "title": "Party Id",
+            "type": "string"
+          },
+          "roles": {
+            "description": "Every role the account holds, stored and derived, sorted.",
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/UserAccountStatus",
+            "description": "`invited` until the invitation is redeemed, then `active`; `disabled` cannot log in."
+          },
+          "updated_at": {
+            "description": "When the account was last changed.",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "party_id",
+          "email",
+          "status",
+          "roles",
+          "last_login_at",
+          "created_at",
+          "locked_until",
+          "updated_at"
+        ],
+        "title": "UserAccountDetail",
+        "type": "object"
+      },
+      "UserAccountListItem": {
+        "description": "A user account as one entry of the list.",
+        "properties": {
+          "created_at": {
+            "description": "When the account was invited.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "description": "The login e-mail address, stored lowercased.",
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "description": "ID of the user account; the `principal_id` of the tokens issued for it.",
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the account last logged in; `null` until the first login.",
+            "title": "Last Login At"
+          },
+          "party_id": {
+            "description": "ID of the person party the account belongs to.",
+            "format": "uuid",
+            "title": "Party Id",
+            "type": "string"
+          },
+          "roles": {
+            "description": "Every role the account holds, stored and derived, sorted.",
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/UserAccountStatus",
+            "description": "`invited` until the invitation is redeemed, then `active`; `disabled` cannot log in."
+          }
+        },
+        "required": [
+          "id",
+          "party_id",
+          "email",
+          "status",
+          "roles",
+          "last_login_at",
+          "created_at"
+        ],
+        "title": "UserAccountListItem",
+        "type": "object"
+      },
+      "UserAccountRoleName": {
+        "enum": [
+          "admin"
+        ],
+        "title": "UserAccountRoleName",
+        "type": "string"
+      },
+      "UserAccountStatus": {
+        "enum": [
+          "invited",
+          "active",
+          "disabled"
+        ],
+        "title": "UserAccountStatus",
+        "type": "string"
+      },
+      "UserAccountUpdateRequest": {
+        "description": "Body of `PATCH /users/{user_id}`: only the fields that are sent change.",
+        "properties": {
+          "email": {
+            "description": "New login e-mail address. Stored lowercased and unique across all accounts.",
+            "format": "email",
+            "maxLength": 254,
+            "title": "Email",
+            "type": "string"
+          },
+          "status": {
+            "description": "New status. `active` only for an account that has a password; `disabled` revokes its sessions.",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "UserAccountUpdateRequest",
         "type": "object"
       },
       "WorkerHealthCheckResponse": {
@@ -4368,6 +4773,120 @@
         ]
       }
     },
+    "/api/v1/auth/password/redeem": {
+      "post": {
+        "description": "Set a password with an invitation or a password-reset token.\n\nAn unknown, used, expired or replaced token answers the same body, so a caller cannot tell\nwhich of the four it was. Redeeming a reset revokes every session of the account.",
+        "operationId": "auth_redeem_password",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordRedeemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:login"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_action_token": {
+                    "value": {
+                      "code": "invalid_action_token",
+                      "detail": "Invalid or expired token"
+                    }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
+                  },
+                  "weak_password": {
+                    "value": {
+                      "code": "weak_password",
+                      "detail": "Password must be between 12 and 128 characters long"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid or expired token / Password must be between 12 and 128 characters long"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:login"
+            ]
+          }
+        ],
+        "summary": "Redeem Password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/token": {
       "post": {
         "operationId": "auth_create_token",
@@ -4470,6 +4989,1336 @@
           }
         },
         "summary": "Create Token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/users": {
+      "get": {
+        "description": "List user accounts, ordered by e-mail address.",
+        "operationId": "auth_list_users",
+        "parameters": [
+          {
+            "description": "Maximum number of items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Maximum number of items to return.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip before the first returned item.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip before the first returned item.",
+              "maximum": 2147483647,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only accounts in this status.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UserAccountStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only accounts in this status.",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Only the account of this party; at most one.",
+            "in": "query",
+            "name": "party_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the account of this party; at most one.",
+              "title": "Party Id"
+            }
+          },
+          {
+            "description": "Only the account with exactly this e-mail address, compared lowercased.",
+            "in": "query",
+            "name": "email",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 254,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the account with exactly this e-mail address, compared lowercased.",
+              "title": "Email"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_UserAccountListItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:manage"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:manage"
+            ]
+          }
+        ],
+        "summary": "List Users",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "description": "Invite a person party: create the account and issue its invitation token.\n\nThe token is in the response and nowhere else - Forge stores only its hash and cannot show it\nagain. Pass it to the user; they set their password at `POST /auth/password/redeem`.",
+        "operationId": "auth_invite_user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserAccountCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitedUserAccount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "account_party_not_found": {
+                    "value": {
+                      "code": "account_party_not_found",
+                      "detail": "Party not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Party not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "user_account_already_exists": {
+                    "value": {
+                      "code": "user_account_already_exists",
+                      "detail": "The party already has a user account"
+                    }
+                  },
+                  "user_email_already_in_use": {
+                    "value": {
+                      "code": "user_email_already_in_use",
+                      "detail": "Another user account already uses this e-mail address"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The party already has a user account / Another user account already uses this e-mail address"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "account_party_not_a_person": {
+                    "value": {
+                      "code": "account_party_not_a_person",
+                      "detail": "A user account belongs to a person, not to a company"
+                    }
+                  },
+                  "validation_error": {
+                    "value": {
+                      "code": "validation_error",
+                      "detail": "Request validation failed",
+                      "errors": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "message": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A user account belongs to a person, not to a company"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:manage"
+            ]
+          }
+        ],
+        "summary": "Invite User",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/users/{user_id}": {
+      "get": {
+        "description": "Read a single user account, with its stored and derived roles.",
+        "operationId": "auth_get_user",
+        "parameters": [
+          {
+            "description": "ID of the user account.",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the user account.",
+              "examples": [
+                "3f2b8c1e-5a4d-4e6f-8a9b-0c1d2e3f4a5b"
+              ],
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAccountDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "user_account_not_found": {
+                    "value": {
+                      "code": "user_account_not_found",
+                      "detail": "User account not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "User account not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:manage"
+            ]
+          }
+        ],
+        "summary": "Get User",
+        "tags": [
+          "auth"
+        ]
+      },
+      "patch": {
+        "description": "Change a user account. Only the fields that are sent change; an empty body changes nothing.\n\nDisabling an account revokes its sessions right away; the access tokens already handed out\nexpire within 15 minutes.",
+        "operationId": "auth_update_user",
+        "parameters": [
+          {
+            "description": "ID of the user account.",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the user account.",
+              "examples": [
+                "3f2b8c1e-5a4d-4e6f-8a9b-0c1d2e3f4a5b"
+              ],
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserAccountUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAccountDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "user_account_not_found": {
+                    "value": {
+                      "code": "user_account_not_found",
+                      "detail": "User account not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "User account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "user_account_state": {
+                    "value": {
+                      "code": "user_account_state",
+                      "detail": "The account state does not allow this"
+                    }
+                  },
+                  "user_email_already_in_use": {
+                    "value": {
+                      "code": "user_email_already_in_use",
+                      "detail": "Another user account already uses this e-mail address"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Another user account already uses this e-mail address / The account state does not allow this"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:manage"
+            ]
+          }
+        ],
+        "summary": "Update User",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/users/{user_id}/invitation": {
+      "post": {
+        "description": "Issue a fresh invitation. Refused once the account has a password - reset it instead.\n\nEarlier unused invitations stop working.",
+        "operationId": "auth_issue_invitation",
+        "parameters": [
+          {
+            "description": "ID of the user account.",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the user account.",
+              "examples": [
+                "3f2b8c1e-5a4d-4e6f-8a9b-0c1d2e3f4a5b"
+              ],
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "user_account_not_found": {
+                    "value": {
+                      "code": "user_account_not_found",
+                      "detail": "User account not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "User account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "user_account_state": {
+                    "value": {
+                      "code": "user_account_state",
+                      "detail": "The account state does not allow this"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The account state does not allow this"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:manage"
+            ]
+          }
+        ],
+        "summary": "Issue Invitation",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/users/{user_id}/password-reset": {
+      "post": {
+        "description": "Issue a password reset. Refused for an account that has no password - invite it instead.\n\nEarlier unused resets stop working; nothing else changes until the token is redeemed.",
+        "operationId": "auth_issue_password_reset",
+        "parameters": [
+          {
+            "description": "ID of the user account.",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the user account.",
+              "examples": [
+                "3f2b8c1e-5a4d-4e6f-8a9b-0c1d2e3f4a5b"
+              ],
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "user_account_not_found": {
+                    "value": {
+                      "code": "user_account_not_found",
+                      "detail": "User account not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "User account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "user_account_state": {
+                    "value": {
+                      "code": "user_account_state",
+                      "detail": "The account state does not allow this"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The account state does not allow this"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:manage"
+            ]
+          }
+        ],
+        "summary": "Issue Password Reset",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/users/{user_id}/roles/{role}": {
+      "delete": {
+        "description": "Take a stored role away. The roles the CRM derives cannot be removed here.",
+        "operationId": "auth_remove_user_role",
+        "parameters": [
+          {
+            "description": "ID of the user account.",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the user account.",
+              "examples": [
+                "3f2b8c1e-5a4d-4e6f-8a9b-0c1d2e3f4a5b"
+              ],
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A role that is stored on the account; the other roles follow from the CRM.",
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserAccountRoleName",
+              "description": "A role that is stored on the account; the other roles follow from the CRM.",
+              "examples": [
+                "admin"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "user_account_not_found": {
+                    "value": {
+                      "code": "user_account_not_found",
+                      "detail": "User account not found"
+                    }
+                  },
+                  "user_role_not_found": {
+                    "value": {
+                      "code": "user_role_not_found",
+                      "detail": "The account does not hold this role"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "User account not found / The account does not hold this role"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:manage"
+            ]
+          }
+        ],
+        "summary": "Remove User Role",
+        "tags": [
+          "auth"
+        ]
+      },
+      "put": {
+        "description": "Give the account a stored role. Idempotent: holding it already changes nothing.",
+        "operationId": "auth_add_user_role",
+        "parameters": [
+          {
+            "description": "ID of the user account.",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the user account.",
+              "examples": [
+                "3f2b8c1e-5a4d-4e6f-8a9b-0c1d2e3f4a5b"
+              ],
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A role that is stored on the account; the other roles follow from the CRM.",
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserAccountRoleName",
+              "description": "A role that is stored on the account; the other roles follow from the CRM.",
+              "examples": [
+                "admin"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAccountDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "user_account_not_found": {
+                    "value": {
+                      "code": "user_account_not_found",
+                      "detail": "User account not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "User account not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:manage"
+            ]
+          }
+        ],
+        "summary": "Add User Role",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/users/{user_id}/sessions": {
+      "delete": {
+        "description": "Revoke every session of the account, so no refresh token of it works any more.",
+        "operationId": "auth_revoke_user_sessions",
+        "parameters": [
+          {
+            "description": "ID of the user account.",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "description": "ID of the user account.",
+              "examples": [
+                "3f2b8c1e-5a4d-4e6f-8a9b-0c1d2e3f4a5b"
+              ],
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:manage"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "user_account_not_found": {
+                    "value": {
+                      "code": "user_account_not_found",
+                      "detail": "User account not found"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "User account not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:manage"
+            ]
+          }
+        ],
+        "summary": "Revoke User Sessions",
         "tags": [
           "auth"
         ]

@@ -1,16 +1,30 @@
+import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.models import ApplicationClient, ApplicationClientStatus
+from app.core.db.models import (
+    ApplicationClient,
+    ApplicationClientStatus,
+    UserAccountRoleName,
+    UserActionTokenPurpose,
+)
 
 from ..audit import AuditEventType, write_auth_audit_log
-from ..results import BootstrappedApplicationClient
+from ..config import AuthSettings
+from ..principal import PrincipalType
+from ..results import BootstrappedAdminAccount, BootstrappedApplicationClient
 from ..scopes import Scope, parse_scopes
+from .accounts import find_user_account_by_party
+from .action_tokens import issue_action_token
 from .clients import find_application_client
 from .scopes import grant_client_scopes, seed_default_scopes
 from .secrets import client_has_usable_secret, create_client_secret
+from .users import add_user_role, invite_user_account
+
+BOOTSTRAP_ACTOR = "cli"
+"""What the operator commands record as the issuer, where a request records its principal."""
 
 
 async def bootstrap_application_client(
@@ -37,7 +51,7 @@ async def bootstrap_application_client(
         created_client = True
         await write_auth_audit_log(
             session,
-            principal_type="application",
+            principal_type=PrincipalType.APPLICATION,
             principal_id=client.id,
             event_type=AuditEventType.APPLICATION_CLIENT_CREATED,
             success=True,
@@ -66,3 +80,45 @@ async def bootstrap_application_client(
         created_secret=created_secret,
         granted_scopes=granted_scope_keys,
     )
+
+
+async def bootstrap_admin_account(
+    session: AsyncSession,
+    settings: AuthSettings,
+    *,
+    party_id: uuid.UUID,
+    email: str,
+) -> BootstrappedAdminAccount:
+    """Make sure the party has a user account holding the ``admin`` role, and hand out a way in.
+
+    Inviting needs an admin, so the first one cannot be invited (decision O). Idempotent: run
+    again it keeps the account and its e-mail address, makes sure it still holds the role, and
+    issues a fresh invitation only while the account has no password - once it has one, the
+    operator resets it through the API instead.
+    """
+    existing = await find_user_account_by_party(session, party_id)
+    if existing is None:
+        created = await invite_user_account(
+            session,
+            settings,
+            party_id=party_id,
+            email=email,
+            roles=[UserAccountRoleName.ADMIN],
+            actor=BOOTSTRAP_ACTOR,
+        )
+        return BootstrappedAdminAccount(
+            account=created.view.account, created_account=True, invitation=created.invitation
+        )
+
+    view = await add_user_role(session, existing.id, role=UserAccountRoleName.ADMIN, actor=BOOTSTRAP_ACTOR)
+    invitation = None
+    if view.account.password_hash is None:
+        invitation = await issue_action_token(
+            session,
+            settings,
+            user_id=existing.id,
+            purpose=UserActionTokenPurpose.INVITATION,
+            actor=BOOTSTRAP_ACTOR,
+        )
+
+    return BootstrappedAdminAccount(account=view.account, created_account=False, invitation=invitation)

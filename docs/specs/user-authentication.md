@@ -543,32 +543,84 @@ Until the portal exists, everything works from Swagger UI:
 
 **P0-5 - Accounts.**
 
-- _Technique:_ `app/core/auth/services/users.py` (invite, get, list, update, roles, issue action token, redeem,
-  revoke sessions) and `services/roles.py` (`derive_roles`); `app/api/v1/auth/users.py` and the redeem route;
-  `app/core/auth/passwords.py` for hashing, the dummy hash and the policy; `bootstrap_admin` in
-  [`bootstrap.py`](../../app/core/auth/bootstrap.py) with a `just bootstrap-admin` recipe.
+- _Technique:_ the account services split by concern, like the client ones - `services/users.py` (invite, load,
+  list, update, stored roles), `services/action_tokens.py` (issue, redeem), `services/sessions.py`
+  (`SessionRevokedReason`, revoke) and `services/accounts.py` (get and lock an account row, the base the other
+  three build on) - plus `services/roles.py` (`derive_roles`); `LoginEmail` and `normalize_email` in
+  `app/core/auth/inputs.py`; `app/api/v1/auth/users.py` and the redeem route in `app/api/v1/auth/password.py`;
+  `app/core/auth/passwords.py` for the policy and the dummy hash - hashing and token generation are
+  `hash_secret`, `verify_secret`, `digest` and `generate_secret` in [`secrets.py`](../../app/core/auth/secrets.py),
+  the one home of the secret primitives; `bootstrap_admin` in [`bootstrap.py`](../../app/core/auth/bootstrap.py)
+  with a `just bootstrap-admin` recipe.
 - _Acceptance criteria:_
-  - [ ] Inviting a person party answers `201` with an `invited` account and a token; the same party again is
+  - [x] Inviting a person party answers `201` with an `invited` account and a token; the same party again is
         `user_account_already_exists`; a company is `account_party_not_a_person`; another account's e-mail is
         `user_email_already_in_use`. `Anna@Example.org` is stored as `anna@example.org`.
-  - [ ] Redeeming the invitation sets the password and activates the account; redeeming it again, redeeming an
+  - [x] Redeeming the invitation sets the password and activates the account; redeeming it again, redeeming an
         expired token and redeeming a token replaced by a newer one all answer the same `invalid_action_token`.
-  - [ ] Redeeming a `password_reset` revokes every session of the account; redeeming an invitation revokes none.
-  - [ ] Disabling an account revokes its sessions; enabling an account without a password is
+  - [x] Redeeming a `password_reset` revokes every session of the account; redeeming an invitation revokes none.
+  - [x] Disabling an account revokes its sessions; enabling an account without a password is
         `user_account_state`.
-  - [ ] `roles` of `UserAccountDetail` lists `student` for a party with a `Student` row, `guardian` for a party
+  - [x] `roles` of `UserAccountDetail` lists `student` for a party with a `Student` row, `guardian` for a party
         with an outgoing `PAYS_FOR`, and `admin` + `tutor` for a tutor holding the stored role.
-  - [ ] Every route is `403` for an application token without `auth:users:manage`; the redeem route is `403` for a
+  - [x] Every route is `403` for an application token without `auth:users:manage`; the redeem route is `403` for a
         user token, whatever its scopes.
-  - [ ] `just bootstrap-admin` is idempotent: run twice it keeps the account and issues a fresh invitation only
+  - [x] `just bootstrap-admin` is idempotent: run twice it keeps the account and issues a fresh invitation only
         while the account has no password.
+- _Proven by:_ `test_inviting_a_person_party_answers_201_with_an_invited_account_and_a_token`,
+  `test_inviting_the_same_party_again_is_a_conflict`, `test_inviting_a_company_party_is_rejected`,
+  `test_inviting_with_an_email_another_account_uses_is_a_conflict` and `test_inviting_stores_the_email_lowercased`
+  in [`test_auth_users_api.py`](../../tests/db/auth/test_auth_users_api.py), which also covers disabling
+  (`test_disabling_an_account_revokes_its_sessions`,
+  `test_enabling_an_account_without_a_password_is_rejected`) and the stored roles.
+  `test_redeeming_an_invitation_sets_the_password_and_activates_the_account` and
+  `test_every_rejected_token_answers_the_same_body` (one body for unknown, used, expired and replaced) in
+  [`test_auth_password_redeem_api.py`](../../tests/db/auth/test_auth_password_redeem_api.py), next to
+  `test_redeeming_a_password_reset_revokes_every_session_of_the_account` and
+  `test_redeeming_an_invitation_revokes_no_session`;
+  `test_an_overlapping_issue_waits_and_leaves_exactly_one_live_token` in
+  [`test_auth_action_token_concurrency.py`](../../tests/db/auth/test_auth_action_token_concurrency.py) pins that
+  two issues arriving together leave one live token.
+  The derivation table is checked by `test_the_detail_lists_student_for_a_party_with_a_student_row`,
+  `test_the_detail_lists_guardian_for_a_party_with_an_outgoing_pays_for`,
+  `test_the_detail_lists_admin_and_tutor_for_a_tutor_holding_the_stored_role` and
+  `test_tutor_of_does_not_make_a_tutor_a_guardian` in
+  [`test_auth_derived_roles.py`](../../tests/db/auth/test_auth_derived_roles.py).
+  The guards run over every operation of the document:
+  `test_a_user_route_answers_403_without_the_manage_scope` and
+  `test_the_redeem_route_answers_403_for_a_user_principal_whatever_its_scopes` in
+  [`test_auth_users_authz.py`](../../tests/api/test_auth_users_authz.py); the contract itself (route map,
+  operation IDs, descriptions, the token living in one schema) in
+  [`test_auth_users_openapi.py`](../../tests/api/test_auth_users_openapi.py).
+  `test_bootstrapping_twice_keeps_the_account_and_issues_a_fresh_invitation` and
+  `test_bootstrapping_an_account_that_has_a_password_issues_no_token` in
+  [`test_auth_admin_bootstrap.py`](../../tests/db/auth/test_auth_admin_bootstrap.py) cover the operator command,
+  whose `--email` is parsed by the API's own rule
+  ([`test_bootstrap_cli.py`](../../tests/auth/test_bootstrap_cli.py)), and
+  `test_the_invite_and_redeem_flow_logs_neither_the_token_nor_the_password` in
+  [`test_auth_users_logging.py`](../../tests/db/auth/test_auth_users_logging.py) greps the captured log output of
+  the whole flow.
+  What holds when two requests interleave is pinned separately:
+  `test_an_overlapping_redeem_of_the_same_token_is_refused` and
+  `test_an_overlapping_removal_of_the_same_role_is_not_found` in
+  [`test_auth_users_concurrency.py`](../../tests/db/auth/test_auth_users_concurrency.py) (two real transactions),
+  and `test_issuing_reads_the_account_under_the_lock_not_what_the_session_held` plus the three
+  check-then-insert cases in
+  [`test_auth_users_service_guards.py`](../../tests/db/auth/test_auth_users_service_guards.py), which reach past
+  the pre-checks to the constraint underneath. The audit trail of a change is pinned by
+  [`test_auth_users_audit.py`](../../tests/db/auth/test_auth_users_audit.py) - a PATCH that changes nothing
+  records nothing - and the cost of a redeem by
+  `test_the_password_is_hashed_before_the_account_row_is_locked` in
+  [`test_auth_redeem_hashing.py`](../../tests/db/auth/test_auth_redeem_hashing.py).
 
 **P0-6 - Grants.**
 
 - _Technique:_ `issue_user_token` and `refresh_user_token` in
   [`services/tokens.py`](../../app/core/auth/services/tokens.py); `ClientTokenForm` becomes `TokenForm`;
-  `create_token` dispatches on the grant; `POST /auth/revoke`; `app/core/auth/sessions.py` for token generation
-  and hashing.
+  `create_token` dispatches on the grant; `POST /auth/revoke`; sessions are opened, rotated and revoked in
+  [`services/sessions.py`](../../app/core/auth/services/sessions.py), and their refresh tokens are generated and
+  hashed with `generate_secret` and `digest` from [`secrets.py`](../../app/core/auth/secrets.py) - no second
+  hashing module.
 - _Acceptance criteria:_
   - [ ] The lifecycle test (database): invite -> redeem -> `password` -> call `/auth/me` -> `refresh_token` ->
         `revoke` -> the revoked refresh token is `invalid_grant`.

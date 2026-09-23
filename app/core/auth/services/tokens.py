@@ -7,9 +7,9 @@ from app.core.db.models import ApplicationClientSecret, ApplicationClientStatus
 
 from ..audit import AuditEventType, write_auth_audit_log
 from ..config import AuthSettings
-from ..principal import ApplicationPrincipal
+from ..principal import ApplicationPrincipal, PrincipalType
 from ..scopes import parse_scopes
-from ..secrets import verify_client_secret
+from ..secrets import verify_secret
 from ..tokens import CreatedAccessToken, create_access_token
 from .clients import find_application_client
 from .errors import ClientCredentialsError, InvalidClientCredentialsError
@@ -53,7 +53,7 @@ async def issue_client_token(
     except ClientCredentialsError as exc:
         await write_auth_audit_log(
             session,
-            principal_type="application",
+            principal_type=PrincipalType.APPLICATION,
             principal_id=client.id if client is not None else client_id,
             event_type=AuditEventType.TOKEN_DENIED,
             success=False,
@@ -63,7 +63,7 @@ async def issue_client_token(
 
     await write_auth_audit_log(
         session,
-        principal_type="application",
+        principal_type=PrincipalType.APPLICATION,
         principal_id=client.id,
         event_type=AuditEventType.TOKEN_ISSUED,
         success=True,
@@ -84,7 +84,7 @@ def _find_matching_secret(
         if not is_secret_usable(secret, now=now):
             continue
 
-        if verify_client_secret(client_secret, secret.secret_hash):
+        if verify_secret(client_secret, secret.secret_hash):
             return secret
 
     return None

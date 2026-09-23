@@ -2,10 +2,16 @@ import pytest
 
 from app.core.auth import Scope
 from app.core.auth.roles import BASE_USER_SCOPES, ROLE_SCOPES, STORED_ROLES, Role, scopes_for
+from app.core.db.models import UserAccountRoleName
 
 
 def test_stored_roles_is_exactly_admin():
     assert STORED_ROLES == {Role.ADMIN}
+
+
+def test_stored_roles_are_exactly_the_roles_the_table_can_hold():
+    """``STORED_ROLES`` and the ``user_account_role_name`` enum state one fact twice; this keeps them equal."""
+    assert STORED_ROLES == {Role(role) for role in UserAccountRoleName}
 
 
 def test_base_user_scopes_is_account_self_and_crm_read_own():
