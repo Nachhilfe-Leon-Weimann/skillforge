@@ -48,13 +48,10 @@ that honor it.
 
 
 def parse_scopes(scopes: str | Iterable[str] | None) -> frozenset[str]:
-    """Turn scopes the way a caller hands them in into a set - the one place a scope string is split.
+    """Return ``scopes`` as a set - the one place a scope string is split.
 
-    An OAuth2 scope string (RFC 6749, section 3.3) is split at whitespace; any other iterable,
-    ``Scope`` members included, is taken value by value, stripped, empty values dropped; ``None``
-    is no scope. It runs where scopes enter - the token form, a token claim, a stored scope column
-    - and past it everything is a set: a ``str`` is not a ``Set``, so it cannot slip into a
-    function that takes one and be iterated character by character.
+    An OAuth2 scope string (RFC 6749, section 3.3) is split at whitespace; any other iterable is
+    taken value by value, stripped, with empty values dropped; ``None`` is no scope.
     """
     if scopes is None:
         return frozenset()
@@ -75,7 +72,7 @@ def expand(scopes: Set[str]) -> frozenset[str]:
     What a set of scopes *permits*: every check expands first, so a token carrying the unqualified
     scope satisfies a requirement of its ``:own`` variant.
     """
-    return frozenset(scopes) | {own for base, own in OWN_VARIANT.items() if base in scopes}
+    return frozenset(scopes) | _implied_own_variants(scopes)
 
 
 def canonical(scopes: Set[str]) -> frozenset[str]:
@@ -84,4 +81,8 @@ def canonical(scopes: Set[str]) -> frozenset[str]:
     What a token carries: holding both forms is redundant. The inverse of ``expand`` on canonical
     sets.
     """
-    return frozenset(scopes) - {own for base, own in OWN_VARIANT.items() if base in scopes}
+    return frozenset(scopes) - _implied_own_variants(scopes)
+
+
+def _implied_own_variants(scopes: Set[str]) -> frozenset[Scope]:
+    return frozenset(own for base, own in OWN_VARIANT.items() if base in scopes)

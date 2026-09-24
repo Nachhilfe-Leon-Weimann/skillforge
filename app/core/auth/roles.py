@@ -7,13 +7,8 @@ from .scopes import Scope
 class Role(StrEnum):
     """A view a user account holds; an account can hold several.
 
-    `student`, `tutor` and `guardian` follow from the CRM, `admin` is assigned to the account.
+    ``student``, ``tutor`` and ``guardian`` follow from the CRM, ``admin`` is assigned to the account.
     """
-
-    # The docstring above is the contract's description of the enum. Behind it: the derived roles
-    # are computed at every token issuance and refresh and never stored; ``ADMIN`` is a row in
-    # ``auth.user_account_role`` (ADR 0008). SkillForge authorizes by scope only and never branches
-    # on a role; a client narrows a token to one view by requesting fewer scopes.
 
     STUDENT = "student"
     TUTOR = "tutor"
@@ -39,11 +34,9 @@ ROLE_SCOPES: dict[Role, frozenset[Scope]] = {
         Scope.BOT_READ,
     }),
 }
-"""Scopes a role adds on top of ``BASE_USER_SCOPES``.
+"""Scopes a role adds on top of ``BASE_USER_SCOPES``; the derived roles add none yet.
 
-The derived roles carry no scopes of their own yet - they tell ``/auth/me`` and the token's
-``roles`` claim which views to offer. ``admin`` starts without ``bot:write`` (an open question of
-the user authentication spec); adding it is one line here.
+SkillForge authorizes by scope only and never branches on a role.
 """
 
 
