@@ -22,13 +22,14 @@ from pydantic import (
     PlainSerializer,
     TypeAdapter,
     ValidationError,
+    field_validator,
     model_validator,
 )
 
 from .config import AuthSettings
 from .principal import ApplicationPrincipal, AuthMethod, Principal, PrincipalType, UserPrincipal
 from .roles import Role
-from .scopes import canonical, format_scopes, parse_scopes
+from .scopes import CLIENT_ONLY_SCOPES, canonical, format_scopes, parse_scopes
 
 TOKEN_TYPE_BEARER = "bearer"
 
@@ -50,11 +51,12 @@ class CreatedAccessToken:
 
 
 def _parse_scope_claim(value: object) -> frozenset[str]:
-    """The scope claim is an OAuth2 scope string - nothing else, not even a list of scopes."""
+    """The scope claim is an OAuth2 scope string - nothing else, not even a list of scopes - and is
+    read in its canonical form."""
     if not isinstance(value, str):
         raise ValueError("scope must be a space-separated string")
 
-    return parse_scopes(value)
+    return canonical(parse_scopes(value))
 
 
 def _not_empty(scopes: frozenset[str]) -> frozenset[str]:
@@ -70,7 +72,7 @@ _ScopeClaim = Annotated[
     AfterValidator(_not_empty),
     PlainSerializer(format_scopes, return_type=str),
 ]
-"""The ``scope`` claim: a space-separated string on the wire, a non-empty set in Python."""
+"""The ``scope`` claim: a space-separated string on the wire, a non-empty canonical set in Python."""
 
 _RolesClaim = Annotated[frozenset[Role], PlainSerializer(sorted, return_type=list[Role])]
 """The ``roles`` claim: a sorted list on the wire; an unknown role makes the token invalid."""
@@ -122,6 +124,15 @@ class _UserClaims(_Claims):
     roles: _RolesClaim
     amr: _AuthMethodsClaim
 
+    @field_validator("scope")
+    @classmethod
+    def _carries_no_client_only_scope(cls, scope: frozenset[str]) -> frozenset[str]:
+        # Client-only scopes are what a client may do for itself; a person's token never carries one.
+        if scope & CLIENT_ONLY_SCOPES:
+            raise ValueError("a person's token carries no client-only scope")
+
+        return scope
+
     def to_principal(self) -> UserPrincipal:
         return UserPrincipal(
             principal_id=self.principal_id,
@@ -148,7 +159,8 @@ def create_access_token(
     """Issue an access token that speaks for ``principal``.
 
     The scope claim is canonical: a token never carries both a scope and its ``:own`` variant
-    (ADR 0008). An empty scope is refused - every token grants something.
+    (ADR 0008). An empty scope is refused - every token grants something - and so is a client-only
+    scope for a person.
     """
     issued_at = _normalize_datetime(now or datetime.now(UTC))
     expires_at = issued_at + timedelta(minutes=settings.access_token_expire_minutes)
@@ -216,7 +228,7 @@ def _claims_of(principal: Principal) -> dict[str, Any]:
         "principal_type": principal.principal_type,
         "principal_id": principal.principal_id,
         "azp": principal.client_id,
-        "scope": format_scopes(canonical(principal.scopes)),
+        "scope": format_scopes(principal.scopes),
     }
     if isinstance(principal, UserPrincipal):
         claims |= {

@@ -208,6 +208,34 @@ def test_validate_access_token_rejects_an_unknown_principal_type():
         validate_access_token(token, settings)
 
 
+def test_validate_access_token_reads_the_scope_claim_in_its_canonical_form():
+    settings = _settings()
+    token = _encode_person_claims(settings, scope="crm:read crm:read:own")
+
+    assert validate_access_token(token, settings).scopes == frozenset({"crm:read"})
+
+
+def test_validate_access_token_rejects_a_person_token_with_a_client_only_scope():
+    """Client-only scopes are what a client may do for itself; they never reach a person's token."""
+    settings = _settings()
+    token = _encode_person_claims(settings, scope="account:self auth:users:login")
+
+    with pytest.raises(TokenValidationError):
+        validate_access_token(token, settings)
+
+
+def test_create_access_token_refuses_a_client_only_scope_for_a_person_only():
+    settings = _settings()
+
+    with pytest.raises(ValueError, match="client-only"):
+        _person_token(settings, scopes={"account:self", "auth:users:login"})
+
+    application = create_application_access_token(
+        settings, principal_id=APPLICATION_ID, client_id="portal", scopes=["auth:users:login"]
+    )
+    assert validate_access_token(application.access_token, settings).scopes == frozenset({"auth:users:login"})
+
+
 def test_create_access_token_rejects_empty_scopes():
     with pytest.raises(ValueError, match="scopes must not be empty"):
         _person_token(_settings(), scopes=set())

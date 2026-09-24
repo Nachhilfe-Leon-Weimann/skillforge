@@ -178,7 +178,7 @@ async def test_require_application_rejects_a_person_token_whatever_it_carries():
     async def application_only(principal: ApplicationOnlyPrincipal):
         return {"principal_type": principal.principal_type}
 
-    token = create_access_token(settings, _person(scopes={"account:self", "auth:users:login", "bot:read"}))
+    token = create_access_token(settings, _person(scopes={"account:self", "bot:read", "crm:write"}))
     response = await _request(
         app, "GET", "/application-only", headers={"Authorization": f"Bearer {token.access_token}"}
     )
