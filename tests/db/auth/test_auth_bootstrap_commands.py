@@ -1,18 +1,17 @@
 """`just bootstrap-skillbot` and `just bootstrap-client` against the test database."""
 
 import re
+from collections import Counter
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import pytest
-from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthSettings, bootstrap, issue_client_token
 from app.core.db.models import (
     ApplicationClient,
-    ApplicationClientScopeGrant,
     ApplicationClientSecret,
     ApplicationClientStatus,
     AuthAuditLog,
@@ -39,7 +38,7 @@ def command_session(session: AsyncSession, monkeypatch) -> None:
 
 
 @pytest.mark.db
-async def test_bootstrap_skillbot_prints_what_it_printed_before(session: AsyncSession, capsys):
+async def test_bootstrap_skillbot_prints_what_it_printed_before(session: AsyncSession, auth_settings, grants, capsys):
     await bootstrap.bootstrap_skillbot()
     first = capsys.readouterr().out.splitlines()
     await bootstrap.bootstrap_skillbot()
@@ -48,12 +47,14 @@ async def test_bootstrap_skillbot_prints_what_it_printed_before(session: AsyncSe
     assert first[:2] == second[:2] == ["client_id=skillbot", "scopes=bot:read bot:write"]
     assert second[2:] == [RETAINED_SECRET]
     [secret_line] = first[2:]
-    assert await _token_scope(session, "skillbot", secret_line) == "bot:read bot:write"
-    assert await _grants(session) == {("bot:read", GrantMode.APPLICATION), ("bot:write", GrantMode.APPLICATION)}
+    assert await _token_scope(session, auth_settings, "skillbot", secret_line) == "bot:read bot:write"
+    assert await grants() == {("bot:read", GrantMode.APPLICATION), ("bot:write", GrantMode.APPLICATION)}
 
 
 @pytest.mark.db
-async def test_bootstrap_client_grants_in_both_modes_and_prints_a_new_secret_once(session: AsyncSession, capsys):
+async def test_bootstrap_client_grants_in_both_modes_and_prints_a_new_secret_once(
+    session: AsyncSession, auth_settings, grants, capsys
+):
     await _bootstrap_operator()
     first = capsys.readouterr().out.splitlines()
     await _bootstrap_operator()
@@ -73,12 +74,12 @@ async def test_bootstrap_client_grants_in_both_modes_and_prints_a_new_secret_onc
         ("operator", "operator", ApplicationClientStatus.ACTIVE)
     ]
     assert len((await session.execute(select(ApplicationClientSecret))).scalars().all()) == 1
-    assert await _grants(session) == {
+    assert await grants() == {
         *((scope, GrantMode.APPLICATION) for scope in OPERATOR_APPLICATION),
         *((scope, GrantMode.DELEGATED) for scope in OPERATOR_DELEGATED),
     }
     # The rerun changed nothing, so it recorded nothing.
-    assert await _event_types(session) == [
+    assert await _event_types(session) == Counter([
         "application_client.created",
         "scope_grant.added",
         "scope_grant.added",
@@ -86,9 +87,9 @@ async def test_bootstrap_client_grants_in_both_modes_and_prints_a_new_secret_onc
         "scope_grant.added",
         "scope_grant.added",
         "scope_grant.added",
-    ]
+    ])
     # The printed secret is the client's; its own token draws on the application grants only.
-    assert await _token_scope(session, "operator", secret_line) == "auth:users:login crm:write"
+    assert await _token_scope(session, auth_settings, "operator", secret_line) == "auth:users:login crm:write"
 
 
 @pytest.mark.db
@@ -103,13 +104,13 @@ async def test_bootstrap_client_refuses_a_client_only_scope_as_delegated_and_cha
     assert exit_code.value.code == "invalid_scope: Client-only scopes cannot be granted in delegated mode"
     assert capsys.readouterr().out == ""
     assert (await session.execute(select(ApplicationClient))).scalars().all() == []
-    assert await _event_types(session) == []
+    assert await _event_types(session) == Counter()
 
 
 @pytest.mark.db
-async def test_a_refused_rerun_leaves_the_client_as_it_was(session: AsyncSession):
+async def test_a_refused_rerun_leaves_the_client_as_it_was(grants):
     await _bootstrap_operator()
-    before = await _grants(session)
+    before = await grants()
 
     with pytest.raises(SystemExit) as exit_code:
         await bootstrap.bootstrap_client(
@@ -117,7 +118,7 @@ async def test_a_refused_rerun_leaves_the_client_as_it_was(session: AsyncSession
         )
 
     assert exit_code.value.code == "invalid_scope: Client-only scopes cannot be granted in delegated mode"
-    assert await _grants(session) == before
+    assert await grants() == before
 
 
 @pytest.mark.db
@@ -133,19 +134,14 @@ async def _bootstrap_operator() -> None:
     await bootstrap.bootstrap_client("operator", application=OPERATOR_APPLICATION, delegated=OPERATOR_DELEGATED)
 
 
-async def _token_scope(session: AsyncSession, client_id: str, secret_line: str) -> str:
+async def _token_scope(session: AsyncSession, settings: AuthSettings, client_id: str, secret_line: str) -> str:
     """The scope of a `client_credentials` token obtained with the secret a command printed."""
     match = NEW_SECRET.fullmatch(secret_line)
     assert match
-    settings = AuthSettings(secret_key=SecretStr("test-signing-secret-with-at-least-32-bytes"))
     token = await issue_client_token(session, settings, client_id=client_id, client_secret=match["plaintext"])
     return token.scope
 
 
-async def _grants(session: AsyncSession) -> set[tuple[str, GrantMode]]:
-    rows = await session.execute(select(ApplicationClientScopeGrant.scope_key, ApplicationClientScopeGrant.mode))
-    return set(rows.tuples())
-
-
-async def _event_types(session: AsyncSession) -> list[str]:
-    return list((await session.execute(select(AuthAuditLog.event_type))).scalars().all())
+async def _event_types(session: AsyncSession) -> Counter[str]:
+    """Event types of the audit entries; the log has no order within a transaction."""
+    return Counter((await session.execute(select(AuthAuditLog.event_type))).scalars())

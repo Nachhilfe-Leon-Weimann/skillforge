@@ -40,7 +40,7 @@ app/
   core/              auth/ (OAuth2, JWT, scopes), db/ (engine, models/<schema>/), logging/, config.py,
                      errors.py (HTTP-agnostic error taxonomy)
 migrations/          Alembic (env.py creates schemas; baseline = explicit DDL)
-tests/               api/, auth/, db/ (db/crm/: the CRM app against Postgres), workers/
+tests/               api/, auth/, db/ (db/crm/, db/auth/: the CRM and auth apps against Postgres), workers/
                      (DB tests via @pytest.mark.db)
 .github/             workflows: ci.yml, build.yml, release.yml (release-please -> build -> publish -> deploy),
                      deploy.yml and triage.yml - both only call the platform's shared workflows in
