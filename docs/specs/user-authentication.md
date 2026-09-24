@@ -642,7 +642,7 @@ Not built here; recorded so that this arc's shapes take it with no change but th
         `application_scopes` and `delegated_scopes` work as specified; the audit entries name the mode.
   - [x] Granting `auth:users:login` as `delegated` answers `invalid_scope` and grants nothing of the request.
   - [x] A client holding a scope only as `delegated` does not get it through `client_credentials`.
-  - [ ] `just bootstrap-client` is idempotent like `bootstrap-skillbot`, grants in both modes, refuses a client-only
+  - [x] `just bootstrap-client` is idempotent like `bootstrap-skillbot`, grants in both modes, refuses a client-only
         scope in `--delegated` with `invalid_scope`, and prints the secret only when it created one;
         `just bootstrap-skillbot` prints exactly what it prints today, and every existing caller of the grant
         services behaves as before.
