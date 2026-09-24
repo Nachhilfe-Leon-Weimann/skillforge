@@ -1,14 +1,23 @@
 from datetime import datetime
+from typing import Any, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic.experimental.missing_sentinel import MISSING
 
 from app.api.v1.common import ApiModel
+from app.core.auth.inputs import LoginEmail
 from app.core.auth.principal import Principal, UserPrincipal
-from app.core.auth.results import CreatedClientSecret
+from app.core.auth.results import CreatedClientSecret, IssuedActionToken, UserAccountWithRoles
 from app.core.auth.roles import Role
 from app.core.auth.tokens import CreatedAccessToken
-from app.core.db.models import ApplicationClient, ApplicationClientStatus, GrantMode
+from app.core.db.models import (
+    ApplicationClient,
+    ApplicationClientStatus,
+    GrantMode,
+    UserAccountRoleName,
+    UserAccountStatus,
+)
 
 
 class AccessTokenResponse(BaseModel):
@@ -152,3 +161,101 @@ class CreatedClientSecretResponse(BaseModel):
             client_secret=created_secret.plaintext,
             secret=ApplicationClientSecretResponse.model_validate(created_secret.secret),
         )
+
+
+class UserAccountCreateRequest(ApiModel):
+    """Body of `POST /users`: the person party an account is created for."""
+
+    party_id: UUID = Field(examples=["7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"])
+    """ID of the person party the account belongs to. A company cannot hold one, a party at most one."""
+    email: LoginEmail | None = Field(None, examples=["anna.schmidt@example.org"])
+    """Login e-mail address, needed for the password login. Stored lowercased, unique across all accounts. Omit
+    it or send `null` for an account without one."""
+    roles: list[UserAccountRoleName] = Field(default_factory=list, examples=[["admin"]])
+    """Stored roles to give the account. The other roles follow from the CRM and cannot be set."""
+
+
+class UserAccountUpdateRequest(ApiModel):
+    """Body of `PATCH /users/{user_id}`: only the fields that are sent change."""
+
+    email: LoginEmail | None | MISSING = MISSING
+    """New login e-mail address, or `null` to remove it - refused while the account has a password. A change
+    invalidates the account's unused invitation and reset tokens."""
+    status: UserAccountStatus | MISSING = MISSING
+    """New status. `disabled` revokes every session of the account; `active` is always allowed."""
+
+
+class UserAccountListItem(ApiModel):
+    """A user account as one entry of the list."""
+
+    id: UUID
+    """ID of the user account; the tokens of the person carry it as `principal_id`."""
+    party_id: UUID
+    """ID of the person party the account belongs to."""
+    email: str | None
+    """Login e-mail address, lowercased; `null` when the account has none."""
+    status: UserAccountStatus
+    """`active` from its creation; a `disabled` account cannot log in."""
+    has_password: bool
+    """Whether a password is set; an account without one cannot log in with a password yet."""
+    roles: list[Role]
+    """Every role the account holds, stored (`admin`) and derived from the CRM, sorted."""
+    last_login_at: datetime | None
+    """When the person last logged in; `null` until the first login."""
+    created_at: datetime
+    """When the account was created."""
+
+    @classmethod
+    def from_view(cls, view: UserAccountWithRoles) -> Self:
+        return cls(**_list_item_fields(view))
+
+
+class UserAccountDetail(UserAccountListItem):
+    """A user account with everything an administrator needs - never the hash or the login counter."""
+
+    locked_until: datetime | None
+    """Until when the password login is locked after failed attempts; `null` while it is not locked."""
+    updated_at: datetime
+    """When the account was last changed."""
+
+    @classmethod
+    def from_view(cls, view: UserAccountWithRoles) -> Self:
+        return cls(
+            **_list_item_fields(view), locked_until=view.account.locked_until, updated_at=view.account.updated_at
+        )
+
+
+def _list_item_fields(view: UserAccountWithRoles) -> dict[str, Any]:
+    account = view.account
+    return {
+        "id": account.id,
+        "party_id": account.party_id,
+        "email": account.email,
+        "status": account.status,
+        "has_password": account.password_hash is not None,
+        "roles": sorted(view.roles),
+        "last_login_at": account.last_login_at,
+        "created_at": account.created_at,
+    }
+
+
+class ActionTokenResponse(ApiModel):
+    """A one-time token to hand to the person: an invitation or a password reset."""
+
+    token: str
+    """The token. SkillForge stores only its hash, so this is the one time it can be read."""
+    expires_at: datetime
+    """When the token stops working. Issuing another of the same purpose invalidates it earlier."""
+
+    @classmethod
+    def from_issued(cls, issued: IssuedActionToken) -> Self:
+        return cls(token=issued.plaintext, expires_at=issued.token.expires_at)
+
+
+class PasswordRedeemRequest(ApiModel):
+    """Body of `POST /password/redeem`: a one-time token and the password to set with it."""
+
+    token: str = Field(examples=["sf_ua_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"])
+    """The invitation or password-reset token the person was given."""
+    new_password: str = Field(examples=["correct horse battery staple"])
+    """The password to set: 8 to 128 characters, no further rules."""

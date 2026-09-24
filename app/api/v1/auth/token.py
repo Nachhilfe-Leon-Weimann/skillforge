@@ -11,13 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.common import error_responses
 from app.core.auth import (
-    AuthSettings,
     CreatedAccessToken,
     InvalidClientCredentialsError,
     InvalidClientScopeError,
     issue_client_token,
 )
-from app.core.auth.dependencies import get_auth_settings
+from app.core.auth.dependencies import AuthConfig
 from app.core.db.dependencies import get_db_session
 from app.core.logging import bind_request_log_context
 
@@ -92,7 +91,7 @@ def _get_basic_credentials(request: Request) -> tuple[str, str] | None:
 async def create_token(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db_session)],
-    settings: Annotated[AuthSettings, Depends(get_auth_settings)],
+    settings: AuthConfig,
     issue_token: Annotated[IssueClientToken, Depends(get_issue_client_token)],
     form: Annotated[ClientTokenForm, Depends(get_client_token_form)],
 ) -> AccessTokenResponse | JSONResponse:
