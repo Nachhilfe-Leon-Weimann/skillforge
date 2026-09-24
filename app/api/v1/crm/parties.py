@@ -5,26 +5,28 @@ from app.core.auth import Scope, require_scopes
 from app.services.crm import parties as parties_service
 from app.services.crm.errors import PartyInUseError, PartyNotFoundError
 
-from .params import PartyId, PartyListQuery
+from .params import CrmReadAccess, PartyId, PartyListQuery, VisibleParty
 from .schemas import PartyDetail, PartyListItem, party_detail
 
 router = APIRouter(prefix="/parties")
 
 
-@router.get("", dependencies=[require_scopes(Scope.CRM_READ)])
-async def list_parties(params: PartyListQuery, session: DBSession) -> Page[PartyListItem]:
-    """List and search parties, ordered by name (persons by last name) regardless of case."""
-    parties, total = await parties_service.list_parties(session, **params.model_dump())
+@router.get("")
+async def list_parties(params: PartyListQuery, access: CrmReadAccess, session: DBSession) -> Page[PartyListItem]:
+    """List and search parties, ordered by name (persons by last name) regardless of case.
+
+    With `crm:read:own` the list holds only the parties within the caller's reach.
+    """
+    parties, total = await parties_service.list_parties(session, **params.model_dump(), party_ids=access.party_ids)
     return Page.of([PartyListItem.from_model(party) for party in parties], total=total, params=params)
 
 
-@router.get(
-    "/{party_id}",
-    dependencies=[require_scopes(Scope.CRM_READ)],
-    responses=error_responses(PartyNotFoundError),
-)
-async def get_party(party_id: PartyId, session: DBSession) -> PartyDetail:
-    """Read a party - a person or a company - with its roles and contact infos."""
+@router.get("/{party_id}", responses=error_responses(PartyNotFoundError))
+async def get_party(party_id: VisibleParty, session: DBSession) -> PartyDetail:
+    """Read a party - a person or a company - with its roles and contact infos.
+
+    With `crm:read:own` a party out of the caller's reach is `party_not_found`, like a missing one.
+    """
     return party_detail(await parties_service.load_party(session, party_id))
 
 

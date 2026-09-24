@@ -71,12 +71,39 @@ def test_every_crm_operation_id_is_crm_prefixed_snake_case(schema: dict[str, Any
         assert operation["tags"] == ["crm"], f"{method} {path}"
 
 
+# The reach-aware reads (P0-7 of the user-authentication spec) accept `crm:read` or `crm:read:own`.
+REACH_AWARE_OPERATIONS = {"crm_list_parties", "crm_get_party"}
+
+
 def test_crm_reads_require_the_read_scope_and_everything_else_the_write_scope(schema: dict[str, Any]):
     for method, path, operation in _crm_operations(schema):
         requirements = [scopes for requirement in operation["security"] for scopes in requirement.values()]
+        if operation["operationId"] in REACH_AWARE_OPERATIONS:
+            assert requirements == [["crm:read"], ["crm:read:own"]], f"{method} {path}"
+            continue
         required = [scope for scopes in requirements for scope in scopes]
         expected = ["crm:read"] if method == "GET" else ["crm:write"]
         assert required == expected, f"{method} {path}"
+
+
+def test_the_403_of_every_other_operation_names_its_one_requirement_as_before(schema: dict[str, Any]):
+    """Alternatives are derived only where `require_access` put a reach-qualified scope."""
+    checked = 0
+    for path, item in schema["paths"].items():
+        for method, operation in item.items():
+            if method not in HTTP_METHODS or operation["operationId"] in REACH_AWARE_OPERATIONS:
+                continue
+            if "403" not in operation["responses"]:
+                continue
+            (requirement,) = operation["security"]
+            (scopes,) = requirement.values()
+            noun = "scope" if len(scopes) == 1 else "scopes"
+            # A 403 the route declares itself is appended after " / " (`_document` in openapi.py).
+            derived = operation["responses"]["403"]["description"].split(" / ")[0]
+            assert derived == f"Missing required {noun}: {', '.join(scopes)}", f"{method} {path}"
+            checked += 1
+
+    assert checked
 
 
 def test_every_crm_schema_property_has_a_description(schema: dict[str, Any]):

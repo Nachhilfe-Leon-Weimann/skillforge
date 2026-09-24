@@ -3,17 +3,34 @@
 import uuid
 from typing import Annotated
 
-from fastapi import Path, Query
+from fastapi import Depends, Path, Query
 from pydantic import AfterValidator, AwareDatetime, Field
 
 from app.api.v1.common import PageParams
+from app.core.auth import Access, Scope, require_access
 from app.core.db.models import PartyRelationType, PartyType
+from app.services.crm.errors import PartyNotFoundError
 from app.services.crm.inputs import PartyRole, RelationDirection, require_storable_text
 
 PartyId = Annotated[
     uuid.UUID,
     Path(description="ID of the party.", examples=["7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"]),
 ]
+
+# The parties a reader may see: all with `crm:read`, those within their reach with `crm:read:own`.
+CrmReadAccess = Annotated[Access, require_access(Scope.CRM_READ)]
+
+
+async def _visible_party(party_id: PartyId, access: CrmReadAccess) -> uuid.UUID:
+    """A party out of reach reads exactly like a missing one, so a restricted reader cannot probe for parties."""
+    if not access.allows(party_id):
+        raise PartyNotFoundError(f"No party with id {party_id}")
+
+    return party_id
+
+
+# `PartyId` of a reach-aware route: raises `PartyNotFoundError` for a party out of the reader's reach.
+VisibleParty = Annotated[uuid.UUID, Depends(_visible_party)]
 
 ToPartyId = Annotated[
     uuid.UUID,

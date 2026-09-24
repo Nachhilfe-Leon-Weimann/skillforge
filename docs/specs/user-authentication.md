@@ -730,28 +730,28 @@ Not built here; recorded so that this arc's shapes take it with no change but th
   `test_crm_reads_require_the_read_scope_and_everything_else_the_write_scope` (`tests/api/test_crm_openapi.py`), for
   the two operations only; P0-5's pin.
 - _Acceptance criteria:_
-  - [ ] A student reads their own party and gets `404 party_not_found` for any other - the same body an unknown
+  - [x] A student reads their own party and gets `404 party_not_found` for any other - the same body an unknown
         UUID produces.
-  - [ ] A mother with `PARENT_OF` to one child and `PAYS_FOR` to another reads both children and herself; the list
+  - [x] A mother with `PARENT_OF` to one child and `PAYS_FOR` to another reads both children and herself; the list
         returns exactly these three with `total == 3`; filters and paging apply within the reach.
-  - [ ] `Access.basis` reports `self` for the own party and `guardian` for both children.
-  - [ ] `TUTOR_OF` does not extend reach: a tutor does not read their student's party.
-  - [ ] An application token with `crm:read` behaves exactly as before on both routes and issues no query on
+  - [x] `Access.basis` reports `self` for the own party and `guardian` for both children.
+  - [x] `TUTOR_OF` does not extend reach: a tutor does not read their student's party.
+  - [x] An application token with `crm:read` behaves exactly as before on both routes and issues no query on
         `core.party_relation` (asserted by counting statements).
-  - [ ] A reach-aware request opens exactly one database session, for a `crm:read` and a `crm:read:own` token alike
+  - [x] A reach-aware request opens exactly one database session, for a `crm:read` and a `crm:read:own` token alike
         (the CRM test override of `get_db_session` runs once).
-  - [ ] A person's token with `crm:read:own` is `403` on every other CRM route (a test walks `app.routes`); an
+  - [x] A person's token with `crm:read:own` is `403` on every other CRM route (a test walks every CRM operation of the contract); an
         application token with only `crm:read:own` is `403` on both routes, with the body of a missing scope.
-  - [ ] `require_access(Scope.CRM_READ)` declares `crm:read:own` on its marker; a route that mixes it with
+  - [x] `require_access(Scope.CRM_READ)` declares `crm:read:own` on its marker; a route that mixes it with
         `require_scopes(Scope.CRM_READ)` fails when the schema is built.
-  - [ ] Both operations list the two alternative security requirements under the scheme's key, their `403`
+  - [x] Both operations list the two alternative security requirements under the scheme's key, their `403`
         description reads `Missing required scope: crm:read or crm:read:own`, and a `401` carries
         `WWW-Authenticate: Bearer scope="crm:read:own"`; the `403` of every other operation is unchanged. The two
         tests named above expect exactly that for `crm_list_parties` and `crm_get_party` and keep their rule for
         every other CRM operation; the CRM endpoints still pass `test_the_crm_endpoints_carry_no_boilerplate`; no
         other existing test changes.
-  - [ ] `_allowed_target_parties` in `authz.py` and `resolve_reach` return the same set for the same party.
-  - [ ] The conventions in `CLAUDE.md` name `require_access`.
+  - [x] `_allowed_target_parties` in `authz.py` and `resolve_reach` return the same set for the same party.
+  - [x] The conventions in `CLAUDE.md` name `require_access`.
 
 **P0-8 - Login.**
 

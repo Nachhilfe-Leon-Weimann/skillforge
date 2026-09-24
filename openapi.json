@@ -11601,7 +11601,7 @@
     },
     "/api/v1/crm/parties": {
       "get": {
-        "description": "List and search parties, ordered by name (persons by last name) regardless of case.",
+        "description": "List and search parties, ordered by name (persons by last name) regardless of case.\n\nWith `crm:read:own` the list holds only the parties within the caller's reach.",
         "operationId": "crm_list_parties",
         "parameters": [
           {
@@ -11782,7 +11782,7 @@
                 }
               }
             },
-            "description": "Missing required scope: crm:read"
+            "description": "Missing required scope: crm:read or crm:read:own"
           },
           "422": {
             "content": {
@@ -11813,6 +11813,11 @@
           {
             "OAuth2": [
               "crm:read"
+            ]
+          },
+          {
+            "OAuth2": [
+              "crm:read:own"
             ]
           }
         ],
@@ -11963,7 +11968,7 @@
         ]
       },
       "get": {
-        "description": "Read a party - a person or a company - with its roles and contact infos.",
+        "description": "Read a party - a person or a company - with its roles and contact infos.\n\nWith `crm:read:own` a party out of the caller's reach is `party_not_found`, like a missing one.",
         "operationId": "crm_get_party",
         "parameters": [
           {
@@ -12033,7 +12038,7 @@
                 }
               }
             },
-            "description": "Missing required scope: crm:read"
+            "description": "Missing required scope: crm:read or crm:read:own"
           },
           "404": {
             "content": {
@@ -12082,6 +12087,11 @@
           {
             "OAuth2": [
               "crm:read"
+            ]
+          },
+          {
+            "OAuth2": [
+              "crm:read:own"
             ]
           }
         ],

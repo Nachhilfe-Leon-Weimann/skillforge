@@ -122,7 +122,9 @@ async def get_party(party_id: PartyId, session: DBSession) -> PartyResponse:
 ```
 
 Derived without being written: 401/403 responses naming `crm:read`, the 404 response with its `code` example, the
-422 envelope, documented `limit`/`offset`, operation IDs `crm_list_parties` / `crm_get_party`.
+422 envelope, documented `limit`/`offset`, operation IDs `crm_list_parties` / `crm_get_party`. (Since P0-7 of
+[`user-authentication.md`](user-authentication.md) these two routes are reach-aware and take an `Access` from
+`require_access` instead; the guard shown is that of every other read.)
 
 ## Module layout
 
