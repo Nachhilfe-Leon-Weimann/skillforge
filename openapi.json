@@ -2807,6 +2807,24 @@
         "title": "PrincipalBatch",
         "type": "object"
       },
+      "RefreshTokenRevokeRequest": {
+        "description": "Body of `POST /revoke`: the refresh token of the session to end.",
+        "properties": {
+          "refresh_token": {
+            "description": "A refresh token of the session - the current one or the one it replaced. A token of another client's\nsession, or one SkillForge does not know, ends nothing and is answered the same.",
+            "examples": [
+              "sf_rt_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            ],
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshTokenRevokeRequest",
+        "type": "object"
+      },
       "RelationDirection": {
         "description": "A relation seen from one of its two parties: that party is the ``from`` side, or the ``to`` side.",
         "enum": [
@@ -4947,6 +4965,104 @@
           }
         ],
         "summary": "Redeem Password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/revoke": {
+      "post": {
+        "description": "Log a person out: end the session a refresh token belongs to.\n\nOnly a session this client opened is ended. The answer is the same whether a session was found or not, so\nthe route tells nothing about a token. Access tokens already issued stay valid until they expire.",
+        "operationId": "auth_revoke_refresh_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRevokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:login"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:login"
+            ]
+          }
+        ],
+        "summary": "Revoke Refresh Token",
         "tags": [
           "auth"
         ]
@@ -14748,7 +14864,7 @@
   },
   "tags": [
     {
-      "description": "OAuth2 token issuance - client credentials for applications, password and refresh-token logins for people through a client - plus user accounts and application client management.",
+      "description": "OAuth2 token issuance - client credentials for applications, password and refresh-token logins for people through a client - plus logout, user accounts and application client management.",
       "name": "auth"
     },
     {

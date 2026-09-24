@@ -194,12 +194,20 @@ def test_swagger_uis_authorize_dialog_offers_the_password_flow():
 def test_the_token_response_and_form_describe_every_property():
     schemas = app.openapi()["components"]["schemas"]
 
-    for name in ("AccessTokenResponse", "Body_auth_create_token"):
+    for name in ("AccessTokenResponse", "Body_auth_create_token", "RefreshTokenRevokeRequest"):
         properties = schemas[name]["properties"]
         assert properties, name
         assert all(prop.get("description") for prop in properties.values()), name
     assert schemas["AccessTokenResponse"]["required"] == ["access_token", "token_type", "expires_in", "scope"]
     assert schemas["Body_auth_create_token"]["required"] == ["grant_type"]
+
+
+def test_the_revoke_route_is_a_login_clients_route_and_documents_no_body_on_success():
+    operation = app.openapi()["paths"]["/api/v1/auth/revoke"]["post"]
+
+    assert operation["operationId"] == "auth_revoke_refresh_token"
+    assert operation["security"] == [{"OAuth2": ["auth:users:login"]}]
+    assert set(operation["responses"]) == {"204", "401", "403", "422"}
 
 
 def test_every_auth_operation_id_is_auth_and_the_function_name():

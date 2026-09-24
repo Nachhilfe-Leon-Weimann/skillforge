@@ -283,3 +283,11 @@ class PasswordRedeemRequest(ApiModel):
     """The invitation or password-reset token the person was given."""
     new_password: str = Field(examples=["correct horse battery staple"])
     """The password to set: 8 to 128 characters, no further rules."""
+
+
+class RefreshTokenRevokeRequest(ApiModel):
+    """Body of `POST /revoke`: the refresh token of the session to end."""
+
+    refresh_token: str = Field(examples=["sf_rt_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"])
+    """A refresh token of the session - the current one or the one it replaced. A token of another client's
+    session, or one SkillForge does not know, ends nothing and is answered the same."""

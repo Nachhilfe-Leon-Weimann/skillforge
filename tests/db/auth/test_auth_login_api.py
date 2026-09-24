@@ -1,4 +1,4 @@
-"""A person's login through a client: the `password` and `refresh_token` grants, run through the
+"""A person's login through a client: the `password` and `refresh_token` grants and `POST /revoke`, run through the
 real app against the test database (user-authentication spec, P0-8)."""
 
 from datetime import UTC, datetime, timedelta
@@ -17,6 +17,7 @@ from app.core.auth.scopes import Scope, canonical, format_scopes
 from app.core.auth.secrets import digest
 from app.core.auth.services import users as users_service
 from app.core.db.models import AuthAuditLog, UserAccount, UserAccountRoleName, UserAccountStatus, UserSession
+from app.core.logging import LogFormat, LoggingSettings, LogLevel, configure_logging
 
 pytestmark = pytest.mark.db
 
@@ -47,6 +48,13 @@ async def _logged_in(token_api: AsyncClient, client, password: str, **form: str)
     return response.json()
 
 
+async def _client_token(token_api: AsyncClient, client) -> dict[str, str]:
+    """The bearer header of ``client``'s own token: redeem and revoke take the client's token."""
+    response = await token_api.post("/token", auth=client.basic, data={"grant_type": "client_credentials"})
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
 def _person(settings: AuthSettings, body: dict) -> UserPrincipal:
     principal = validate_access_token(body["access_token"], settings)
     assert isinstance(principal, UserPrincipal)
@@ -75,7 +83,71 @@ async def _denials(session: AsyncSession) -> list[AuthAuditLog]:
     return list(await session.scalars(statement))
 
 
-# --- Logging in -----------------------------------------------------------------------------------
+@pytest.fixture
+def restore_logging():
+    """Put the logging configuration back, so the turned-up level ends with the test."""
+    yield
+    configure_logging(LoggingSettings())
+
+
+# --- The lifecycle -------------------------------------------------------------------------------
+
+
+async def test_the_login_lifecycle_from_account_creation_to_logout(
+    operator: AsyncClient,
+    token_api: AsyncClient,
+    login_client,
+    make_person,
+    session: AsyncSession,
+    password: str,
+    auth_settings: AuthSettings,
+    restore_logging,
+    capsys,
+):
+    party = await make_person()
+    configure_logging(LoggingSettings(level=LogLevel.DEBUG, format=LogFormat.JSON))
+    capsys.readouterr()
+
+    user_id = (await operator.post("/users", json={"party_id": str(party.id), "email": EMAIL})).json()["id"]
+    invitation = (await operator.post(f"/users/{user_id}/invitation")).json()["token"]
+    redeemed = await operator.post("/password/redeem", json={"token": invitation, "new_password": password})
+    wrong = await _login(token_api, login_client, "not the password")
+    unknown = await _login(token_api, login_client, password, username="nobody@example.org")
+    login = await _login(token_api, login_client, password)
+    me = await token_api.get("/me", headers={"Authorization": f"Bearer {login.json()['access_token']}"})
+    refreshed = await _refresh(token_api, login_client, login.json()["refresh_token"])
+    revoked = await token_api.post(
+        "/revoke",
+        json={"refresh_token": refreshed.json()["refresh_token"]},
+        headers=await _client_token(token_api, login_client),
+    )
+    after_logout = await _refresh(token_api, login_client, refreshed.json()["refresh_token"])
+
+    output = capsys.readouterr().out
+    assert [r.status_code for r in (redeemed, wrong, unknown, login, me, refreshed, revoked, after_logout)] == [
+        204, 400, 400, 200, 200, 200, 204, 400,
+    ]  # fmt: skip
+    assert after_logout.json() == INVALID_GRANT
+    assert me.json() | {"scopes": None} == {
+        "principal_type": "user",
+        "client_id": login_client.client_id,
+        "scopes": None,
+        "user_id": user_id,
+        "party_id": str(party.id),
+        "roles": [],
+    }
+    assert set(me.json()["scopes"]) == {"account:self", "crm:read:own"}
+    user_session = await _session_of(session, refreshed.json()["refresh_token"])
+    assert (user_session.revoked_reason, str(user_session.user_account_id)) == ("logout", user_id)
+
+    # Neither the address, the password nor a token leaves the process.
+    secrets = [EMAIL, password, invitation, login.json()["refresh_token"], refreshed.json()["refresh_token"]]
+    assert output.count("http_request_") >= 8, "the flow logged its requests"
+    audit_rows = list(await session.scalars(select(AuthAuditLog)))
+    audit_text = " ".join(f"{row.principal_type} {row.principal_id} {row.detail}" for row in audit_rows)
+    for secret in [*secrets, "nobody@example.org", "example.org"]:
+        assert secret not in output
+        assert secret not in audit_text
 
 
 async def test_a_login_and_a_refresh_open_one_session_and_rotate_it(
@@ -352,9 +424,13 @@ async def test_a_refresh_token_is_refused_for_another_client_and_the_session_is_
     other = await make_login_client()
 
     stolen = await _refresh(token_api, other, login["refresh_token"])
+    revoked = await token_api.post(
+        "/revoke", json={"refresh_token": login["refresh_token"]}, headers=await _client_token(token_api, other)
+    )
     own = await _refresh(token_api, login_client, login["refresh_token"])
 
     assert stolen.json() == INVALID_GRANT
+    assert revoked.status_code == 204
     assert own.status_code == 200
 
 
@@ -386,3 +462,55 @@ async def test_an_expired_or_unknown_refresh_token_is_invalid_grant(
     unknown = await _refresh(token_api, login_client, "sf_rt_unknown")
 
     assert expired.json() == unknown.json() == INVALID_GRANT
+
+
+# --- Revoke --------------------------------------------------------------------------------------
+
+
+async def test_revoke_answers_204_for_an_unknown_token(token_api: AsyncClient, login_client):
+    response = await token_api.post(
+        "/revoke", json={"refresh_token": "sf_rt_unknown"}, headers=await _client_token(token_api, login_client)
+    )
+
+    assert response.status_code == 204
+
+
+async def test_revoke_with_a_rotated_out_token_ends_the_session(
+    token_api: AsyncClient, login_client, make_login_account, session: AsyncSession, password: str
+):
+    await make_login_account()
+    login = await _logged_in(token_api, login_client, password)
+    refreshed = (await _refresh(token_api, login_client, login["refresh_token"])).json()
+
+    await token_api.post(
+        "/revoke", json={"refresh_token": login["refresh_token"]}, headers=await _client_token(token_api, login_client)
+    )
+
+    assert (await _session_of(session, refreshed["refresh_token"])).revoked_reason == "logout"
+    assert (await _refresh(token_api, login_client, refreshed["refresh_token"])).json() == INVALID_GRANT
+
+
+async def test_revoke_refuses_a_persons_token_and_a_client_without_auth_users_login(
+    token_api: AsyncClient, login_client, make_login_client, make_login_account, password: str
+):
+    await make_login_account(roles=[UserAccountRoleName.ADMIN])
+    login = await _logged_in(token_api, login_client, password)
+    outsider = await make_login_client(application=[Scope.CRM_READ])
+    body = {"refresh_token": login["refresh_token"]}
+
+    as_person = await token_api.post("/revoke", json=body, headers={"Authorization": f"Bearer {login['access_token']}"})
+    as_outsider = await token_api.post("/revoke", json=body, headers=await _client_token(token_api, outsider))
+
+    assert (as_person.status_code, as_outsider.status_code) == (403, 403)
+    assert (await _refresh(token_api, login_client, login["refresh_token"])).status_code == 200
+
+
+async def test_a_session_the_login_opened_is_one_the_admin_route_revokes(
+    token_api: AsyncClient, operator: AsyncClient, login_client, make_login_account, password: str
+):
+    account = await make_login_account()
+    login = await _logged_in(token_api, login_client, password)
+
+    await operator.delete(f"/users/{account.id}/sessions")
+
+    assert (await _refresh(token_api, login_client, login["refresh_token"])).json() == INVALID_GRANT
