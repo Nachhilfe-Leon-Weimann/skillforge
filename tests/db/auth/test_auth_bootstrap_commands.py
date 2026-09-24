@@ -103,7 +103,7 @@ async def test_bootstrap_client_refuses_a_client_only_scope_as_delegated_and_cha
             "portal", application=frozenset({"auth:users:login"}), delegated=frozenset({"auth:users:login"})
         )
 
-    assert exit_code.value.code == "invalid_scope: Client-only scopes cannot be granted in delegated mode"
+    assert exit_code.value.code == "invalid_scope: --delegated: Client-only scopes cannot be granted in delegated mode"
     assert capsys.readouterr().out == ""
     assert (await session.execute(select(ApplicationClient))).scalars().all() == []
     assert await _event_types(session) == Counter()
@@ -119,7 +119,7 @@ async def test_a_refused_rerun_leaves_the_client_as_it_was(grants):
             "operator", application=frozenset({"bot:write"}), delegated=frozenset({"auth:users:login"})
         )
 
-    assert exit_code.value.code == "invalid_scope: Client-only scopes cannot be granted in delegated mode"
+    assert exit_code.value.code == "invalid_scope: --delegated: Client-only scopes cannot be granted in delegated mode"
     assert await grants() == before
 
 
@@ -128,7 +128,18 @@ async def test_bootstrap_client_refuses_an_unknown_scope(session: AsyncSession):
     with pytest.raises(SystemExit) as exit_code:
         await bootstrap.bootstrap_client("portal", application=frozenset({"nope:scope"}), delegated=frozenset())
 
-    assert exit_code.value.code == "invalid_scope: Requested scopes are not known or active"
+    assert exit_code.value.code == "invalid_scope: --application: Requested scopes are not known or active"
+    assert (await session.execute(select(ApplicationClient))).scalars().all() == []
+
+
+@pytest.mark.db
+async def test_bootstrap_client_names_the_flag_of_an_unknown_delegated_scope(session: AsyncSession):
+    with pytest.raises(SystemExit) as exit_code:
+        await bootstrap.bootstrap_client(
+            "portal", application=frozenset({"crm:read"}), delegated=frozenset({"acount:self"})
+        )
+
+    assert exit_code.value.code == "invalid_scope: --delegated: Requested scopes are not known or active"
     assert (await session.execute(select(ApplicationClient))).scalars().all() == []
 
 

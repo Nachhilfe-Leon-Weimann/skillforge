@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth.results import CreatedClientSecret
+from app.core.auth.results import BootstrappedApplicationClient, CreatedClientSecret
 from app.core.auth.scopes import Scope, format_scopes, parse_scopes
 from app.core.auth.services import InvalidClientScopeError, bootstrap_application_client
 from app.core.config import get_settings
@@ -40,17 +40,19 @@ async def bootstrap_client(client_id: str, *, application: frozenset[str], deleg
     A new client is named after its ID. Run again, or on a client created through the API, it keeps
     the client's name and description, its secret and every grant it holds, and re-enables a
     disabled client. An unknown scope, or a client-only one in ``delegated``, is ``invalid_scope``
-    and changes nothing.
+    naming the refused flag, and changes nothing.
     """
     grants = {GrantMode.APPLICATION: application, GrantMode.DELEGATED: delegated}
+    results: dict[GrantMode, BootstrappedApplicationClient] = {}
     try:
         async with _session() as session:
-            results = {
-                mode: await bootstrap_application_client(session, client_id=client_id, scopes=scopes, mode=mode)
-                for mode, scopes in grants.items()
-            }
+            for mode, scopes in grants.items():
+                results[mode] = await bootstrap_application_client(
+                    session, client_id=client_id, scopes=scopes, mode=mode
+                )
     except InvalidClientScopeError as exc:
-        raise SystemExit(f"invalid_scope: {exc}") from None
+        refused = next(mode for mode in grants if mode not in results)
+        raise SystemExit(f"invalid_scope: --{refused}: {exc}") from None
 
     print(f"client_id={client_id}")
     for mode, result in results.items():
