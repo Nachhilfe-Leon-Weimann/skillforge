@@ -7,10 +7,10 @@ from fastapi.security import SecurityScopes
 from app.core.logging import bind_request_log_context
 
 from .config import AuthSettings
-from .principal import Principal
+from .principal import ApplicationPrincipal, Principal, UserPrincipal
 from .scopes import OWN_VARIANT, Scope, expand, format_scopes
 from .security import oauth2_scheme
-from .tokens import PRINCIPAL_TYPE_APPLICATION, TokenValidationError, validate_access_token
+from .tokens import TokenValidationError, validate_access_token
 
 
 def get_auth_settings() -> AuthSettings:
@@ -52,6 +52,15 @@ async def get_current_principal(
             headers={"WWW-Authenticate": authenticate_value},
         ) from exc
 
+    if isinstance(principal, UserPrincipal):
+        # Who the request speaks for, on every line it logs - never the session id.
+        bind_request_log_context(
+            request,
+            principal_type=principal.principal_type,
+            user_id=str(principal.principal_id),
+            party_id=str(principal.party_id),
+        )
+
     missing_scopes = set(security_scopes.scopes) - expand(principal.scopes)
     if missing_scopes:
         bind_request_log_context(
@@ -73,8 +82,8 @@ async def get_current_principal(
 async def require_application(
     request: Request,
     principal: Annotated[Principal, Depends(get_current_principal)],
-) -> Principal:
-    if principal.principal_type != PRINCIPAL_TYPE_APPLICATION:
+) -> ApplicationPrincipal:
+    if not isinstance(principal, ApplicationPrincipal):
         bind_request_log_context(
             request,
             auth_reason="wrong_principal_type",

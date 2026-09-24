@@ -9,11 +9,20 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from app.api.v1.common import register_exception_handlers
-from app.core.auth import AuthSettings, Principal, create_application_access_token, require_scopes
+from app.core.auth import (
+    AuthMethod,
+    AuthSettings,
+    Principal,
+    UserPrincipal,
+    create_access_token,
+    create_application_access_token,
+    require_scopes,
+)
 from app.core.auth.dependencies import get_auth_settings
 from app.core.logging import LogFormat, LoggingSettings, LogLevel, configure_logging, register_request_logging
 
 BotWritePrincipal = Annotated[Principal, require_scopes("bot:write")]
+AccountSelfPrincipal = Annotated[Principal, require_scopes("account:self")]
 
 
 def test_logging_settings_default_to_skillforge_app_name():
@@ -72,6 +81,48 @@ async def test_request_logging_includes_auth_context_for_missing_scopes(capsys):
     assert event["client_id"] == "skillbot"
     assert event["required_scopes"] == ["bot:write"]
     assert event["missing_scopes"] == ["bot:write"]
+
+
+async def test_request_logging_identifies_the_person_behind_a_request(capsys):
+    """A person's token says who called - their account and party - on a granted and a forbidden request
+    alike, but never the session."""
+    configure_logging(LoggingSettings(level=LogLevel.INFO, format=LogFormat.JSON))
+    app = FastAPI()
+    app.dependency_overrides[get_auth_settings] = _settings
+    register_request_logging(app)
+
+    @app.get("/account")
+    async def account(principal: AccountSelfPrincipal):
+        return {"client_id": principal.client_id}
+
+    @app.post("/write")
+    async def write(principal: BotWritePrincipal):
+        return {"client_id": principal.client_id}
+
+    user_id, party_id, session_id = uuid4(), uuid4(), uuid4()
+    person = UserPrincipal(
+        principal_id=user_id,
+        client_id="portal",
+        scopes=frozenset({"account:self"}),
+        party_id=party_id,
+        session_id=session_id,
+        auth_methods=frozenset({AuthMethod.PASSWORD}),
+    )
+    headers = {"Authorization": f"Bearer {create_access_token(_settings(), person).access_token}"}
+    capsys.readouterr()
+
+    granted = await _request(app, "GET", "/account", headers=headers)
+    forbidden = await _request(app, "POST", "/write", headers=headers)
+
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    requests = [event for event in events if event["event"].startswith("http_request_")]
+    assert (granted.status_code, forbidden.status_code) == (200, 403)
+    assert [event["event"] for event in requests] == ["http_request_completed", "http_request_forbidden"]
+    for event in requests:
+        assert event["principal_type"] == "user"
+        assert event["user_id"] == str(user_id)
+        assert event["party_id"] == str(party_id)
+        assert str(session_id) not in json.dumps(event)
 
 
 async def test_request_logging_stays_silent_for_healthy_probe(capsys):

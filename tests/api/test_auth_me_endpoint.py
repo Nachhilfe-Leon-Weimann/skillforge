@@ -5,18 +5,33 @@ from __future__ import annotations
 import inspect
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+import jwt
+import pytest
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from app.api.v1.auth.me import get_me
 from app.api.v1.common import ErrorResponse
-from app.core.auth import AuthSettings, Scope, create_application_access_token
+from app.core.auth import (
+    AuthMethod,
+    AuthSettings,
+    Scope,
+    UserPrincipal,
+    create_access_token,
+    create_application_access_token,
+)
 from app.core.auth.dependencies import get_auth_settings
+from app.core.auth.roles import Role
+from app.core.db.dependencies import get_db_session
 from app.main import app
 
 ME = "/api/v1/auth/me"
+USER_ID = UUID("00000000-0000-0000-0000-0000000000a1")
+PARTY_ID = UUID("00000000-0000-0000-0000-0000000000b2")
+SESSION_ID = UUID("00000000-0000-0000-0000-0000000000c3")
 
 
 async def test_me_reports_the_principal_type_the_client_and_the_sorted_scopes():
@@ -28,7 +43,69 @@ async def test_me_reports_the_principal_type_the_client_and_the_sorted_scopes():
         "principal_type": "application",
         "client_id": "swagger-operator",
         "scopes": ["bot:read", "crm:read", "crm:write"],
+        "user_id": None,
+        "party_id": None,
+        "roles": [],
     }
+
+
+async def test_me_reports_the_account_the_party_and_the_roles_of_a_person():
+    async with _client() as client:
+        response = await client.get(ME, headers=_person_auth_headers(roles={Role.TUTOR, Role.ADMIN}))
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "principal_type": "user",
+        "client_id": "portal",
+        "scopes": ["account:self", "crm:read:own"],
+        "user_id": str(USER_ID),
+        "party_id": str(PARTY_ID),
+        "roles": ["admin", "tutor"],
+    }
+
+
+async def test_me_answers_both_principal_types_without_a_database_session():
+    opened: list[object] = []
+
+    async def recording_session() -> AsyncIterator[None]:
+        opened.append(object())
+        yield None
+
+    async with _client() as client:
+        app.dependency_overrides[get_db_session] = recording_session
+        application = await client.get(ME, headers=_auth_headers(Scope.BOT_READ))
+        person = await client.get(ME, headers=_person_auth_headers(roles=set()))
+
+    assert (application.status_code, person.status_code) == (200, 200)
+    assert opened == []
+
+
+async def test_me_accepts_the_person_token_the_broken_ones_are_made_from():
+    """Each broken token below changes this one in one claim, so that change is what the 401 answers."""
+    async with _client() as client:
+        response = await client.get(ME, headers=_hand_signed_person_auth_headers({}))
+
+    assert response.status_code == 200
+    assert response.json()["user_id"] == str(USER_ID)
+
+
+@pytest.mark.parametrize(
+    "claims",
+    [
+        pytest.param({"party_id": None}, id="without-party_id"),
+        pytest.param({"sid": None}, id="without-sid"),
+        pytest.param({"amr": None}, id="without-amr"),
+        pytest.param({"roles": ["pope"]}, id="unknown-role"),
+        pytest.param({"amr": ["discord"]}, id="unknown-method"),
+        pytest.param({"sub": "user:someone-else"}, id="sub-not-the-principal"),
+    ],
+)
+async def test_me_with_a_broken_person_token_is_the_401_envelope(claims: dict[str, object]):
+    async with _client() as client:
+        response = await client.get(ME, headers=_hand_signed_person_auth_headers(claims))
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid authentication credentials", "code": "unauthorized"}
 
 
 async def test_me_without_a_token_is_the_401_envelope():
@@ -58,7 +135,7 @@ def test_me_is_documented_as_a_guarded_operation_that_needs_no_scope():
     assert set(operation["responses"]) == {"200", "401"}
 
     properties = schema["components"]["schemas"]["MeResponse"]["properties"]
-    assert set(properties) == {"principal_type", "client_id", "scopes"}
+    assert set(properties) == {"principal_type", "client_id", "scopes", "user_id", "party_id", "roles"}
     assert all(prop.get("description") for prop in properties.values())
 
 
@@ -85,6 +162,46 @@ def _auth_headers(*scopes: Scope) -> dict[str, str]:
         scopes=[str(scope) for scope in scopes],
     )
     return {"Authorization": f"Bearer {token.access_token}"}
+
+
+def _person_auth_headers(*, roles: set[Role]) -> dict[str, str]:
+    person = UserPrincipal(
+        principal_id=USER_ID,
+        client_id="portal",
+        scopes=frozenset({Scope.ACCOUNT_SELF, Scope.CRM_READ_OWN}),
+        party_id=PARTY_ID,
+        session_id=SESSION_ID,
+        roles=frozenset(roles),
+        auth_methods=frozenset({AuthMethod.PASSWORD}),
+    )
+    token = create_access_token(_auth_settings(), person)
+    return {"Authorization": f"Bearer {token.access_token}"}
+
+
+def _hand_signed_person_auth_headers(changes: dict[str, object]) -> dict[str, str]:
+    """A correctly signed person's token with hand-written claims: the ones SkillForge writes, but for ``changes``,
+    where a ``None`` drops the claim."""
+    settings = _auth_settings()
+    now = datetime.now(UTC)
+    claims: dict[str, object] = {
+        "iss": settings.issuer,
+        "aud": settings.audience,
+        "sub": f"user:{USER_ID}",
+        "principal_type": "user",
+        "principal_id": str(USER_ID),
+        "azp": "portal",
+        "scope": "account:self",
+        "party_id": str(PARTY_ID),
+        "sid": str(SESSION_ID),
+        "roles": [],
+        "amr": ["pwd"],
+        "iat": now,
+        "exp": now + timedelta(minutes=15),
+        "jti": "00000000-0000-0000-0000-0000000000d4",
+    }
+    claims = {name: value for name, value in (claims | changes).items() if value is not None}
+    token = jwt.encode(claims, settings.secret_key.get_secret_value(), algorithm=settings.algorithm)
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _auth_settings() -> AuthSettings:

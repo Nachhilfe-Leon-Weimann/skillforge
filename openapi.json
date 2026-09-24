@@ -1672,27 +1672,64 @@
                 "type": "null"
               }
             ],
-            "description": "Client ID of the application client; `null` for a principal that is not a client.",
+            "description": "Client ID of the application client, or for a person the client that logged them in.",
             "title": "Client Id"
           },
+          "party_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CRM party of that person; `null` for an application principal.",
+            "title": "Party Id"
+          },
           "principal_type": {
-            "description": "Kind of principal the token was issued to; `application` for an application client.",
+            "description": "Kind of principal the token was issued to: `application` for an application client, `user` for a person.",
             "title": "Principal Type",
             "type": "string"
           },
+          "roles": {
+            "description": "Roles the person holds, sorted - informational, which views to offer; empty for an application principal.",
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
           "scopes": {
-            "description": "Scopes the token grants, sorted.",
+            "description": "Scopes the token grants, sorted and canonical: an unqualified scope implies its `:own` form.",
             "items": {
               "type": "string"
             },
             "title": "Scopes",
             "type": "array"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User account of the person the token speaks for; `null` for an application principal.",
+            "title": "User Id"
           }
         },
         "required": [
           "principal_type",
           "client_id",
-          "scopes"
+          "scopes",
+          "user_id",
+          "party_id",
+          "roles"
         ],
         "title": "MeResponse",
         "type": "object"
@@ -2683,6 +2720,17 @@
         ],
         "title": "RelationResponse",
         "type": "object"
+      },
+      "Role": {
+        "description": "A view a user account holds; an account can hold several.\n\n``student``, ``tutor`` and ``guardian`` follow from the CRM, ``admin`` is assigned to the account.",
+        "enum": [
+          "student",
+          "tutor",
+          "guardian",
+          "admin"
+        ],
+        "title": "Role",
+        "type": "string"
       },
       "StudentActivationCommitRequest": {
         "properties": {
