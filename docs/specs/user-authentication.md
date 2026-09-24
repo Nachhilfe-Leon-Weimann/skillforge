@@ -578,18 +578,18 @@ Not built here; recorded so that this arc's shapes take it with no change but th
 - _Tests that change:_ `test_seed_default_scopes_is_idempotent` (`tests/db/test_auth_service.py`): the seeded set
   grows by the four scopes.
 - _Acceptance criteria:_
-  - [ ] `expand({crm:read}) == {crm:read, crm:read:own}`; for every subset `S` of `Scope`,
+  - [x] `expand({crm:read}) == {crm:read, crm:read:own}`; for every subset `S` of `Scope`,
         `canonical(expand(S)) == canonical(S)` and `expand(canonical(S)) == expand(S)`.
-  - [ ] Given role scopes `{account:self, crm:read:own}`: delegated grants `{account:self, crm:read, crm:write}`
+  - [x] Given role scopes `{account:self, crm:read:own}`: delegated grants `{account:self, crm:read, crm:write}`
         yield `account:self crm:read:own`; `{crm:read, crm:write}` yield `crm:read:own`; `{bot:read}` yield
         `invalid_scope`.
-  - [ ] A client granted `crm:read` may request `crm:read:own`; requesting an ungranted scope is `invalid_scope`.
-  - [ ] A token carrying `crm:read:own` gets `403` from a route guarded with `require_scopes(Scope.CRM_READ)`; a
+  - [x] A client granted `crm:read` may request `crm:read:own`; requesting an ungranted scope is `invalid_scope`.
+  - [x] A token carrying `crm:read:own` gets `403` from a route guarded with `require_scopes(Scope.CRM_READ)`; a
         token carrying `crm:read` passes `Security(get_current_principal, scopes=["crm:read:own"])` in the test app
         of `tests/auth/test_dependencies.py`; `require_scopes(Scope.CRM_READ_OWN)` raises.
-  - [ ] `test_no_role_carries_client_only_scopes`; every scope appears with its description in
+  - [x] `test_no_role_carries_client_only_scopes`; every scope appears with its description in
         `components.securitySchemes`.
-  - [ ] The bot's delegation check answers exactly as before (its tests unmodified).
+  - [x] The bot's delegation check answers exactly as before (its tests unmodified).
 
 **P0-3 - Data model.**
 

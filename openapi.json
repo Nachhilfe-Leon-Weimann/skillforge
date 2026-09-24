@@ -3166,10 +3166,14 @@
         "flows": {
           "clientCredentials": {
             "scopes": {
+              "account:self": "Manage the caller's own account.",
               "auth:clients:manage": "Manage application clients.",
+              "auth:users:login": "Log people in on their behalf (password / refresh_token grants, redeem, revoke). Client-only: never part of a person's token.",
+              "auth:users:manage": "Create, disable and reset user accounts; assign stored roles.",
               "bot:read": "Read bot API surface.",
               "bot:write": "Write bot API surface.",
               "crm:read": "Read parties, relations and subjects.",
+              "crm:read:own": "Read parties within the caller's reach.",
               "crm:write": "Create, change and delete parties, relations and subjects."
             },
             "tokenUrl": "/api/v1/auth/token"

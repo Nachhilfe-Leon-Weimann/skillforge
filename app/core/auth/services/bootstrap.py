@@ -7,9 +7,9 @@ from app.core.db.models import ApplicationClient, ApplicationClientStatus
 
 from ..audit import AuditEventType, write_auth_audit_log
 from ..results import BootstrappedApplicationClient
-from ..scopes import Scope
+from ..scopes import Scope, parse_scopes
 from .clients import find_application_client
-from .scopes import grant_client_scopes, normalize_scope_set, seed_default_scopes
+from .scopes import grant_client_scopes, seed_default_scopes
 from .secrets import client_has_usable_secret, create_client_secret
 
 
@@ -48,7 +48,7 @@ async def bootstrap_application_client(
         client.description = description
         client.status = ApplicationClientStatus.ACTIVE
 
-    requested_scope_keys = normalize_scope_set(scope.value if isinstance(scope, Scope) else scope for scope in scopes)
+    requested_scope_keys = parse_scopes(scopes)
     granted_scope_keys = await grant_client_scopes(session, client=client, scope_keys=requested_scope_keys)
 
     created_secret = None

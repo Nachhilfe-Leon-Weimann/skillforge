@@ -8,7 +8,7 @@ from app.core.logging import bind_request_log_context
 
 from .config import AuthSettings
 from .principal import Principal
-from .scopes import Scope
+from .scopes import OWN_VARIANT, Scope, expand
 from .security import oauth2_scheme
 from .tokens import PRINCIPAL_TYPE_APPLICATION, TokenValidationError, validate_access_token
 
@@ -52,7 +52,7 @@ async def get_current_principal(
             headers={"WWW-Authenticate": authenticate_value},
         ) from exc
 
-    missing_scopes = set(security_scopes.scopes) - principal.scopes
+    missing_scopes = set(security_scopes.scopes) - expand(principal.scopes)
     if missing_scopes:
         bind_request_log_context(
             request,
@@ -94,7 +94,15 @@ def require_scopes(*required_scopes: Scope | str) -> Any:
     Guard only: ``dependencies=[require_scopes(Scope.X)]`` on the route decorator.
     Principal needed: a parameter typed ``Annotated[Principal, require_scopes(Scope.X)]``.
     In both positions the scopes land in the operation's OpenAPI ``security`` requirement.
+
+    A reach-qualified scope (a value of ``OWN_VARIANT``) raises ``ValueError`` when the route is
+    declared: a route guarded here serves every record, so it demands the unqualified scope, and a
+    token restricted to its reach gets a ``403`` instead of a leak (ADR 0008).
     """
+    for scope in required_scopes:
+        if scope in OWN_VARIANT.values():
+            raise ValueError(f"require_scopes cannot demand the reach-qualified scope {scope}")
+
     return Security(get_current_principal, scopes=[str(scope) for scope in required_scopes])
 
 

@@ -7,6 +7,7 @@ import jwt
 
 from .config import AuthSettings
 from .principal import Principal
+from .scopes import format_scopes, parse_scopes
 
 PRINCIPAL_TYPE_APPLICATION = "application"
 TOKEN_TYPE_BEARER = "bearer"
@@ -35,7 +36,9 @@ def create_application_access_token(
 ) -> CreatedAccessToken:
     issued_at = _normalize_datetime(now or datetime.now(UTC))
     expires_at = issued_at + timedelta(minutes=settings.access_token_expire_minutes)
-    scope = _format_scope(scopes)
+    scope = format_scopes(parse_scopes(scopes))
+    if not scope:
+        raise ValueError("scopes must not be empty")
 
     claims = {
         "iss": settings.issuer,
@@ -107,8 +110,7 @@ def _claims_to_principal(claims: dict[str, object]) -> Principal:
     if subject != f"app:{client_id}":
         raise TokenValidationError("Invalid subject")
 
-    scope = _require_str_claim(claims, "scope")
-    scopes = frozenset(scope.split())
+    scopes = parse_scopes(_require_str_claim(claims, "scope"))
     if not scopes:
         raise TokenValidationError("Missing token scope")
 
@@ -132,17 +134,6 @@ def _require_str_claim(claims: dict[str, object], name: str) -> str:
         raise TokenValidationError(f"Missing or invalid {name} claim")
 
     return value
-
-
-def _format_scope(scopes: Iterable[str] | str) -> str:
-    if isinstance(scopes, str):
-        normalized_scopes = sorted(set(scopes.split()))
-    else:
-        normalized_scopes = sorted({str(scope).strip() for scope in scopes if str(scope).strip()})
-    if not normalized_scopes:
-        raise ValueError("scopes must not be empty")
-
-    return " ".join(normalized_scopes)
 
 
 def _normalize_datetime(value: datetime) -> datetime:

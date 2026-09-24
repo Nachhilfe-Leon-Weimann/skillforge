@@ -43,7 +43,17 @@ async def test_seed_default_scopes_is_idempotent(session):
     second_seed = await seed_default_scopes(session)
     scopes = (await session.execute(select(PermissionScope))).scalars().all()
 
-    expected = {"bot:read", "bot:write", "auth:clients:manage", "crm:read", "crm:write"}
+    expected = {
+        "bot:read",
+        "bot:write",
+        "auth:clients:manage",
+        "auth:users:manage",
+        "auth:users:login",
+        "crm:read",
+        "crm:read:own",
+        "crm:write",
+        "account:self",
+    }
     assert {scope.key for scope in first_seed} == expected
     assert {scope.key for scope in second_seed} == expected
     assert len(scopes) == len(expected)
@@ -290,6 +300,22 @@ async def test_issue_client_token_accepts_space_separated_requested_scopes(sessi
     )
 
     assert token.scope == "bot:read bot:write"
+
+
+@pytest.mark.db
+async def test_issue_client_token_grants_the_own_variant_of_a_granted_scope(session):
+    client, _secret, plaintext_secret = await _create_client_with_secret_and_scopes(session, scopes=["crm:read"])
+
+    token = await issue_client_token(
+        session,
+        _settings(),
+        client_id=client.client_id,
+        client_secret=plaintext_secret,
+        requested_scopes="crm:read:own",
+    )
+
+    assert token.scope == "crm:read:own"
+    assert validate_access_token(token.access_token, _settings()).scopes == frozenset({"crm:read:own"})
 
 
 @pytest.mark.db

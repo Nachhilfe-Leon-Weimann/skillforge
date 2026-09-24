@@ -2,13 +2,10 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.models import Party, PartyRelationType
+from app.core.auth.reach import DELEGATION_RELATION_TYPES
+from app.core.db.models import Party
 
 from .principals import get_principal_view
-
-# Relations that let a principal act on behalf of another party (the relation's ``to_party``).
-# Tutor authority runs through role/grants, not delegation, so ``TUTOR_OF`` is intentionally absent.
-DELEGATION_RELATION_TYPES = (PartyRelationType.PARENT_OF, PartyRelationType.PAYS_FOR)
 
 
 def _allowed_target_parties(party: Party | None) -> set[uuid.UUID]:

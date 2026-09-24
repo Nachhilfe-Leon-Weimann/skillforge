@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Set
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.models import ApplicationClient, ApplicationClientScopeGrant, PermissionScope
 
 from ..audit import AuditEventType, write_auth_audit_log
-from ..scopes import Scope
+from ..scopes import Scope, canonical, expand, parse_scopes
 from .clients import get_application_client
 from .errors import ApplicationClientScopeGrantNotFoundError, InvalidClientScopeError
 
@@ -40,7 +40,7 @@ async def grant_application_client_scopes(
 ) -> ApplicationClient:
     await seed_default_scopes(session)
     client = await get_application_client(session, client_id=client_id)
-    scope_keys = normalize_scope_set(scope.value if isinstance(scope, Scope) else scope for scope in scopes)
+    scope_keys = parse_scopes(scopes)
     await grant_client_scopes(session, client=client, scope_keys=scope_keys)
     return await get_application_client(session, client_id=client.client_id)
 
@@ -120,27 +120,27 @@ async def grant_client_scopes(
 
 def resolve_token_scopes(
     *,
-    requested_scopes: Iterable[str] | str | None,
-    granted_scopes: frozenset[str],
+    requested: Set[str],
+    granted: Set[str],
+    ceilings: Iterable[Set[str]] = (),
 ) -> frozenset[str]:
-    normalized_requested_scopes = normalize_scope_set(requested_scopes)
-    if not normalized_requested_scopes:
-        if not granted_scopes:
-            raise InvalidClientScopeError("Client has no active scope grants")
-        return granted_scopes
+    """Compute the canonical scopes of a token to be issued (ADR 0008).
 
-    missing_scopes = normalized_requested_scopes - granted_scopes
-    if missing_scopes:
+    ``granted`` are the client's grants of the mode that applies; each of ``ceilings`` narrows them
+    (a person's role scopes and, on refresh, the session's scope). Every set is expanded first, so
+    a grant of ``crm:read`` makes ``crm:read:own`` available too. An empty ``requested`` means none
+    was requested and the token gets everything available; otherwise every requested scope must be
+    available, and the token carries exactly those. An empty result is ``invalid_scope``.
+    """
+    available = expand(granted).intersection(*(expand(ceiling) for ceiling in ceilings))
+    if not requested <= available:
         raise InvalidClientScopeError("Requested scopes are not granted")
 
-    return normalized_requested_scopes
+    token_scopes = canonical(requested or available)
+    if not token_scopes:
+        if granted:
+            raise InvalidClientScopeError("Client grants and ceilings have no scope in common")
 
+        raise InvalidClientScopeError("Client has no active scope grants")
 
-def normalize_scope_set(scopes: Iterable[str] | str | None) -> frozenset[str]:
-    if scopes is None:
-        return frozenset()
-
-    if isinstance(scopes, str):
-        return frozenset(scopes.split())
-
-    return frozenset(str(scope).strip() for scope in scopes if str(scope).strip())
+    return token_scopes
