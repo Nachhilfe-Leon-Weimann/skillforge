@@ -3,7 +3,7 @@ from collections.abc import Iterable, Set
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.models import ApplicationClient, ApplicationClientScopeGrant, PermissionScope
+from app.core.db.models import ApplicationClient, ApplicationClientScopeGrant, GrantMode, PermissionScope
 
 from ..audit import AuditEventType, write_auth_audit_log
 from ..scopes import Scope, canonical, expand, parse_scopes
@@ -52,7 +52,7 @@ async def revoke_application_client_scope(
     scope_key: str,
 ) -> None:
     client = await get_application_client(session, client_id=client_id)
-    grant = await session.get(ApplicationClientScopeGrant, (client.id, scope_key))
+    grant = await session.get(ApplicationClientScopeGrant, (client.id, scope_key, GrantMode.APPLICATION))
     if grant is None:
         raise ApplicationClientScopeGrantNotFoundError("Application client scope grant not found")
 

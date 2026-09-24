@@ -10,7 +10,7 @@ under `app/core/db/models/` - keep it in sync when models change.
 - `geo` - geographic reference data (PLZ/Ort)
 - `ext` - links from external system identifiers to a `core.party`
 - `bot` - SkillBot operational state (Discord guilds/channels/users, workspaces, permissions, job queue, two-phase operations)
-- `auth` - OAuth2 application clients, secrets, scopes, and the auth audit trail
+- `auth` - OAuth2 application clients, secrets, scope grants per mode, user accounts (stored roles, sessions, one-time tokens), and the auth audit trail
 - `system` - internal runtime state (background-worker liveness heartbeats)
 
 ## Shared Columns
@@ -384,12 +384,21 @@ INDEX (created_at), INDEX (guild_id, command_name, created_at), INDEX (discord_i
 
 ## Auth Schema
 
-OAuth2 client-credentials. Clients authenticate with a `client_id` + secret, are granted
-scopes, and receive JWTs. See [ADR 0001](decisions/0001-openapi-as-contract.md) for the API
-contract and `app/core/auth/` for the runtime.
+OAuth2 clients and the people who log in through them. Clients authenticate with a
+`client_id` + secret, are granted scopes in a mode - `application` for themselves, `delegated`
+as the most they may do for a person - and receive JWTs. A user account belongs to exactly one
+person party; deleting the party deletes the account, and `core.party` knows nothing about it.
+See [ADR 0001](decisions/0001-openapi-as-contract.md) for the API contract,
+[ADR 0008](decisions/0008-user-authentication-and-reach.md) and
+[`user-authentication.md`](specs/user-authentication.md) for accounts and grant modes, and
+`app/core/auth/` for the runtime.
 
 ```sql
 auth.application_client_status = ('active', 'disabled')
+auth.grant_mode = ('application', 'delegated')
+auth.user_account_status = ('active', 'disabled')
+auth.user_account_role_name = ('admin')
+auth.user_action_token_purpose = ('invitation', 'password_reset')
 
 -- auth.application_client
 id UUID PRIMARY KEY DEFAULT uuid4
@@ -414,11 +423,12 @@ description TEXT NOT NULL
 active BOOLEAN NOT NULL DEFAULT true
 created_at/updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 
--- auth.application_client_scope_grant  (client <-> scope)
+-- auth.application_client_scope_grant  (client <-> scope, per mode; one scope can be granted in both)
 application_client_id UUID REFERENCES auth.application_client(id) ON DELETE CASCADE
 scope_key TEXT REFERENCES auth.permission_scope(key) ON DELETE RESTRICT
+mode grant_mode NOT NULL DEFAULT 'application'
 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-PRIMARY KEY (application_client_id, scope_key)
+PRIMARY KEY (application_client_id, scope_key, mode)
 
 -- auth.auth_audit_log
 id UUID PRIMARY KEY DEFAULT uuid4
@@ -428,6 +438,50 @@ success BOOLEAN NOT NULL
 detail TEXT NULL
 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 INDEX (created_at), INDEX (principal_type, principal_id, created_at)
+
+-- auth.user_account  (one per person party; the token's principal_id is `id`, `sub` is "user:<id>")
+id UUID PRIMARY KEY DEFAULT uuid4
+party_id UUID NOT NULL UNIQUE REFERENCES core.party(id) ON DELETE CASCADE
+email TEXT NULL UNIQUE CHECK (email = lower(email))   -- the login identifier; not a CRM contact info
+password_hash TEXT NULL                    -- Argon2; NULL until a password is set
+status user_account_status NOT NULL DEFAULT 'active'
+failed_login_count INTEGER NOT NULL DEFAULT 0
+locked_until TIMESTAMPTZ NULL              -- NULL = not locked
+last_login_at TIMESTAMPTZ NULL
+created_at/updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+
+-- auth.user_account_role  (stored roles only - `student`/`tutor`/`guardian` are derived from the CRM, never stored)
+user_account_id UUID REFERENCES auth.user_account(id) ON DELETE CASCADE
+role user_account_role_name NOT NULL
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+PRIMARY KEY (user_account_id, role)
+
+-- auth.user_session  (one row per login through a client; only that client may refresh or revoke it)
+id UUID PRIMARY KEY DEFAULT uuid4          -- the token's sid
+user_account_id UUID NOT NULL REFERENCES auth.user_account(id) ON DELETE CASCADE
+application_client_id UUID NOT NULL REFERENCES auth.application_client(id) ON DELETE CASCADE
+scope TEXT NOT NULL                        -- canonical scopes granted at login; the ceiling of every refresh
+refresh_token_hash TEXT NOT NULL UNIQUE    -- SHA-256 hex of the current refresh token (prefix sf_rt_)
+previous_refresh_token_hash TEXT NULL UNIQUE
+rotated_at TIMESTAMPTZ NULL
+expires_at TIMESTAMPTZ NOT NULL            -- absolute
+last_used_at TIMESTAMPTZ NULL
+revoked_at TIMESTAMPTZ NULL                -- NULL = live
+revoked_reason TEXT NULL                   -- logout, password_reset, account_disabled, admin, reuse_detected
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+INDEX (user_account_id), INDEX (application_client_id)
+
+-- auth.user_action_token  (one-time tokens for invitation and password reset)
+id UUID PRIMARY KEY DEFAULT uuid4
+user_account_id UUID NOT NULL REFERENCES auth.user_account(id) ON DELETE CASCADE
+purpose user_action_token_purpose NOT NULL
+token_hash TEXT NOT NULL UNIQUE            -- SHA-256 hex; plaintext prefix sf_ua_
+expires_at TIMESTAMPTZ NOT NULL
+used_at TIMESTAMPTZ NULL                   -- NULL = unused
+invalidated_at TIMESTAMPTZ NULL            -- set when the token is replaced or the e-mail changes
+issued_by TEXT NOT NULL                    -- "<principal_type>:<principal_id>" of the issuer, or "cli"
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+INDEX (user_account_id)
 ```
 
 ## System Schema

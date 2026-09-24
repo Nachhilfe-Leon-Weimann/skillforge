@@ -57,6 +57,35 @@ async def test_application_client_scope_grant_relationship(session):
 
 
 @pytest.mark.db
+async def test_one_scope_can_be_granted_to_one_client_in_both_modes(session):
+    from typing import cast
+
+    from sqlalchemy import Table, select
+
+    from app.core.db.models import ApplicationClient, ApplicationClientScopeGrant, GrantMode, PermissionScope
+
+    client = ApplicationClient(client_id="some-client", name="SomeClient")
+    scope = PermissionScope(key="data:read", description="Read some clients data API")
+    application = ApplicationClientScopeGrant(application_client=client, permission_scope=scope)
+    delegated = ApplicationClientScopeGrant(application_client=client, permission_scope=scope, mode=GrantMode.DELEGATED)
+
+    session.add_all([client, scope, application, delegated])
+    await session.flush()
+
+    grant_table = cast(Table, ApplicationClientScopeGrant.__table__)
+    assert [column.name for column in grant_table.primary_key.columns] == ["application_client_id", "scope_key", "mode"]
+    assert getattr(grant_table.c.mode.type, "enums", None) == ["application", "delegated"]
+    assert application.mode is GrantMode.APPLICATION
+
+    stored = await session.execute(
+        select(ApplicationClientScopeGrant.scope_key, ApplicationClientScopeGrant.mode).where(
+            ApplicationClientScopeGrant.application_client_id == client.id
+        )
+    )
+    assert sorted(stored.tuples()) == [("data:read", GrantMode.APPLICATION), ("data:read", GrantMode.DELEGATED)]
+
+
+@pytest.mark.db
 async def test_auth_audit_log(session):
     import uuid
 

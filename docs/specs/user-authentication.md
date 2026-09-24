@@ -609,21 +609,21 @@ Not built here; recorded so that this arc's shapes take it with no change but th
   `grant_client_scopes` stays untouched (its grants become `application` through the default).
 - _Tests that change:_ none; `tests/db/test_migration_apply.py` gains the seeded test.
 - _Acceptance criteria:_
-  - [ ] Upgrade and downgrade run clean against an empty and a seeded database. Seeded means
+  - [x] Upgrade and downgrade run clean against an empty and a seeded database. Seeded means
         (`test_grant_mode_and_user_account_migration_is_reversible`): at `0010_subject_title_unique` a
         `permission_scope`, a `PERSON` party, a client and one grant of that scope; after the upgrade, which must
         have turned that grant into `application`, an account with an `admin` role, a session, an action token and a
         `delegated` grant of the same scope. After the downgrade to `0010` the four enum types (`grant_mode`,
         `user_account_status`, `user_account_role_name`, `user_action_token_purpose`) are gone; the party, the client
         and its original grant survive, and that grant is the only grant row.
-  - [ ] The test reads the primary-key columns of `auth.application_client_scope_grant` from `pg_constraint` (the
+  - [x] The test reads the primary-key columns of `auth.application_client_scope_grant` from `pg_constraint` (the
         way `_enum_labels` reads `pg_enum`): three after the upgrade, two after the downgrade.
-  - [ ] One scope can be granted to one client in both modes (a model test that inserts its own `PermissionScope`
+  - [x] One scope can be granted to one client in both modes (a model test that inserts its own `PermissionScope`
         row, like `test_application_client_scope_grant_relationship`; it needs nothing from P0-2).
-  - [ ] An uppercase e-mail violates the check constraint; two accounts for one party, or two with the same
+  - [x] An uppercase e-mail violates the check constraint; two accounts for one party, or two with the same
         e-mail, violate their unique constraints; two accounts without an e-mail do not.
-  - [ ] A new account defaults to `active`.
-  - [ ] Deleting a party through `delete_party` removes its account, roles, sessions and action tokens and leaves
+  - [x] A new account defaults to `active`.
+  - [x] Deleting a party through `delete_party` removes its account, roles, sessions and action tokens and leaves
         the audit log untouched.
 
 **P0-4 - Grant modes.**
