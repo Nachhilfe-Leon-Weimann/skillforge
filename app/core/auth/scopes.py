@@ -46,6 +46,9 @@ OWN_VARIANT: dict[Scope, Scope] = {
 that honor it.
 """
 
+BASE_OF: dict[Scope, Scope] = {own: base for base, own in OWN_VARIANT.items()}
+"""Maps a reach-qualified scope back to its unqualified form - the inverse of ``OWN_VARIANT``."""
+
 
 def parse_scopes(scopes: str | Iterable[str] | None) -> frozenset[str]:
     """Return ``scopes`` as a set - the one place a scope string is split.

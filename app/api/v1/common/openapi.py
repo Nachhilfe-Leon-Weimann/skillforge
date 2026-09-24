@@ -4,6 +4,8 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
+from app.core.auth.scopes import BASE_OF
+
 from .errors import VALIDATION_ERROR_CODE, VALIDATION_ERROR_DETAIL, code_for_status
 from .schemas import ErrorResponse
 
@@ -93,6 +95,7 @@ def customize_openapi(app: FastAPI) -> None:
         schema = generate_openapi()
         if schema is not customized:
             _register_error_envelope(schema)
+            _derive_reach_alternatives(schema)
             _document_auth_errors(schema)
             _unify_validation_errors(schema)
             customized = schema
@@ -112,10 +115,45 @@ def _register_error_envelope(schema: dict[str, Any]) -> None:
     schemas.setdefault(ErrorResponse.__name__, envelope)
 
 
+def _derive_reach_alternatives(schema: dict[str, Any]) -> None:
+    """Let the unqualified scope satisfy a requirement of its reach-qualified variant (``require_access``).
+
+    FastAPI merges every marker on one scheme into one requirement, so the alternative is derived:
+    a requirement naming a reach-qualified scope becomes one with its base in its place, then itself -
+    ``[{"OAuth2": ["crm:read"]}, {"OAuth2": ["crm:read:own"]}]``.
+    """
+    for operation in _operations(schema):
+        if operation.get("security"):
+            operation["security"] = [
+                alternative
+                for requirement in operation["security"]
+                for alternative in _reach_alternatives(requirement, operation_id=operation.get("operationId"))
+            ]
+
+
+def _reach_alternatives(requirement: dict[str, list[str]], *, operation_id: str | None) -> list[dict[str, list[str]]]:
+    """Return ``requirement`` with each reach-qualified scope replaced by its base, then ``requirement`` itself.
+
+    A requirement without a reach-qualified scope stays alone. One naming both ``x`` and its variant
+    mixes ``require_scopes(x)`` with ``require_access(x)`` - a contradiction, refused when the schema
+    is built.
+    """
+    for scopes in requirement.values():
+        if mixed := {BASE_OF[scope] for scope in scopes if scope in BASE_OF} & set(scopes):
+            raise RuntimeError(
+                f"Operation {operation_id} demands {', '.join(sorted(mixed))} through require_scopes and "
+                "require_access at once. Drop require_scopes: require_access admits both forms."
+            )
+
+    base = {scheme: [BASE_OF.get(scope, scope) for scope in scopes] for scheme, scopes in requirement.items()}
+    return [requirement] if base == requirement else [base, requirement]
+
+
 def _document_auth_errors(schema: dict[str, Any]) -> None:
     """Document 401 on every operation that declares a ``security`` requirement, and 403 if it names a scope.
 
-    An operation that needs a token but no scope lets any valid token pass, so it cannot answer 403.
+    Requirements are alternatives. If one of them names no scope, any valid token passes, so the
+    operation cannot answer 403.
     """
     for operation in _operations(schema):
         if not operation.get("security"):
@@ -123,9 +161,9 @@ def _document_auth_errors(schema: dict[str, Any]) -> None:
 
         responses = operation.setdefault("responses", {})
         _document(responses, "401", "Missing or invalid bearer token", UNAUTHORIZED_EXAMPLES)
-        scopes = _required_scopes(operation)
-        if scopes:
-            _document(responses, "403", _forbidden_description(scopes), FORBIDDEN_EXAMPLES)
+        alternatives = [_scopes_of(requirement) for requirement in operation["security"]]
+        if all(alternatives):
+            _document(responses, "403", _forbidden_description(alternatives), FORBIDDEN_EXAMPLES)
 
 
 def _document(responses: dict[str, Any], status: str, description: str, examples: dict[str, dict[str, Any]]) -> None:
@@ -179,20 +217,14 @@ def _refs(node: Any) -> set[str]:
     return set()
 
 
-def _required_scopes(operation: dict[str, Any]) -> list[str]:
-    return list(dict.fromkeys(scope for requirement in operation["security"] for scope in _scopes_of(requirement)))
-
-
-def _forbidden_description(scopes: list[str]) -> str:
-    match scopes:
-        case [scope]:
-            return f"Missing required scope: {scope}"
-        case _:
-            return f"Missing required scopes: {', '.join(scopes)}"
+def _forbidden_description(alternatives: list[list[str]]) -> str:
+    """Name what a token lacks: the scopes of one requirement are all needed, the requirements are alternatives."""
+    noun = "scope" if all(len(scopes) == 1 for scopes in alternatives) else "scopes"
+    return f"Missing required {noun}: {' or '.join(', '.join(scopes) for scopes in alternatives)}"
 
 
 def _scopes_of(requirement: dict[str, list[str]]) -> list[str]:
-    return [scope for scopes in requirement.values() for scope in scopes]
+    return list(dict.fromkeys(scope for scopes in requirement.values() for scope in scopes))
 
 
 def _error_response(description: str, **content: Any) -> dict[str, Any]:

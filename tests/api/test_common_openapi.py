@@ -1,11 +1,11 @@
-from typing import Any
+from typing import Annotated, Any
 
 import pytest
 from fastapi import APIRouter, FastAPI
 
 from app.api.v1.common import ApiError, ErrorResponse, error_responses
 from app.api.v1.common.openapi import customize_openapi, operation_id
-from app.core.auth import Scope, require_scopes
+from app.core.auth import Access, Scope, require_access, require_scopes
 from app.core.errors import DomainValidationError
 
 ERROR_RESPONSE_REF = {"$ref": "#/components/schemas/ErrorResponse"}
@@ -298,4 +298,67 @@ def test_customize_openapi_rejects_an_untagged_included_router_right_away():
     app.include_router(router)
 
     with pytest.raises(RuntimeError, match="/bad/untagged"):
+        customize_openapi(app)
+
+
+# --- reach-aware operations: `require_access` (P0-7 of the user-authentication spec) ---
+
+CrmReadAccess = Annotated[Access, require_access(Scope.CRM_READ)]
+
+
+def _reach_aware_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/parties")
+    async def parties(access: CrmReadAccess) -> None: ...
+
+    @app.get("/parties/bot", dependencies=[require_scopes(Scope.BOT_READ)])
+    async def parties_for_the_bot(access: CrmReadAccess) -> None: ...
+
+    customize_openapi(app)
+    return app
+
+
+def _operation(app: FastAPI, path: str) -> dict[str, Any]:
+    return app.openapi()["paths"][path]["get"]
+
+
+def test_a_reach_aware_operation_lists_the_unqualified_scope_as_an_alternative():
+    assert _operation(_reach_aware_app(), "/parties")["security"] == [
+        {"OAuth2": ["crm:read"]},
+        {"OAuth2": ["crm:read:own"]},
+    ]
+
+
+def test_the_forbidden_description_joins_alternatives_with_or():
+    responses = _operation(_reach_aware_app(), "/parties")["responses"]
+
+    assert responses["403"]["description"] == "Missing required scope: crm:read or crm:read:own"
+
+
+def test_the_other_scopes_of_a_requirement_stay_in_every_alternative():
+    operation = _operation(_reach_aware_app(), "/parties/bot")
+
+    assert operation["security"] == [
+        {"OAuth2": ["bot:read", "crm:read"]},
+        {"OAuth2": ["bot:read", "crm:read:own"]},
+    ]
+    assert operation["responses"]["403"]["description"] == (
+        "Missing required scopes: bot:read, crm:read or bot:read, crm:read:own"
+    )
+
+
+def test_an_operation_without_a_reach_qualified_scope_keeps_its_one_requirement():
+    app = _customized_app()
+
+    assert app.openapi()["paths"]["/guarded-twice"]["get"]["security"] == [{"OAuth2": ["bot:read", "bot:write"]}]
+
+
+def test_a_route_mixing_require_scopes_and_require_access_of_one_scope_fails_when_the_schema_is_built():
+    app = FastAPI()
+
+    @app.get("/mixed", dependencies=[require_scopes(Scope.CRM_READ)])
+    async def mixed(access: CrmReadAccess) -> None: ...
+
+    with pytest.raises(RuntimeError, match="crm:read through require_scopes and require_access"):
         customize_openapi(app)

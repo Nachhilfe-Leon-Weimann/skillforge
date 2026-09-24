@@ -299,7 +299,7 @@ class RelationListParams(PageParams):
 ## Service layer
 
 ```
-app/api/v1/common/dependencies.py    DBSession with scope="function"                                  (new)
+app/core/db/dependencies.py          DBSession with scope="function"; re-exported from app.api.v1.common
 app/api/v1/crm/
   __init__.py                        router: prefix /crm, tag crm
   params.py                          PartyId, SubjectId, ContactInfoId, PartyListQuery, RelationListQuery

@@ -1,14 +1,17 @@
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
+from functools import cache
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import SecurityScopes
 
+from app.core.db.dependencies import DBSession
 from app.core.logging import bind_request_log_context
 
 from .config import AuthSettings
 from .principal import ApplicationPrincipal, Principal, UserPrincipal
-from .scopes import OWN_VARIANT, Scope, expand, format_scopes
+from .reach import Access, resolve_reach
+from .scopes import BASE_OF, OWN_VARIANT, Scope, expand, format_scopes
 from .security import oauth2_scheme
 from .tokens import TokenValidationError, validate_access_token
 
@@ -75,10 +78,7 @@ async def get_current_principal(
             required_scopes=sorted(security_scopes.scopes),
             missing_scopes=sorted(missing_scopes),
         )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
-        )
+        raise _missing_scope()
 
     return principal
 
@@ -108,7 +108,7 @@ def require_scopes(*required_scopes: Scope | str) -> Any:
     Principal needed: a parameter typed ``Annotated[Principal, require_scopes(Scope.X)]``.
     In both positions the scopes land in the operation's OpenAPI ``security`` requirement.
 
-    A reach-qualified scope (a value of ``OWN_VARIANT``) raises ``ValueError`` when the route is
+    A reach-qualified scope (a key of ``BASE_OF``) raises ``ValueError`` when the route is
     declared: a route guarded here serves every record, so it demands the unqualified scope, and a
     token restricted to its reach gets a ``403`` instead of a leak (ADR 0008).
     """
@@ -129,10 +129,62 @@ def require_application_scopes(*required_scopes: Scope | str) -> Any:
 def _unqualified(scopes: Sequence[Scope | str]) -> list[str]:
     """The scopes of a guard as strings; a reach-qualified one is refused when the route is declared."""
     for scope in scopes:
-        if scope in OWN_VARIANT.values():
+        if scope in BASE_OF:
             raise ValueError(f"a scope guard cannot demand the reach-qualified scope {scope}")
 
     return [str(scope) for scope in scopes]
+
+
+def require_access(scope: Scope) -> Any:
+    """Return the ``Security`` marker of a reach-aware route: the parameter it guards receives an ``Access``.
+
+    Use it as a parameter typed ``Annotated[Access, require_access(Scope.X)]``. The marker declares
+    the reach-qualified ``OWN_VARIANT[scope]``, which the unqualified scope implies: a token carrying
+    ``scope`` gets ``Access.all()`` without a query, a person restricted to ``:own`` gets their reach.
+    ``customize_openapi`` documents the two as alternative requirements.
+
+    A scope without an entry in ``OWN_VARIANT`` raises ``ValueError`` when the route is declared: no
+    reach can restrict it, so ``require_scopes`` guards it.
+    """
+    if scope not in OWN_VARIANT:
+        raise ValueError(f"require_access needs a scope with a reach-qualified variant, not {scope}")
+
+    return Security(_access_for(scope), scopes=[OWN_VARIANT[scope]])
+
+
+@cache
+def _access_for(scope: Scope) -> Callable[..., Awaitable[Access]]:
+    """Build the dependency behind ``require_access(scope)`` - one per scope, so FastAPI caches it per request."""
+
+    async def access(
+        request: Request,
+        security_scopes: SecurityScopes,
+        principal: Annotated[Principal, Depends(get_current_principal)],
+        session: DBSession,
+    ) -> Access:
+        if scope in expand(principal.scopes):
+            return Access.all()
+
+        match principal:
+            case UserPrincipal(party_id=party_id):
+                return Access.of(await resolve_reach(session, party_id))
+            case _:
+                # An application has no party and so no reach: the 403 of a missing scope.
+                bind_request_log_context(
+                    request,
+                    auth_reason="wrong_principal_type",
+                    client_id=principal.client_id,
+                    principal_type=principal.principal_type,
+                    required_scopes=sorted(security_scopes.scopes),
+                )
+                raise _missing_scope()
+
+    return access
+
+
+def _missing_scope() -> HTTPException:
+    """The 403 of a token that lacks what a route demands; ``FORBIDDEN_EXAMPLES`` documents its body."""
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
 
 def _authenticate_header(scopes: Sequence[str]) -> str:

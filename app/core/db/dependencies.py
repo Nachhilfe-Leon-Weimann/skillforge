@@ -20,3 +20,9 @@ def get_database(request: Request) -> Database:
 async def get_db_session(database: Annotated[Database, Depends(get_database)]) -> AsyncIterator[AsyncSession]:
     async with database.session() as session:
         yield session
+
+
+# The one request session: every dependency that takes it - an endpoint, an auth guard - shares it.
+# ``scope="function"`` ends the session - and thereby commits - before the response is sent. With
+# the default scope the commit runs afterwards, so a failing commit would still answer 2xx.
+DBSession = Annotated[AsyncSession, Depends(get_db_session, scope="function")]
