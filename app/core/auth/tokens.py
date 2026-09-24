@@ -8,7 +8,7 @@ drift apart.
 
 import uuid
 from abc import abstractmethod
-from collections.abc import Iterable, Set
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal, Self
@@ -49,14 +49,12 @@ class CreatedAccessToken:
     scope: str
 
 
-def _parse_scope_claim(value: object) -> object:
-    """An OAuth2 scope string on the wire, a set on the principal - nothing else is a scope claim."""
-    if isinstance(value, str):
-        return parse_scopes(value)
-    if isinstance(value, Set):
-        return value
+def _parse_scope_claim(value: object) -> frozenset[str]:
+    """The scope claim is an OAuth2 scope string - nothing else, not even a list of scopes."""
+    if not isinstance(value, str):
+        raise ValueError("scope must be a space-separated string")
 
-    raise ValueError("scope must be a space-separated string")
+    return parse_scopes(value)
 
 
 def _not_empty(scopes: frozenset[str]) -> frozenset[str]:
@@ -66,7 +64,7 @@ def _not_empty(scopes: frozenset[str]) -> frozenset[str]:
     return scopes
 
 
-ScopeClaim = Annotated[
+_ScopeClaim = Annotated[
     frozenset[str],
     BeforeValidator(_parse_scope_claim),
     AfterValidator(_not_empty),
@@ -74,10 +72,10 @@ ScopeClaim = Annotated[
 ]
 """The ``scope`` claim: a space-separated string on the wire, a non-empty set in Python."""
 
-RolesClaim = Annotated[frozenset[Role], PlainSerializer(sorted, return_type=list[Role])]
+_RolesClaim = Annotated[frozenset[Role], PlainSerializer(sorted, return_type=list[Role])]
 """The ``roles`` claim: a sorted list on the wire; an unknown role makes the token invalid."""
 
-AuthMethodsClaim = Annotated[
+_AuthMethodsClaim = Annotated[
     frozenset[AuthMethod],
     Field(min_length=1),
     PlainSerializer(sorted, return_type=list[AuthMethod]),
@@ -95,7 +93,7 @@ class _Claims(BaseModel):
     sub: str
     principal_id: uuid.UUID
     azp: str = Field(min_length=1)
-    scope: ScopeClaim
+    scope: _ScopeClaim
 
     @abstractmethod
     def to_principal(self) -> Principal: ...
@@ -121,8 +119,8 @@ class _UserClaims(_Claims):
     principal_type: Literal[PrincipalType.USER]
     party_id: uuid.UUID
     sid: uuid.UUID
-    roles: RolesClaim
-    amr: AuthMethodsClaim
+    roles: _RolesClaim
+    amr: _AuthMethodsClaim
 
     def to_principal(self) -> UserPrincipal:
         return UserPrincipal(
@@ -218,7 +216,7 @@ def _claims_of(principal: Principal) -> dict[str, Any]:
         "principal_type": principal.principal_type,
         "principal_id": principal.principal_id,
         "azp": principal.client_id,
-        "scope": canonical(principal.scopes),
+        "scope": format_scopes(canonical(principal.scopes)),
     }
     if isinstance(principal, UserPrincipal):
         claims |= {

@@ -61,7 +61,7 @@ class UserPrincipal(Principal):
 
     party_id: uuid.UUID
     session_id: uuid.UUID
-    roles: frozenset[Role] = frozenset()
+    roles: frozenset[Role]
     """Which views to offer. Informational only: SkillForge authorizes by scope and never branches on a role."""
     auth_methods: frozenset[AuthMethod]
     """How the person was authenticated, never empty; an action that needs a password can demand ``PASSWORD``."""

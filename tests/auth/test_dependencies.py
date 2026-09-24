@@ -25,7 +25,7 @@ BotWritePrincipal = Annotated[Principal, require_scopes("bot:write")]
 # require_scopes refuses a reach-qualified scope, so this requirement is declared with the bare marker.
 CrmReadOwnPrincipal = Annotated[Principal, Security(get_current_principal, scopes=["crm:read:own"])]
 CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
-ApplicationOnly = Annotated[ApplicationPrincipal, Depends(require_application)]
+ApplicationOnlyPrincipal = Annotated[ApplicationPrincipal, Depends(require_application)]
 
 
 async def test_get_current_principal_returns_principal_for_valid_token():
@@ -160,7 +160,7 @@ async def test_require_application_rejects_non_application_principal():
     app.dependency_overrides[get_current_principal] = fake_principal
 
     @app.get("/application-only")
-    async def application_only(principal: ApplicationOnly):
+    async def application_only(principal: ApplicationOnlyPrincipal):
         return {"principal_type": principal.principal_type}
 
     response = await _request(app, "GET", "/application-only")
@@ -175,7 +175,7 @@ async def test_require_application_rejects_a_person_token_whatever_it_carries():
     app.dependency_overrides[get_auth_settings] = lambda: settings
 
     @app.get("/application-only")
-    async def application_only(principal: ApplicationOnly):
+    async def application_only(principal: ApplicationOnlyPrincipal):
         return {"principal_type": principal.principal_type}
 
     token = create_access_token(settings, _person(scopes={"account:self", "auth:users:login", "bot:read"}))
@@ -232,6 +232,7 @@ def _person(*, scopes: set[str]) -> UserPrincipal:
         scopes=frozenset(scopes),
         party_id=uuid4(),
         session_id=uuid4(),
+        roles=frozenset(),
         auth_methods=frozenset({AuthMethod.PASSWORD}),
     )
 

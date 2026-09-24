@@ -106,6 +106,7 @@ async def test_request_logging_identifies_the_person_behind_a_request(capsys):
         scopes=frozenset({"account:self"}),
         party_id=party_id,
         session_id=session_id,
+        roles=frozenset(),
         auth_methods=frozenset({AuthMethod.PASSWORD}),
     )
     headers = {"Authorization": f"Bearer {create_access_token(_settings(), person).access_token}"}
