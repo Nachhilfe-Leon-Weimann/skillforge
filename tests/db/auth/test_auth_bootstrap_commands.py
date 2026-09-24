@@ -2,8 +2,6 @@
 
 import re
 from collections import Counter
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 
 import pytest
 from httpx import AsyncClient
@@ -23,20 +21,10 @@ from app.core.db.models import (
 NEW_SECRET = re.compile(r"client_secret=(?P<plaintext>sf_live_\S+)")
 RETAINED_SECRET = "client_secret=<existing usable secret retained>"
 
+pytestmark = pytest.mark.usefixtures("command_session")
+
 OPERATOR_APPLICATION = frozenset({"auth:users:login", "crm:write"})
 OPERATOR_DELEGATED = frozenset({"account:self", "crm:read", "crm:write"})
-
-
-@pytest.fixture(autouse=True)
-def command_session(session: AsyncSession, monkeypatch) -> None:
-    """Run the commands on the test's ``session``, in a SAVEPOINT an error rolls back - as their own transaction."""
-
-    @asynccontextmanager
-    async def _session() -> AsyncIterator[AsyncSession]:
-        async with session.begin_nested():
-            yield session
-
-    monkeypatch.setattr(bootstrap, "_session", _session)
 
 
 @pytest.mark.db

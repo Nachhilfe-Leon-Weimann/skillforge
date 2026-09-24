@@ -5,7 +5,7 @@ The API imports from here, never the reverse: the services stay free of ``app.ap
 
 from collections.abc import Set
 from dataclasses import dataclass, field
-from enum import Enum, StrEnum
+from enum import StrEnum
 
 import phonenumbers
 from phonenumbers import NumberParseException, PhoneNumberFormat, ValidationResult
@@ -26,15 +26,6 @@ class RelationDirection(StrEnum):
 
     OUTGOING = "outgoing"
     INCOMING = "incoming"
-
-
-class Unset(Enum):
-    """Type of ``UNSET``: "leave this nullable field as it is", where ``None`` already means "clear it"."""
-
-    UNSET = "unset"
-
-
-UNSET = Unset.UNSET
 
 
 @dataclass(frozen=True)

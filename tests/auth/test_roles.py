@@ -3,6 +3,7 @@ import pytest
 from app.core.auth import Scope
 from app.core.auth.roles import BASE_USER_SCOPES, ROLE_SCOPES, STORED_ROLES, Role, scopes_for
 from app.core.auth.scopes import CLIENT_ONLY_SCOPES
+from app.core.db.models import UserAccountRoleName
 
 
 def test_stored_roles_is_exactly_admin():
@@ -46,3 +47,8 @@ def test_no_role_carries_client_only_scopes():
     """Client-only scopes never reach a person's token: they are neither in the scopes every user
     holds nor in any role's scopes."""
     assert not CLIENT_ONLY_SCOPES & scopes_for(Role)
+
+
+def test_stored_roles_are_the_values_of_the_stored_role_enum():
+    """``STORED_ROLES`` (the mapping) and ``UserAccountRoleName`` (the table's enum) state one fact twice."""
+    assert {role.value for role in STORED_ROLES} == {role.value for role in UserAccountRoleName}
