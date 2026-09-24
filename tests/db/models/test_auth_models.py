@@ -75,6 +75,8 @@ async def test_one_scope_can_be_granted_to_one_client_in_both_modes(session):
     grant_table = cast(Table, ApplicationClientScopeGrant.__table__)
     assert [column.name for column in grant_table.primary_key.columns] == ["application_client_id", "scope_key", "mode"]
     assert getattr(grant_table.c.mode.type, "enums", None) == ["application", "delegated"]
+    assert ApplicationClientScopeGrant.__table__.c.mode.default.arg is GrantMode.APPLICATION
+    assert ApplicationClientScopeGrant.__table__.c.mode.server_default.arg.text == "'application'"
     assert application.mode is GrantMode.APPLICATION
 
     stored = await session.execute(

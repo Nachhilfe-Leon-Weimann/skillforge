@@ -1,5 +1,5 @@
 """The four account tables: metadata, the constraints of the "Accounts" section of the user
-authentication spec, and what the unchanged ``delete_party`` does to them (decision N)."""
+authentication spec, and what the unchanged ``delete_party`` does to them (ADR 0008)."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -64,6 +64,8 @@ async def test_auth_user_model_metadata():
     assert UserActionToken.__table__.schema == "auth"
 
     assert getattr(UserAccount.__table__.c.status.type, "enums", None) == ["active", "disabled"]
+    assert UserAccount.__table__.c.status.default.arg is UserAccountStatus.ACTIVE
+    assert UserAccount.__table__.c.status.server_default.arg.text == "'active'"
     assert UserAccount.__table__.c.party_id.unique is True
     assert UserAccount.__table__.c.email.unique is True
     assert UserAccount.__table__.c.email.nullable is True
@@ -179,7 +181,6 @@ async def test_deleting_a_party_removes_its_account_roles_sessions_and_action_to
     )
     session.add(audit_log)
     await session.flush()
-    account_id = account.id
 
     await delete_party(session, party.id)
 
@@ -189,10 +190,12 @@ async def test_deleting_a_party_removes_its_account_roles_sessions_and_action_to
     assert await session.scalar(select(func.count()).select_from(UserActionToken)) == 0
     assert await session.scalar(select(func.count()).select_from(ApplicationClient)) == 1
 
-    surviving = await session.scalar(select(AuthAuditLog).where(AuthAuditLog.id == audit_log.id))
-    assert surviving is not None
-    assert surviving.principal_type == "user"
-    assert surviving.principal_id == str(account_id)
+    # Columns, not the entity: ``delete_party`` expires nothing, so the entity would come from the
+    # identity map instead of the database.
+    surviving = await session.execute(
+        select(AuthAuditLog.principal_type, AuthAuditLog.principal_id).where(AuthAuditLog.id == audit_log.id)
+    )
+    assert surviving.one() == ("user", str(account.id))
 
 
 async def test_deleting_a_party_leaves_the_accounts_of_other_parties_alone(session: AsyncSession):
