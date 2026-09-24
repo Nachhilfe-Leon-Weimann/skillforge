@@ -24,7 +24,7 @@ SCOPES_AT_THE_RENAME: dict[tuple[str, str], list[str]] = {
     ("GET", "/api/v1/auth/clients/{client_id}"): ["auth:clients:manage"],
     ("PATCH", "/api/v1/auth/clients/{client_id}"): ["auth:clients:manage"],
     ("POST", "/api/v1/auth/clients/{client_id}/scopes"): ["auth:clients:manage"],
-    ("DELETE", "/api/v1/auth/clients/{client_id}/scopes/{scope_key}"): ["auth:clients:manage"],
+    ("DELETE", "/api/v1/auth/clients/{client_id}/scopes/{mode}/{scope_key}"): ["auth:clients:manage"],
     ("POST", "/api/v1/auth/clients/{client_id}/secrets"): ["auth:clients:manage"],
     ("DELETE", "/api/v1/auth/clients/{client_id}/secrets/{secret_id}"): ["auth:clients:manage"],
     ("GET", "/api/v1/auth/me"): [],
