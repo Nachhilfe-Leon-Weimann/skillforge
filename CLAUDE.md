@@ -99,8 +99,10 @@ DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
   the PR title must be the conventional message (for a single-commit PR GitHub takes that commit's subject
   instead). `git ship` (local fast-forward, keeps Leon's signature) only works when the branch tip already
   carries a green `check` - `main` rejects an unpushed, still-running or cancelled tip. Never the rebase or
-  merge-commit button (unsigned commits, non-linear history). Keep PRs independent: after a squash, a PR
-  stacked on top conflicts with `main`.
+  merge-commit button (unsigned commits, non-linear history). Dependent PRs form a GitHub stack (`gh stack`),
+  never a hand-made one - after a squash, a branch stacked by hand conflicts with `main`. A stack merges with
+  `gh stack merge <n> --squash` (GitHub's legacy merge endpoints cannot merge one): bottom-up to #n, one squash
+  commit per PR, once their `check`s are green; GitHub rebases the PRs above, and `gh stack sync` follows.
 - Commit style: conventional with PR number, e.g. `feat(api): ... (#34)`.
 
 ## Orientation

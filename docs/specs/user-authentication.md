@@ -1,6 +1,6 @@
 # Spec: User authentication (accounts, grant modes, reach-qualified scopes)
 
-> Status: Draft (2026-09) | Domain arc `auth`
+> Status: In progress - P0-1 on `main` (2026-09) | Domain arc `auth`
 > Tracking: [#85](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/85)
 > Builds on the [project sketch](../PROJECT.md), [`api-conventions.md`](api-conventions.md), goal 4 of
 > [`crm-api.md`](crm-api.md) ("exactly one target party per route") and
@@ -510,6 +510,7 @@ What SkillForge expects from the portal's backend-for-frontend; implemented in t
 
    The `delegated` set is `BASE_USER_SCOPES` plus `ROLE_SCOPES[admin]`; `crm:write` in `application` mode exists
    only to create the first party.
+
 2. Authorize as `operator` (`clientCredentials`) and create the admin's person party with `POST /crm/persons`.
 3. `just bootstrap-admin --party-id <uuid> --email <address>` prints the invitation token.
 4. Still as the client, redeem it with `POST /auth/password/redeem`.
@@ -565,7 +566,7 @@ Not built here; recorded so that this arc's shapes take it with no change but th
 
 **P0-1 - Spec and ADR.** _Docs only._
 
-- [ ] This spec and ADR 0008 are on `main`; the decisions index lists 0008; issue #85 links the spec.
+- [x] This spec and ADR 0008 are on `main`; the decisions index lists 0008; issue #85 links the spec.
 
 **P0-2 - Scope model.** _No schema change._
 
@@ -659,8 +660,8 @@ Not built here; recorded so that this arc's shapes take it with no change but th
   `MeResponse`).
 - _Acceptance criteria:_
   - [ ] `components.securitySchemes` has exactly one key, `OAuth2`; apart from the key, the `security` requirement
-        of every existing operation is unchanged (pinned against the operations on `main`; whichever of P0-4 and
-        P0-5 merges second brings the pin in line with P0-4's revoke path). A later slice that deliberately changes
+        of every existing operation is unchanged (pinned against the operations of the branch below; P0-5 sits
+        above P0-4 in the stack, so its pin carries P0-4's revoke path). A later slice that deliberately changes
         an operation's requirement removes that operation from the pin in the same PR, with a comment naming the
         slice - P0-7 does so for `crm_list_parties` and `crm_get_party`.
   - [ ] A person's token round-trips into a `UserPrincipal` with `party_id`, `session_id`, `roles` and
@@ -817,8 +818,10 @@ Not built here; recorded so that this arc's shapes take it with no change but th
 
 ## Timeline / phasing
 
-One PR per requirement, each branched from `main` - no stacked PRs. A wave starts when every PR of the previous
-wave is merged.
+One PR per requirement, all in one GitHub stack (`gh stack`), bottom to top P0-2, P0-3, P0-4, P0-5, P0-6, P0-7,
+P0-8 - an order that respects every dependency in the table. A wave is what can be built at the same time; a slice
+built beside another joins the stack by rebasing onto the branch below it. The PRs merge bottom-up, each as its own
+squash commit, and GitHub rebases the PRs above a merged one.
 
 | Wave | Slices                                       | Needs                                               |
 | ---- | -------------------------------------------- | --------------------------------------------------- |
@@ -833,9 +836,9 @@ wave is merged.
   `UserPrincipal`, the way the CRM tests mint application tokens today.
 - **Slices of one wave share files, not functions.** Wave 1: `services/scopes.py` (P0-2 `resolve_token_scopes`,
   P0-3 `revoke_application_client_scope`); wave 2: `app/api/v1/auth/schemas.py` and `app/core/auth/__init__.py`.
-  The PR that merges second rebases onto `main` and resolves them like `openapi.json`.
-- **`openapi.json` is never merged by hand.** Within a wave the PR that merges second rebases onto `main`, takes
-  either side of the file, reruns `just openapi` and `just check-all`.
+  The slice that joins the stack above its wave partner resolves them like `openapi.json`.
+- **`openapi.json` is never merged by hand.** After every rebase a slice takes either side of the file, reruns
+  `just openapi` and `just check-all`.
 
 ## Rules for implementing agents
 

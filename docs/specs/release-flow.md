@@ -114,8 +114,10 @@ release cycles shipped with the real `git ship` alias.
   lives only in the `production` environment, restricted to `main`.
 - **One commit per release is signed by GitHub, not by Leon.** It is mechanical, reviewable as a PR, and the
   same trust level today's bump PR has. Squash-merged PRs are GitHub-signed in the same way.
-- **No stacked PRs.** A squash merge gives the lower commits new SHAs, so the PR stacked on top conflicts with
-  `main` - this happened to #118 and #119 after #114-#116 were squashed. Keep PRs independent of each other.
+- **Stacks only through GitHub.** A squash merge gives the lower commits new SHAs, so a branch stacked by hand
+  conflicts with `main` - this happened to #118 and #119 after #114-#116 were squashed. GitHub's stacked pull
+  requests (`gh stack`, in public preview) retarget and rebase the PRs above a merged one themselves, so
+  dependent slices form such a stack; every other PR stays independent.
 - **Feature commits on `main` are GitHub-signed, not Leon-signed**, because squash is the default. `git ship`
   would keep his signature, but needs a green tip and therefore a wait that `--auto` does for you.
 - **The platform depends on one GitHub App and its private key.** If the App is unavailable, the fallback is
