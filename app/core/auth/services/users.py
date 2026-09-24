@@ -84,9 +84,12 @@ async def create_user_account(
 async def load_user_account(session: AsyncSession, user_id: uuid.UUID) -> UserAccountWithRoles:
     """Return the account behind ``user_id`` with its stored *and* derived roles."""
     account = await get_user_account(session, user_id)
-    return UserAccountWithRoles(
-        account=account, roles=_stored_roles(account) | await derive_roles(session, account.party_id)
-    )
+    return UserAccountWithRoles(account=account, roles=await account_roles(session, account))
+
+
+async def account_roles(session: AsyncSession, account: UserAccount) -> frozenset[Role]:
+    """Return every role ``account`` holds: its stored roles (loaded with it) plus the ones the CRM derives."""
+    return _stored_roles(account) | await derive_roles(session, account.party_id)
 
 
 async def list_user_accounts(

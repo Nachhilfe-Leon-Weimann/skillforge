@@ -46,6 +46,18 @@ def verify_secret(secret: str, secret_hash: str) -> bool:
         return False
 
 
+def verify_and_update(secret: str, secret_hash: str) -> tuple[bool, str | None]:
+    """Like ``verify_secret``, and hand back a fresh hash when ``secret_hash`` uses outdated parameters.
+
+    For the password login: the caller stores the new hash (the second item, ``None`` when the stored
+    one is current), so hashes follow the recommended parameters as people log in.
+    """
+    try:
+        return _PASSWORD_HASH.verify_and_update(secret, secret_hash)
+    except pwdlib_exceptions.UnknownHashError, ValueError, TypeError:
+        return False, None
+
+
 def digest(token: str) -> str:
     """Return the stored form of an opaque token: its SHA-256 hex digest, deterministic so it can be looked up.
 

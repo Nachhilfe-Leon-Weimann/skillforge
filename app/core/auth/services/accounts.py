@@ -6,7 +6,7 @@ other two; with the look-ups here, none of them imports another for them.
 
 import uuid
 
-from sqlalchemy import Select, select
+from sqlalchemy import ColumnElement, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,7 +17,7 @@ from .errors import UserAccountNotFoundError
 
 async def get_user_account(session: AsyncSession, user_id: uuid.UUID) -> UserAccount:
     """Return the account behind ``user_id`` with its stored roles loaded, as the database says now."""
-    return await _load(session, user_id, _account(user_id))
+    return await _load(session, user_id, _account(UserAccount.id == user_id))
 
 
 async def lock_user_account(session: AsyncSession, user_id: uuid.UUID) -> UserAccount:
@@ -27,7 +27,17 @@ async def lock_user_account(session: AsyncSession, user_id: uuid.UUID) -> UserAc
     would otherwise keep the attributes it was loaded with, and every check made after the lock would
     run on data from before it. The roles are read under the lock too.
     """
-    return await _load(session, user_id, _account(user_id).with_for_update())
+    return await _load(session, user_id, _account(UserAccount.id == user_id).with_for_update())
+
+
+async def lock_user_account_by_email(session: AsyncSession, email: str) -> UserAccount | None:
+    """Return the account that logs in with ``email`` (canonical form) with its row locked, or ``None``.
+
+    The password login's look-up: the lock serializes two attempts on one account, so the failed-login
+    counter counts both.
+    """
+    await session.flush()  # as in ``_load``: ``populate_existing`` would drop a pending change
+    return await session.scalar(_account(UserAccount.email == email).with_for_update())
 
 
 async def find_user_account_by_party(session: AsyncSession, party_id: uuid.UUID) -> UserAccount | None:
@@ -35,11 +45,11 @@ async def find_user_account_by_party(session: AsyncSession, party_id: uuid.UUID)
     return await session.scalar(select(UserAccount).where(UserAccount.party_id == party_id))
 
 
-def _account(user_id: uuid.UUID) -> Select[tuple[UserAccount]]:
+def _account(condition: ColumnElement[bool]) -> Select[tuple[UserAccount]]:
     """The one statement that reads an account: its stored roles loaded, the session's copy refreshed."""
     return (
         select(UserAccount)
-        .where(UserAccount.id == user_id)
+        .where(condition)
         .options(selectinload(UserAccount.roles))
         .execution_options(populate_existing=True)
     )
