@@ -40,14 +40,14 @@ router = APIRouter(prefix="/clients")
 
 ManageAuthClients = Annotated[Principal, require_scopes(Scope.AUTH_CLIENTS_MANAGE)]
 
-GrantModePath = Annotated[
+ScopeGrantMode = Annotated[
     GrantMode,
     Path(
         description="Mode of the grant: `application` (for the client itself) or `delegated` (the ceiling for people).",
         examples=[GrantMode.DELEGATED],
     ),
 ]
-ScopeKeyPath = Annotated[str, Path(description="Scope of the grant.", examples=["crm:read"])]
+ScopeKey = Annotated[str, Path(description="Scope of the grant.", examples=["crm:read"])]
 
 
 @router.get("")
@@ -182,8 +182,8 @@ async def grant_application_client_scopes_endpoint(
 )
 async def revoke_application_client_scope_endpoint(
     client_id: str,
-    mode: GrantModePath,
-    scope_key: ScopeKeyPath,
+    mode: ScopeGrantMode,
+    scope_key: ScopeKey,
     session: Annotated[AsyncSession, Depends(get_db_session)],
     _: ManageAuthClients,
 ) -> None:

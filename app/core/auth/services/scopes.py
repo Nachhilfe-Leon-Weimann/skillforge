@@ -86,8 +86,8 @@ async def grant_client_scopes(
     *,
     client: ApplicationClient,
     scope_keys: frozenset[str],
-    mode: GrantMode = GrantMode.APPLICATION,
-) -> frozenset[str]:
+    mode: GrantMode,
+) -> None:
     """Grant ``scope_keys`` to ``client`` in ``mode``; a scope already granted in that mode is kept.
 
     Checks the whole request before it writes a grant, so a refused request grants nothing: every
@@ -128,7 +128,6 @@ async def grant_client_scopes(
         )
 
     await session.flush()
-    return scope_keys
 
 
 def resolve_token_scopes(

@@ -50,7 +50,7 @@ async def bootstrap_application_client(
         client.status = ApplicationClientStatus.ACTIVE
 
     requested_scope_keys = parse_scopes(scopes)
-    granted_scope_keys = await grant_client_scopes(session, client=client, scope_keys=requested_scope_keys, mode=mode)
+    await grant_client_scopes(session, client=client, scope_keys=requested_scope_keys, mode=mode)
 
     created_secret = None
     if not await client_has_usable_secret(session, client_id=client.id, now=datetime.now(UTC)):
@@ -65,5 +65,5 @@ async def bootstrap_application_client(
         client=client,
         created_client=created_client,
         created_secret=created_secret,
-        granted_scopes=granted_scope_keys,
+        granted_scopes=requested_scope_keys,
     )
