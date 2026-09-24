@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, DateTime, Enum, ForeignKey, Index, Text
+from sqlalchemy import UUID, DateTime, Enum, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..shared import CreatedAtMixin
@@ -42,10 +42,10 @@ class UserActionToken(CreatedAtMixin, AuthBase):
         nullable=False,
     )
 
-    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    token_hash: Mapped[str] = mapped_column(nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    issued_by: Mapped[str] = mapped_column(Text, nullable=False)
+    issued_by: Mapped[str] = mapped_column(nullable=False)
 
     user_account: Mapped[UserAccount] = relationship("UserAccount", back_populates="action_tokens")

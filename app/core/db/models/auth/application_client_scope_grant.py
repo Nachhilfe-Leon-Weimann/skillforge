@@ -19,7 +19,7 @@ class GrantMode(enum.StrEnum):
 
 
 class ApplicationClientScopeGrant(CreatedAtMixin, AuthBase):
-    """A scope granted to a client in one mode (decision F): ``application`` for the client itself,
+    """A scope granted to a client in one mode (ADR 0008): ``application`` for the client itself,
     ``delegated`` as the most it may do for a person. The mode is part of the key, so one scope can
     be granted in both."""
 
@@ -40,7 +40,6 @@ class ApplicationClientScopeGrant(CreatedAtMixin, AuthBase):
             values_callable=lambda enum_type: [item.value for item in enum_type],
         ),
         primary_key=True,
-        nullable=False,
         default=GrantMode.APPLICATION,
         server_default=text("'application'"),
     )

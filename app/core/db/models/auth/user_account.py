@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, CheckConstraint, DateTime, Enum, ForeignKey, Text, text
+from sqlalchemy import UUID, CheckConstraint, DateTime, Enum, ForeignKey, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..shared import TimestampMixin
@@ -21,9 +21,9 @@ class UserAccountStatus(enum.StrEnum):
 
 
 class UserAccount(TimestampMixin, AuthBase):
-    """The account of exactly one person party (decision C), ``active`` from its creation; how the
-    person logs in hangs off it (decision E). ``id`` is the token's ``principal_id``. ``party_id``
-    cascades on delete and ``Party`` gets no relationship back (decision N)."""
+    """The account of exactly one person party, ``active`` from its creation; how the person logs in
+    hangs off it (ADR 0008). ``id`` is the token's ``principal_id``. ``party_id`` cascades on delete
+    and ``Party`` gets no relationship back: the CRM stays unaware of accounts (ADR 0007)."""
 
     __tablename__ = "user_account"
     __table_args__ = AuthBase.extend_table_args(
@@ -36,8 +36,8 @@ class UserAccount(TimestampMixin, AuthBase):
         ForeignKey("core.party.id", ondelete="CASCADE"), nullable=False, unique=True
     )
 
-    email: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)
-    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email: Mapped[str | None] = mapped_column(nullable=True, unique=True)
+    password_hash: Mapped[str | None] = mapped_column(nullable=True)
 
     status: Mapped[UserAccountStatus] = mapped_column(
         Enum(

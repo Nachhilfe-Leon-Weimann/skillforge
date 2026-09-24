@@ -17,7 +17,7 @@ class UserAccountRoleName(enum.StrEnum):
 
 
 class UserAccountRole(CreatedAtMixin, AuthBase):
-    """A stored role held by a user account (decision K). Every other role is derived from the CRM
+    """A stored role held by a user account (ADR 0008). Every other role is derived from the CRM
     and never stored here."""
 
     __tablename__ = "user_account_role"
