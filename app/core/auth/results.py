@@ -1,8 +1,10 @@
 from dataclasses import dataclass
+from enum import StrEnum
 
 from app.core.db.models import ApplicationClient, ApplicationClientSecret, UserAccount, UserActionToken
 
 from .roles import Role
+from .tokens import CreatedAccessToken
 
 
 @dataclass(frozen=True)
@@ -46,3 +48,33 @@ class BootstrappedAdminAccount:
     account: UserAccount
     created_account: bool
     issued: IssuedActionToken
+
+
+@dataclass(frozen=True)
+class IssuedUserToken:
+    """What a person's login or refresh hands out: the access token plus the session's new refresh token.
+
+    ``refresh_token`` is the plaintext - it exists only here and in the response; the session stores its
+    digest. ``refresh_expires_in`` counts the seconds until the session's absolute ``expires_at``.
+    """
+
+    token: CreatedAccessToken
+    refresh_token: str
+    refresh_expires_in: int
+
+
+class TokenDenial(StrEnum):
+    """Why a person's grant was refused: the OAuth2 error code (RFC 6749, section 5.2) of the answer.
+
+    Returned, never raised (user-authentication spec, decision O): a denial may have written state - an
+    audit entry, the failed-login counter, a revoked session - that raising would roll back.
+    """
+
+    INVALID_CLIENT = "invalid_client"
+    UNAUTHORIZED_CLIENT = "unauthorized_client"
+    INVALID_GRANT = "invalid_grant"
+    INVALID_SCOPE = "invalid_scope"
+
+
+type UserTokenResult = IssuedUserToken | TokenDenial
+"""The outcome of ``issue_user_token`` and ``refresh_user_token``."""

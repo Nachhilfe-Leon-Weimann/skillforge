@@ -13,15 +13,33 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthSettings
+from app.core.auth import (
+    AuthSettings,
+    IssuedUserToken,
+    Scope,
+    TokenDenial,
+    UserTokenResult,
+    bootstrap_application_client,
+    issue_user_token,
+    refresh_user_token,
+)
 from app.core.auth.audit import Operator
 from app.core.auth.results import IssuedActionToken, UserAccountWithRoles
-from app.core.auth.secrets import verify_secret
+from app.core.auth.secrets import digest, hash_secret, verify_secret
 from app.core.auth.services.action_tokens import issue_action_token, redeem_action_token
 from app.core.auth.services.errors import InvalidActionTokenError, UnknownAccountPartyError
 from app.core.auth.services.users import create_user_account
 from app.core.db import Database
-from app.core.db.models import AuthAuditLog, Party, UserAccount, UserActionTokenPurpose
+from app.core.db.models import (
+    ApplicationClient,
+    AuthAuditLog,
+    GrantMode,
+    Party,
+    PermissionScope,
+    UserAccount,
+    UserActionTokenPurpose,
+    UserSession,
+)
 from app.services.crm import parties, persons
 
 pytestmark = pytest.mark.db
@@ -152,3 +170,65 @@ async def _invitation(db: Database, user_id: uuid.UUID, settings: AuthSettings) 
             setup, settings, user_id=user_id, purpose=UserActionTokenPurpose.INVITATION, actor=Operator.CLI
         )
     return issued.plaintext
+
+
+@pytest.fixture
+async def login_client_credentials(db: Database) -> AsyncIterator[tuple[str, str]]:
+    """A committed login client ``(client_id, client_secret)``, removed afterwards with its audit entries and the
+    scope rows its grants seeded."""
+    async with db.session() as setup:
+        known_scopes = set(await setup.scalars(select(PermissionScope.key)))
+        created = await bootstrap_application_client(setup, client_id="race-portal", scopes=[Scope.AUTH_USERS_LOGIN])
+        await bootstrap_application_client(
+            setup, client_id="race-portal", scopes=[Scope.ACCOUNT_SELF], mode=GrantMode.DELEGATED
+        )
+        assert created.created_secret is not None
+        client_row_id = created.client.id
+    try:
+        yield "race-portal", created.created_secret.plaintext
+    finally:
+        async with db.session() as cleanup:
+            await cleanup.execute(delete(ApplicationClient).where(ApplicationClient.id == client_row_id))
+            await cleanup.execute(delete(AuthAuditLog).where(AuthAuditLog.principal_id == str(client_row_id)))
+            await cleanup.execute(delete(PermissionScope).where(PermissionScope.key.not_in(known_scopes)))
+
+
+async def test_two_overlapping_refreshes_of_one_token_yield_one_rotation_and_leave_the_session_live(
+    db: Database, user_id: uuid.UUID, login_client_credentials: tuple[str, str], auth_settings: AuthSettings
+):
+    client_id, client_secret = login_client_credentials
+    async with db.session() as setup:
+        account = await setup.get_one(UserAccount, user_id)
+        account.password_hash = hash_secret(FIRST_PASSWORD)
+        await setup.flush()
+        login = await issue_user_token(
+            setup,
+            auth_settings,
+            client_id=client_id,
+            client_secret=client_secret,
+            username="race@example.org",
+            password=FIRST_PASSWORD,
+        )
+    assert isinstance(login, IssuedUserToken)
+
+    first_result: list[UserTokenResult] = []
+
+    async def refresh(session: AsyncSession) -> UserTokenResult:
+        return await refresh_user_token(
+            session, auth_settings, client_id=client_id, client_secret=client_secret, refresh_token=login.refresh_token
+        )
+
+    async def first(session: AsyncSession) -> None:
+        first_result.append(await refresh(session))
+
+    second = await _overlapping(db, first, refresh)
+
+    [rotated] = first_result
+    assert isinstance(rotated, IssuedUserToken)
+    assert second.result() is TokenDenial.INVALID_GRANT
+    async with db.session() as check:
+        user_session = await check.scalar(select(UserSession).where(UserSession.user_account_id == user_id))
+    assert user_session is not None
+    assert user_session.revoked_at is None
+    assert user_session.refresh_token_hash == digest(rotated.refresh_token)
+    assert user_session.previous_refresh_token_hash == digest(login.refresh_token)

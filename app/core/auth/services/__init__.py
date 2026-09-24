@@ -17,7 +17,7 @@ from .errors import (
 )
 from .scopes import grant_application_client_scopes, revoke_application_client_scope, seed_default_scopes
 from .secrets import create_application_client_secret, create_client_secret, revoke_application_client_secret
-from .tokens import issue_client_token
+from .tokens import issue_client_token, issue_user_token, refresh_user_token
 
 __all__ = [
     "ApplicationClientAlreadyExistsError",
@@ -35,7 +35,9 @@ __all__ = [
     "get_application_client",
     "grant_application_client_scopes",
     "issue_client_token",
+    "issue_user_token",
     "list_application_clients",
+    "refresh_user_token",
     "revoke_application_client_scope",
     "revoke_application_client_secret",
     "seed_default_scopes",

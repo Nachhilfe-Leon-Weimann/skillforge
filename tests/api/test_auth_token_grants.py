@@ -1,0 +1,221 @@
+"""The token endpoint's person grants without a database: parsing the form, dispatching on the grant, and turning
+a denial into its OAuth2 answer (user-authentication spec, P0-8)."""
+
+import re
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import httpx
+import pytest
+from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
+
+from app.api.v1.auth.token import get_issue_client_token, get_issue_user_token, get_refresh_user_token
+from app.core.auth import AuthSettings, CreatedAccessToken, IssuedUserToken, Scope, TokenDenial
+from app.core.auth.dependencies import get_auth_settings
+from app.core.auth.scopes import CLIENT_ONLY_SCOPES
+from app.core.db.dependencies import get_db_session
+from app.main import app
+
+ISSUED = IssuedUserToken(
+    token=CreatedAccessToken(
+        access_token="encoded-token",
+        token_type="bearer",
+        expires_at=datetime.now(UTC) + timedelta(minutes=15),
+        expires_in=900,
+        scope="account:self crm:read:own",
+    ),
+    refresh_token="sf_rt_refresh",
+    refresh_expires_in=2592000,
+)
+
+
+class _Fakes:
+    """Stand-ins for the three grant seams that record their keyword arguments and answer ``result``."""
+
+    def __init__(self, result: object) -> None:
+        self.result = result
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def seam(self, name: str):
+        async def fake(session, settings, **kwargs):
+            self.calls.append((name, kwargs))
+            if isinstance(self.result, Exception):
+                raise self.result
+            return self.result
+
+        return lambda: fake
+
+    def __enter__(self) -> _Fakes:
+        app.dependency_overrides[get_db_session] = lambda: "session"
+        app.dependency_overrides[get_auth_settings] = lambda: AuthSettings(
+            secret_key=SecretStr("test-signing-secret-with-at-least-32-bytes")
+        )
+        app.dependency_overrides[get_issue_client_token] = self.seam("client_credentials")
+        app.dependency_overrides[get_issue_user_token] = self.seam("password")
+        app.dependency_overrides[get_refresh_user_token] = self.seam("refresh_token")
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        app.dependency_overrides.clear()
+
+
+async def _post(data: dict[str, str], **kwargs: Any) -> httpx.Response:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        return await client.post("/api/v1/auth/token", data=data, **kwargs)
+
+
+async def test_the_password_grant_calls_its_seam_and_answers_with_the_refresh_token():
+    with _Fakes(ISSUED) as fakes:
+        response = await _post(
+            {"grant_type": "password", "username": "anna@example.org", "password": "pw", "scope": "account:self"},
+            auth=("portal", "secret"),
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "access_token": "encoded-token",
+        "token_type": "bearer",
+        "expires_in": 900,
+        "scope": "account:self crm:read:own",
+        "refresh_token": "sf_rt_refresh",
+        "refresh_expires_in": 2592000,
+    }
+    assert fakes.calls == [
+        (
+            "password",
+            {
+                "client_id": "portal",
+                "client_secret": "secret",
+                "username": "anna@example.org",
+                "password": "pw",
+                "requested_scopes": "account:self",
+            },
+        )
+    ]
+
+
+async def test_the_refresh_token_grant_calls_its_seam():
+    with _Fakes(ISSUED) as fakes:
+        response = await _post({
+            "grant_type": "refresh_token",
+            "refresh_token": "sf_rt_old",
+            "client_id": "portal",
+            "client_secret": "s",
+        })
+
+    assert response.status_code == 200
+    assert fakes.calls == [
+        (
+            "refresh_token",
+            {"client_id": "portal", "client_secret": "s", "refresh_token": "sf_rt_old", "requested_scopes": None},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("denial", "status", "body"),
+    [
+        (TokenDenial.INVALID_CLIENT, 401, {"detail": "Invalid client credentials", "code": "invalid_client"}),
+        (
+            TokenDenial.UNAUTHORIZED_CLIENT,
+            400,
+            {"detail": "Client may not use this grant", "code": "unauthorized_client"},
+        ),
+        (TokenDenial.INVALID_GRANT, 400, {"detail": "Invalid credentials or refresh token", "code": "invalid_grant"}),
+        (TokenDenial.INVALID_SCOPE, 400, {"detail": "Invalid requested scope", "code": "invalid_scope"}),
+    ],
+)
+@pytest.mark.parametrize(
+    "form",
+    [
+        {"grant_type": "password", "username": "anna@example.org", "password": "pw"},
+        {"grant_type": "refresh_token", "refresh_token": "sf_rt_old"},
+    ],
+)
+async def test_every_denial_is_answered_with_its_oauth2_error(
+    denial: TokenDenial, status: int, body: dict[str, str], form: dict[str, str]
+):
+    with _Fakes(denial):
+        response = await _post(form, auth=("portal", "secret"))
+
+    assert (response.status_code, response.json()) == (status, body)
+
+
+async def test_a_denial_commits_the_session_so_what_it_wrote_survives():
+    outcome: list[str] = []
+
+    async def tracked_session():
+        try:
+            yield "session"
+        except BaseException:
+            outcome.append("rolled back")
+            raise
+        outcome.append("committed")
+
+    with _Fakes(TokenDenial.INVALID_GRANT):
+        app.dependency_overrides[get_db_session] = tracked_session
+        response = await _post(
+            {"grant_type": "password", "username": "a@example.org", "password": "pw"}, auth=("p", "s")
+        )
+
+    assert response.status_code == 400
+    assert outcome == ["committed"]
+
+
+@pytest.mark.parametrize(
+    "form",
+    [
+        {"grant_type": "password", "password": "pw"},
+        {"grant_type": "password", "username": "anna@example.org"},
+        {"grant_type": "password", "username": "", "password": "pw"},
+        {"grant_type": "refresh_token"},
+        {"grant_type": "refresh_token", "refresh_token": ""},
+    ],
+)
+async def test_a_parameter_the_grant_needs_and_lacks_is_invalid_request(form: dict[str, str]):
+    with _Fakes(AssertionError("no seam is called")) as fakes:
+        response = await _post(form, auth=("portal", "secret"))
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "A parameter the grant requires is missing", "code": "invalid_request"}
+    assert fakes.calls == []
+
+
+def test_swagger_uis_authorize_dialog_offers_the_password_flow():
+    [scheme] = app.openapi()["components"]["securitySchemes"].values()
+
+    password = scheme["flows"]["password"]
+    assert password["tokenUrl"] == "/api/v1/auth/token"
+    assert password["scopes"] == {scope.value: scope.description for scope in Scope if scope not in CLIENT_ONLY_SCOPES}
+    assert scheme["flows"]["clientCredentials"]["scopes"] == {scope.value: scope.description for scope in Scope}
+
+
+def test_the_token_response_and_form_describe_every_property():
+    schemas = app.openapi()["components"]["schemas"]
+
+    for name in ("AccessTokenResponse", "Body_auth_create_token"):
+        properties = schemas[name]["properties"]
+        assert properties, name
+        assert all(prop.get("description") for prop in properties.values()), name
+    assert schemas["AccessTokenResponse"]["required"] == ["access_token", "token_type", "expires_in", "scope"]
+    assert schemas["Body_auth_create_token"]["required"] == ["grant_type"]
+
+
+def test_every_auth_operation_id_is_auth_and_the_function_name():
+    ids = [
+        operation["operationId"]
+        for path, item in app.openapi()["paths"].items()
+        if path.startswith("/api/v1/auth/")
+        for operation in item.values()
+    ]
+
+    assert ids
+    assert all(re.fullmatch(r"auth_[a-z_]+", operation_id) for operation_id in ids), ids
+
+
+def test_the_auth_tag_describes_person_logins():
+    [auth] = [tag for tag in app.openapi()["tags"] if tag["name"] == "auth"]
+
+    assert "password" in auth["description"]
+    assert "refresh" in auth["description"]

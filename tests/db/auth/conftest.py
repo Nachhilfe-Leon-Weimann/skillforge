@@ -1,8 +1,9 @@
 """Fixtures for auth tests that run the real app, or the auth services, against the test database."""
 
 from collections import Counter
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -12,9 +13,19 @@ from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthSettings, PrincipalType, Scope, bootstrap, create_application_access_token
-from app.core.auth.audit import AuditEventType
+from app.core.auth import (
+    AuthSettings,
+    PrincipalType,
+    Scope,
+    bootstrap,
+    bootstrap_application_client,
+    create_application_access_token,
+)
+from app.core.auth.audit import AuditEventType, Operator
 from app.core.auth.dependencies import get_auth_settings
+from app.core.auth.roles import BASE_USER_SCOPES, ROLE_SCOPES, Role
+from app.core.auth.secrets import hash_secret
+from app.core.auth.services.users import create_user_account
 from app.core.db.dependencies import get_db_session
 from app.core.db.models import (
     ApplicationClient,
@@ -26,6 +37,8 @@ from app.core.db.models import (
     Party,
     PartyType,
     Person,
+    UserAccount,
+    UserAccountRoleName,
     UserActionToken,
     UserSession,
 )
@@ -78,6 +91,14 @@ async def _api_client(session: AsyncSession, *scopes: Scope) -> AsyncIterator[As
     mirrors the request-scoped transaction of ``get_db_session``: a failed request writes nothing.
     """
 
+    async with _app_client(session, headers=auth_headers(*scopes)) as api_client:
+        yield api_client
+
+
+@asynccontextmanager
+async def _app_client(session: AsyncSession, *, headers: dict[str, str] | None = None) -> AsyncIterator[AsyncClient]:
+    """An API client of the auth routes whose requests run on ``session``, each in a SAVEPOINT (see ``_api_client``)."""
+
     async def request_session() -> AsyncIterator[AsyncSession]:
         async with session.begin_nested():
             yield session
@@ -88,11 +109,81 @@ async def _api_client(session: AsyncSession, *scopes: Scope) -> AsyncIterator[As
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://testserver/api/v1/auth",
-            headers=auth_headers(*scopes),
+            headers=headers,
         ) as api_client:
             yield api_client
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def token_api(session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """An API client without a token of its own, for `POST /token`: every grant authenticates the client itself."""
+    async with _app_client(session) as api_client:
+        yield api_client
+
+
+@dataclass(frozen=True)
+class LoginClient:
+    """A real application client with a secret, as `POST /token` authenticates it."""
+
+    id: UUID
+    client_id: str
+    client_secret: str
+
+    @property
+    def basic(self) -> tuple[str, str]:
+        """The credentials for HTTP Basic authentication."""
+        return self.client_id, self.client_secret
+
+    @property
+    def form(self) -> dict[str, str]:
+        """The credentials as form fields."""
+        return {"client_id": self.client_id, "client_secret": self.client_secret}
+
+
+PORTAL_DELEGATED_SCOPES: frozenset[Scope] = BASE_USER_SCOPES | ROLE_SCOPES[Role.ADMIN]
+"""What the portal may do for a person at most: everything a role grants (see "Operating without a portal")."""
+
+
+@pytest.fixture
+def make_login_client(session: AsyncSession) -> Callable[..., Awaitable[LoginClient]]:
+    """Create a client with a secret and grants in both modes; by default a login client with the portal's ceiling."""
+
+    async def _make_login_client(
+        *,
+        application: Iterable[Scope] = (Scope.AUTH_USERS_LOGIN,),
+        delegated: Iterable[Scope] = PORTAL_DELEGATED_SCOPES,
+    ) -> LoginClient:
+        client_id = f"portal-{uuid4().hex[:8]}"
+        created = await bootstrap_application_client(session, client_id=client_id, scopes=application)
+        await bootstrap_application_client(session, client_id=client_id, scopes=delegated, mode=GrantMode.DELEGATED)
+        assert created.created_secret is not None
+        return LoginClient(id=created.client.id, client_id=client_id, client_secret=created.created_secret.plaintext)
+
+    return _make_login_client
+
+
+@pytest.fixture
+async def login_client(make_login_client) -> LoginClient:
+    """A login client with the portal's ceiling."""
+    return await make_login_client()
+
+
+@pytest.fixture
+def make_login_account(session: AsyncSession, make_person, password: str) -> Callable[..., Awaitable[UserAccount]]:
+    """Create an account of a new person party that logs in with ``email`` and the ``password`` fixture."""
+
+    async def _make_login_account(
+        email: str = "anna.schmidt@example.org", *, roles: Iterable[UserAccountRoleName] = ()
+    ) -> UserAccount:
+        party = await make_person()
+        view = await create_user_account(session, party_id=party.id, email=email, roles=roles, actor=Operator.CLI)
+        view.account.password_hash = hash_secret(password)
+        await session.flush()
+        return view.account
+
+    return _make_login_account
 
 
 @pytest.fixture

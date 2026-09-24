@@ -101,7 +101,7 @@ async def test_auth_token_endpoint_rejects_unsupported_grant_type():
         response = await _post(
             "/api/v1/auth/token",
             data={
-                "grant_type": "password",
+                "grant_type": "authorization_code",
                 "client_id": "skillbot",
                 "client_secret": "secret",
             },
@@ -197,7 +197,7 @@ async def test_auth_token_endpoint_requires_client_credentials():
         response = await _post("/api/v1/auth/token", data={"grant_type": "client_credentials"})
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "client_id and client_secret are required", "code": "invalid_request"}
+    assert response.json() == {"detail": "A parameter the grant requires is missing", "code": "invalid_request"}
 
 
 def test_auth_token_endpoint_documents_every_error_it_returns():
@@ -207,6 +207,8 @@ def test_auth_token_endpoint_documents_every_error_it_returns():
     assert set(responses["400"]["content"]["application/json"]["examples"]) == {
         "unsupported_grant_type",
         "invalid_scope",
+        "invalid_grant",
+        "unauthorized_client",
     }
     assert set(responses["401"]["content"]["application/json"]["examples"]) == {"invalid_client"}
     assert set(responses["422"]["content"]["application/json"]["examples"]) == {"invalid_request", "validation_error"}
