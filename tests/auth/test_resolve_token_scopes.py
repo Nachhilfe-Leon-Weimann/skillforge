@@ -38,6 +38,20 @@ def test_a_ceiling_narrows_the_granted_scopes(granted: set[str], token_scope: st
     assert format_scopes(scopes) == token_scope
 
 
+def test_an_unqualified_ceiling_admits_the_granted_own_form():
+    """A person whose role scopes hold ``crm:read`` gets ``crm:read:own`` from a client that delegates only that."""
+    scopes = resolve_token_scopes(requested=frozenset(), granted={"crm:read:own"}, ceilings=[{"crm:read"}])
+
+    assert scopes == {"crm:read:own"}
+
+
+def test_a_canonical_ceiling_admits_a_request_of_the_own_form():
+    """On refresh the session's ``crm:read`` is a ceiling; narrowing the token to ``crm:read:own`` stays within it."""
+    scopes = resolve_token_scopes(requested={"crm:read:own"}, granted={"crm:read"}, ceilings=[{"crm:read"}])
+
+    assert scopes == {"crm:read:own"}
+
+
 def test_grants_outside_the_ceiling_are_invalid_scope():
     """The client holds grants, only none within the ceiling - the audit detail must not claim it has none."""
     with pytest.raises(InvalidClientScopeError, match="Client grants and ceilings have no scope in common"):
