@@ -61,9 +61,9 @@ def parse_scopes(scopes: str | Iterable[str] | None) -> frozenset[str]:
     return frozenset(value for scope in scopes if (value := scope.strip()))
 
 
-def format_scopes(scopes: Set[str]) -> str:
-    """Return the OAuth2 scope string of ``scopes``: sorted and space-separated, the inverse of ``parse_scopes``."""
-    return " ".join(sorted(scopes))
+def format_scopes(scopes: Iterable[str]) -> str:
+    """Return the OAuth2 scope string of ``scopes``: sorted, deduplicated, space-separated; inverts ``parse_scopes``."""
+    return " ".join(sorted(set(scopes)))
 
 
 def expand(scopes: Set[str]) -> frozenset[str]:

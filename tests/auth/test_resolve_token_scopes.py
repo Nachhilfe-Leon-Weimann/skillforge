@@ -79,7 +79,8 @@ def test_a_request_within_the_ceiling_narrows_the_token():
 
 
 def test_a_request_beyond_the_ceiling_is_invalid_scope():
-    with pytest.raises(InvalidClientScopeError):
+    """The client holds the scope, the ceiling refuses it - the audit detail must say which."""
+    with pytest.raises(InvalidClientScopeError, match="Requested scopes exceed the ceiling"):
         resolve_token_scopes(
             requested={"crm:read"},
             granted={"account:self", "crm:read", "crm:write"},

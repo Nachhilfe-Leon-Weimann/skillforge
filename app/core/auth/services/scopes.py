@@ -134,6 +134,9 @@ def resolve_token_scopes(
     """
     available = expand(granted).intersection(*(expand(ceiling) for ceiling in ceilings))
     if not requested <= available:
+        if requested <= expand(granted):
+            raise InvalidClientScopeError("Requested scopes exceed the ceiling")
+
         raise InvalidClientScopeError("Requested scopes are not granted")
 
     token_scopes = canonical(requested or available)

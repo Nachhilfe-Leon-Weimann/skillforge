@@ -108,6 +108,6 @@ def require_scopes(*required_scopes: Scope | str) -> Any:
 
 def _authenticate_header(scopes: Sequence[str]) -> str:
     if scopes:
-        return f'Bearer scope="{format_scopes(frozenset(scopes))}"'
+        return f'Bearer scope="{format_scopes(scopes)}"'
 
     return "Bearer"
