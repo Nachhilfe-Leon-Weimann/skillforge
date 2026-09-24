@@ -35,18 +35,18 @@ async def bootstrap_skillbot() -> None:
 
 
 async def bootstrap_client(client_id: str, *, application: frozenset[str], delegated: frozenset[str]) -> None:
-    """Ensure an active client named after its ID, its grants in both modes and a usable secret.
+    """Ensure an active client, its grants in both modes and a usable secret.
 
-    Run again it keeps the client, its secret and every grant it holds. An unknown scope, or a
-    client-only one in ``delegated``, is ``invalid_scope`` and changes nothing.
+    A new client is named after its ID. Run again, or on a client created through the API, it keeps
+    the client's name and description, its secret and every grant it holds, and re-enables a
+    disabled client. An unknown scope, or a client-only one in ``delegated``, is ``invalid_scope``
+    and changes nothing.
     """
     grants = {GrantMode.APPLICATION: application, GrantMode.DELEGATED: delegated}
     try:
         async with _session() as session:
             results = {
-                mode: await bootstrap_application_client(
-                    session, client_id=client_id, name=client_id, description=None, scopes=scopes, mode=mode
-                )
+                mode: await bootstrap_application_client(session, client_id=client_id, scopes=scopes, mode=mode)
                 for mode, scopes in grants.items()
             }
     except InvalidClientScopeError as exc:

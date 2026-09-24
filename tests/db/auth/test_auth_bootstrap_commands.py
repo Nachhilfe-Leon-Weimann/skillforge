@@ -6,10 +6,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import pytest
+from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthSettings, bootstrap, issue_client_token
+from app.core.auth.audit import AuditEventType
 from app.core.db.models import (
     ApplicationClient,
     ApplicationClientSecret,
@@ -130,6 +132,47 @@ async def test_bootstrap_client_refuses_an_unknown_scope(session: AsyncSession):
     assert (await session.execute(select(ApplicationClient))).scalars().all() == []
 
 
+@pytest.mark.db
+async def test_bootstrap_client_keeps_the_name_and_description_of_a_client_created_through_the_api(
+    session: AsyncSession, client: AsyncClient
+):
+    created = await client.post(
+        "/clients", json={"client_id": "operator", "name": "Operator Console", "description": "Back office"}
+    )
+
+    await _bootstrap_operator()
+    await _bootstrap_operator()
+
+    assert created.status_code == 201
+    assert await _client_row(session, "operator") == ("Operator Console", "Back office", ApplicationClientStatus.ACTIVE)
+    assert await _client_updates(session) == Counter()
+
+
+@pytest.mark.db
+async def test_bootstrap_client_re_enables_a_disabled_client_and_records_it_once(
+    session: AsyncSession, client: AsyncClient
+):
+    await client.post("/clients", json={"client_id": "operator", "name": "Operator Console"})
+    disabled = await client.patch("/clients/operator", json={"status": "disabled"})
+
+    await _bootstrap_operator()
+    await _bootstrap_operator()
+
+    assert disabled.json()["status"] == "disabled"
+    assert await _client_row(session, "operator") == ("Operator Console", None, ApplicationClientStatus.ACTIVE)
+    assert await _client_updates(session) == Counter(["Updated application client operator."])
+
+
+@pytest.mark.db
+async def test_bootstrap_skillbot_renames_a_skillbot_client_and_records_it(session: AsyncSession, client: AsyncClient):
+    await client.post("/clients", json={"client_id": "skillbot", "name": "Bot"})
+
+    await bootstrap.bootstrap_skillbot()
+
+    assert await _client_row(session, "skillbot") == ("SkillBot", "Discord Bot", ApplicationClientStatus.ACTIVE)
+    assert await _client_updates(session) == Counter(["Updated application client skillbot."])
+
+
 async def _bootstrap_operator() -> None:
     await bootstrap.bootstrap_client("operator", application=OPERATOR_APPLICATION, delegated=OPERATOR_DELEGATED)
 
@@ -140,6 +183,19 @@ async def _token_scope(session: AsyncSession, settings: AuthSettings, client_id:
     assert match
     token = await issue_client_token(session, settings, client_id=client_id, client_secret=match["plaintext"])
     return token.scope
+
+
+async def _client_row(session: AsyncSession, client_id: str) -> tuple[str, str | None, ApplicationClientStatus]:
+    statement = select(ApplicationClient.name, ApplicationClient.description, ApplicationClient.status).where(
+        ApplicationClient.client_id == client_id
+    )
+    return (await session.execute(statement)).tuples().one()
+
+
+async def _client_updates(session: AsyncSession) -> Counter[str | None]:
+    """Details of the `application_client.updated` entries; the log has no order within a transaction."""
+    statement = select(AuthAuditLog.detail).where(AuthAuditLog.event_type == AuditEventType.APPLICATION_CLIENT_UPDATED)
+    return Counter((await session.execute(statement)).scalars())
 
 
 async def _event_types(session: AsyncSession) -> Counter[str]:
