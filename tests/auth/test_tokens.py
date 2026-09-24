@@ -81,9 +81,7 @@ def test_validate_access_token_rejects_unsupported_principal_type():
     settings = _settings()
     token = _encode_claims(
         settings,
-        principal_type="user",
-        subject="user:123",
-        client_id="some-client",
+        principal_type="service",
         scopes="data:read",
     )
 

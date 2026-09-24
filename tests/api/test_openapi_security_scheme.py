@@ -2,7 +2,8 @@
 
 P0-5 of `docs/specs/user-authentication.md` renamed the scheme key from the class name FastAPI derived
 (`OAuth2ClientCredentialsBearer`) to `OAuth2` - deliberately and once, while no consumer is live.
-`SCOPES_AT_THE_RENAME` pins what every operation demanded before: the rename moved the key and nothing else.
+`SCOPES_AT_THE_RENAME` and `PUBLIC_AT_THE_RENAME` pin what every operation demanded before: the rename moved the
+key and nothing else.
 """
 
 from typing import Any
@@ -86,6 +87,20 @@ SCOPES_AT_THE_RENAME: dict[tuple[str, str], list[str]] = {
     ("PATCH", "/api/v1/crm/subjects/{subject_id}"): ["crm:write"],
 }
 
+# Every operation that was public at the rename: FastAPI renders it without a `security` key. A later
+# slice that deliberately guards one removes it here in the same PR, with a comment naming the slice.
+# Together the two pins name every operation at the rename.
+PUBLIC_AT_THE_RENAME: frozenset[tuple[str, str]] = frozenset({
+    ("GET", "/"),
+    ("POST", "/api/v1/auth/token"),
+    ("GET", "/health"),
+    ("GET", "/health/dependencies"),
+    ("GET", "/health/dependencies/{dependency_name}"),
+    ("GET", "/health/live"),
+    ("GET", "/health/workers"),
+    ("GET", "/health/workers/{worker_name}"),
+})
+
 
 @pytest.fixture(scope="module")
 def schema() -> dict[str, Any]:
@@ -115,11 +130,21 @@ def test_the_rename_left_the_security_requirement_unchanged(
     assert _security_requirements(schema).get(operation) == [{SCHEME_NAME: scopes}]
 
 
-def _security_requirements(schema: dict[str, Any]) -> dict[tuple[str, str], list[dict[str, list[str]]]]:
-    """The ``security`` list of every operation, keyed by ``(METHOD, path)``; empty for a public one."""
+@pytest.mark.parametrize("operation", sorted(PUBLIC_AT_THE_RENAME), ids=" ".join)
+def test_the_rename_left_the_public_operations_public(schema: dict[str, Any], operation: tuple[str, str]):
+    assert "security" not in _operations(schema)[operation]
+
+
+def _operations(schema: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
+    """Every operation of the contract, keyed by ``(METHOD, path)``."""
     return {
-        (method.upper(), path): operation.get("security", [])
+        (method.upper(), path): operation
         for path, item in schema["paths"].items()
         for method, operation in item.items()
         if method in HTTP_METHODS
     }
+
+
+def _security_requirements(schema: dict[str, Any]) -> dict[tuple[str, str], list[dict[str, list[str]]]]:
+    """The ``security`` list of every operation, keyed by ``(METHOD, path)``; empty for a public one."""
+    return {key: operation.get("security", []) for key, operation in _operations(schema).items()}

@@ -6,6 +6,7 @@ import inspect
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 import jwt
@@ -83,26 +84,26 @@ async def test_me_answers_both_principal_types_without_a_database_session():
 async def test_me_accepts_the_person_token_the_broken_ones_are_made_from():
     """Each broken token below changes this one in one claim, so that change is what the 401 answers."""
     async with _client() as client:
-        response = await client.get(ME, headers=_hand_signed_person_auth_headers({}))
+        response = await client.get(ME, headers=_hand_signed_person_auth_headers())
 
     assert response.status_code == 200
     assert response.json()["user_id"] == str(USER_ID)
 
 
 @pytest.mark.parametrize(
-    "claims",
+    "changes",
     [
-        pytest.param({"party_id": None}, id="without-party_id"),
-        pytest.param({"sid": None}, id="without-sid"),
-        pytest.param({"amr": None}, id="without-amr"),
+        pytest.param({"without": "party_id"}, id="without-party_id"),
+        pytest.param({"without": "sid"}, id="without-sid"),
+        pytest.param({"without": "amr"}, id="without-amr"),
         pytest.param({"roles": ["pope"]}, id="unknown-role"),
         pytest.param({"amr": ["discord"]}, id="unknown-method"),
         pytest.param({"sub": "user:someone-else"}, id="sub-not-the-principal"),
     ],
 )
-async def test_me_with_a_broken_person_token_is_the_401_envelope(claims: dict[str, object]):
+async def test_me_with_a_broken_person_token_is_the_401_envelope(changes: dict[str, Any]):
     async with _client() as client:
-        response = await client.get(ME, headers=_hand_signed_person_auth_headers(claims))
+        response = await client.get(ME, headers=_hand_signed_person_auth_headers(**changes))
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Invalid authentication credentials", "code": "unauthorized"}
@@ -178,9 +179,8 @@ def _person_auth_headers(*, roles: set[Role]) -> dict[str, str]:
     return {"Authorization": f"Bearer {token.access_token}"}
 
 
-def _hand_signed_person_auth_headers(changes: dict[str, object]) -> dict[str, str]:
-    """A correctly signed person's token with hand-written claims: the ones SkillForge writes, but for ``changes``,
-    where a ``None`` drops the claim."""
+def _hand_signed_person_auth_headers(*, without: str | None = None, **overrides: object) -> dict[str, str]:
+    """A correctly signed person's token with the claims SkillForge writes, but for ``overrides`` and ``without``."""
     settings = _auth_settings()
     now = datetime.now(UTC)
     claims: dict[str, object] = {
@@ -199,7 +199,8 @@ def _hand_signed_person_auth_headers(changes: dict[str, object]) -> dict[str, st
         "exp": now + timedelta(minutes=15),
         "jti": "00000000-0000-0000-0000-0000000000d4",
     }
-    claims = {name: value for name, value in (claims | changes).items() if value is not None}
+    claims |= overrides
+    claims.pop(without, None)
     token = jwt.encode(claims, settings.secret_key.get_secret_value(), algorithm=settings.algorithm)
     return {"Authorization": f"Bearer {token}"}
 
