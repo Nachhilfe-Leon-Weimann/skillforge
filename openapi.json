@@ -4844,7 +4844,7 @@
                   "weak_password": {
                     "value": {
                       "code": "weak_password",
-                      "detail": "Password must be between 8 and 128 characters long"
+                      "detail": "Password must be text of 8 to 128 characters"
                     }
                   }
                 },
@@ -4853,7 +4853,7 @@
                 }
               }
             },
-            "description": "Invalid or expired token / Password must be between 8 and 128 characters long"
+            "description": "Invalid or expired token / Password must be text of 8 to 128 characters"
           }
         },
         "security": [
@@ -5431,7 +5431,7 @@
         ]
       },
       "patch": {
-        "description": "Change a user account; only the fields that are sent change.\n\nDisabling revokes every session right away; the access tokens already handed out expire within 15 minutes.",
+        "description": "Change a user account; only the fields that are sent change.\n\nDisabling revokes every session right away; the access tokens already handed out live out their short lifetime.",
         "operationId": "auth_update_user",
         "parameters": [
           {

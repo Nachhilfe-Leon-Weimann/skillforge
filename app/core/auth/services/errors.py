@@ -113,4 +113,4 @@ class InvalidActionTokenError(UserAccountManagementError, DomainValidationError)
 class WeakPasswordError(UserAccountManagementError, DomainValidationError):
     """Raised when a password violates the policy in ``passwords.py``."""
 
-    message = f"Password must be between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters long"
+    message = f"Password must be text of {MIN_PASSWORD_LENGTH} to {MAX_PASSWORD_LENGTH} characters"

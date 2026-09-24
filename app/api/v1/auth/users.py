@@ -103,7 +103,7 @@ async def update_user(
 ) -> UserAccountDetail:
     """Change a user account; only the fields that are sent change.
 
-    Disabling revokes every session right away; the access tokens already handed out expire within 15 minutes.
+    Disabling revokes every session right away; the access tokens already handed out live out their short lifetime.
     """
     view = await users_service.update_user_account(session, user_id, **request.model_dump(), actor=principal)
     return UserAccountDetail.from_view(view)

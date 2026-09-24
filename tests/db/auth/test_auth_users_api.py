@@ -424,7 +424,7 @@ async def test_a_password_of_7_or_129_characters_is_weak_password(
 
     assert response.status_code == 422
     assert response.json() == {
-        "detail": "Password must be between 8 and 128 characters long",
+        "detail": "Password must be text of 8 to 128 characters",
         "code": "weak_password",
     }
     assert (await _account(session, user_id)).password_hash is None
