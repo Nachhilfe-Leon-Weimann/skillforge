@@ -120,9 +120,9 @@ As of 2026-09.
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Bot state       | Lives in SkillForge's `bot` schema; SkillForge checks and plans the Discord changes the bot asks for (two-phase operations); a job queue exists, but nothing feeds it | The bot runs its Discord workflows itself and keeps their state in its own database; SkillForge provides central data and decisions only |
 | Bot permissions | The bot calls SkillForge as itself; its own grant system decides what a Discord user may do                                                                           | The bot acts on behalf of the Discord user; SkillForge decides by the same rules as for the portal                                       |
-| People          | No user accounts; only applications log in (client credentials)                                                                                                       | One account per person, created by admins; e-mail and password for the portal, Discord for the bot                                       |
-| Client grants   | One list per client, used for the client itself                                                                                                                       | Every grant has a mode: for itself, or on behalf of people                                                                               |
-| Own data        | A scope such as `crm:read` always means every record                                                                                                                  | `:own` scopes limit a person to their reach                                                                                              |
+| People          | One account per person party, created by admins; people log in with e-mail and password through a client (refresh, logout); no portal or Discord login yet            | One account per person, created by admins; e-mail and password for the portal, Discord for the bot                                       |
+| Client grants   | Every grant has a mode: `application` for the client itself, `delegated` as the ceiling for the people it logs in                                                     | Every grant has a mode: for itself, or on behalf of people                                                                               |
+| Own data        | `crm:read:own` limits a person to their reach on the party read routes; the other routes still need the unqualified scope                                             | `:own` scopes limit a person to their reach                                                                                              |
 | Change signals  | Parties carry `updated_at`, and the party list filters by `updated_since`; nobody consumes it yet                                                                     | Frontends pull what changed and bring their state in line                                                                                |
 | Portal          | Not started                                                                                                                                                           | A Next.js server backend that talks to SkillForge                                                                                        |
 
@@ -130,9 +130,9 @@ As of 2026-09.
 
 Coarse on purpose; the details live in the GitHub project.
 
-1. **Auth core** - now. User accounts, client grants with modes, portal login (e-mail and
-   password, refresh, logout) and "own data" on the party read routes. After this the portal can
-   start. Its spec and ADR are being written.
+1. **Auth core** - done (2026-09, [spec](specs/user-authentication.md)). User accounts, client
+   grants with modes, portal login (e-mail and password, refresh, logout) and "own data" on the
+   party read routes. The portal can start.
 2. **Bot arc.** The bot takes over its Discord workflows - today's two-phase transitions and job
    queue, whose ADRs [0003](decisions/0003-two-phase-transitions.md) and
    [0004](decisions/0004-forge-first-job-queue.md) a new ADR supersedes - and keeps their state in

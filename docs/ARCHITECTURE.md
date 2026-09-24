@@ -36,7 +36,8 @@ HTTP -> app/api/system    liveness + health probes (dependencies, workers)
   `/health/dependencies[/{name}]`, and `/health/workers[/{name}]`.
 - **`app/api/v1/`** - `router.py` with prefix `/api/v1` aggregates three areas, which share the
   vocabulary in `common/` (see [API conventions](#api-conventions)):
-  - `auth/` - `token.py` (OAuth2 token endpoint), `clients.py` (client management).
+  - `auth/` - `token.py` (OAuth2 token endpoint, three grants), `revoke.py` (logout), `password.py`
+    (redeem a one-time token), `users.py` (accounts), `clients.py` (client management), `me.py`.
   - `bot/` - `runtime.py` (read: principals, contexts, command envs), `operations.py` (operation
     reads: by id + filtered list), `jobs.py` (queue reads - by id, filtered list, queue summary -
     plus claim/complete/fail), `students.py` & `tutors.py` (state transitions), `command_envs.py`,
@@ -58,9 +59,9 @@ HTTP -> app/api/system    liveness + health probes (dependencies, workers)
   API), `errors.py` (the error catalog). Never imports the bot domain.
 - **`app/services/system/`** - health aggregation (`health_service.py`) and worker liveness
   (`heartbeat_service.py`), backing the `/health` tree.
-- **`app/core/`** - `auth/` (OAuth2, JWT, scopes, bootstrap), `db/` (async engine, sessions,
-  models), `logging/` (structured logging via `skillcore`), `errors.py` (HTTP-agnostic error
-  taxonomy), `config.py` (settings).
+- **`app/core/`** - `auth/` (OAuth2, JWT, scopes, roles, reach, accounts and sessions, bootstrap),
+  `db/` (async engine, sessions, models), `logging/` (structured logging via `skillcore`), `errors.py`
+  (HTTP-agnostic error taxonomy), `config.py` (settings).
 
 ## Two core concepts
 
@@ -174,7 +175,7 @@ One Postgres DB, six schemas by domain - details in
 | `geo`  | Geographic reference data (PLZ/Ort) |
 | `ext`  | Links from external system ids (Discord, sevDesk, Clockodo, Microsoft) to a `core.party` |
 | `bot`  | SkillBot operational state: Discord topology, workspaces, permissions, job queue, operations |
-| `auth` | OAuth2 clients, secrets, scopes, audit |
+| `auth` | OAuth2 clients, secrets, scope grants, user accounts, roles, sessions, one-time tokens, audit |
 | `system` | Runtime/operational state: background-worker liveness heartbeats |
 
 - **Async SQLAlchemy 2** over `asyncpg`; models under `app/core/db/models/<schema>/`, one
@@ -185,18 +186,62 @@ One Postgres DB, six schemas by domain - details in
 
 ## Auth
 
-OAuth2 **client credentials** (`app/core/auth/`): clients authenticate with `client_id` + an
-Argon2-hashed secret at the token endpoint and receive a JWT. Endpoints are gated by **scopes**:
+SkillForge is its own identity provider ([ADR 0008](decisions/0008-user-authentication-and-reach.md),
+[spec](specs/user-authentication.md)); everything lives in `app/core/auth/` and the `auth` schema.
 
-| Scope | Purpose |
-|---|---|
-| `bot:read` | Read bot API |
-| `bot:write` | Write bot API |
-| `auth:clients:manage` | Manage application clients |
+**Who logs in.** An application client authenticates at `POST /api/v1/auth/token` with `client_id` and an
+Argon2-hashed secret (HTTP Basic or form) - for **every** grant:
 
-`require_scopes()` (`app/core/auth/dependencies.py`) returns the `Security` marker that guards a
-route: `401` without a valid token, `403` on a missing scope. Each scope carries its description
-on the `Scope` enum. `just bootstrap-skillbot` seeds the initial auth state.
+| Grant | For | Result |
+|---|---|---|
+| `client_credentials` | the client itself | access token from its `application` grants |
+| `password` | a person, through a login client | access token + refresh token; opens a `user_session` |
+| `refresh_token` | the same person, same client | new access token; the refresh token rotates |
+
+`password` and `refresh_token` need `auth:users:login` granted in `application` mode. Their services
+(`issue_user_token`, `refresh_user_token` in `services/tokens.py`) *return* a `TokenDenial` instead of
+raising, so the failed-login counter, a revoked session and the audit entry commit; `create_token` turns
+it into the OAuth2 error. `POST /auth/revoke` logs out.
+
+**One token model.** An access token is a stateless JWT (15 minutes) for an `ApplicationPrincipal` or a
+`UserPrincipal` (`principal.py`); claims are declared once in `tokens.py`. A person's token names the
+client (`azp`), the party, the session (`sid`), the roles (informational) and `amr: ["pwd"]`.
+
+**Scopes.** Routes declare scopes; scopes are computed once, at issuance
+(`resolve_token_scopes` in `services/scopes.py`). A client grant has a mode: `application` (what the
+client may do for itself) or `delegated` (the most it may do for a person). A person's token gets
+`delegated grants ∩ role scopes` (and, on refresh, `∩ the session's scope`).
+
+| Scope | Purpose | Mode |
+|---|---|---|
+| `bot:read` / `bot:write` | Read / write the bot API | either |
+| `crm:read` | Read every party, relation and subject | either |
+| `crm:read:own` | Read the parties within the caller's reach | either (only a person has a reach) |
+| `crm:write` | Create, change and delete CRM records | either |
+| `auth:clients:manage` | Manage application clients | either |
+| `auth:users:manage` | Create, disable and reset accounts; assign stored roles | either |
+| `auth:users:login` | Log people in on their behalf; redeem, revoke | `application` only (`CLIENT_ONLY_SCOPES`) |
+| `account:self` | Manage one's own account (routes from P1-2) | either |
+
+**Roles** (`roles.py`) turn into scopes at issuance and are never checked by a route: every account
+holds `BASE_USER_SCOPES` (`account:self`, `crm:read:own`); `student`, `tutor` and `guardian` are derived
+from the CRM and add nothing yet; `admin` is stored and adds `ROLE_SCOPES[admin]`.
+
+**Reach.** `x:own` restricts `x` to reachable records; the unqualified scope implies it (`expand`,
+`canonical` in `scopes.py`). `require_scopes(...)` demands the unqualified form; a reach-aware route takes
+an `Access` from `require_access(...)` (`dependencies.py`) - the own party plus the `PARENT_OF` /
+`PAYS_FOR` children (`reach.py`). Today `GET /crm/parties` and `GET /crm/parties/{party_id}`.
+
+**Accounts and sessions.** One `user_account` per person party, created by `auth:users:manage`; an
+invitation or reset token (`sf_ua_`) sets the password. A login opens a `user_session`: its opaque
+refresh token (`sf_rt_`, stored as SHA-256) rotates on every refresh, lives 30 days absolute, and a
+rotated-out token ends the session unless it arrives within `REFRESH_REUSE_GRACE` (10 s,
+`services/sessions.py`). Wrong passwords lock the login per account (from the 5th, 1 minute doubling to
+15). Disabling an account or a reset revokes its sessions; access tokens die within 15 minutes.
+
+**Never in a log or audit row:** a password, a refresh or action token, an e-mail address.
+`just bootstrap-skillbot`, `just bootstrap-client` and `just bootstrap-admin` seed the first clients and
+the first admin.
 
 ## API contract
 
