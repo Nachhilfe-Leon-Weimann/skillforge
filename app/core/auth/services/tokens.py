@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.models import ApplicationClientSecret, ApplicationClientStatus
+from app.core.db.models import ApplicationClientSecret, ApplicationClientStatus, GrantMode
 
 from ..audit import AuditEventType, write_auth_audit_log
 from ..config import AuthSettings
@@ -42,7 +42,7 @@ async def issue_client_token(
 
         token_scopes = resolve_token_scopes(
             requested=parse_scopes(requested_scopes),
-            granted=granted_active_scope_keys(client.scope_grants),
+            granted=granted_active_scope_keys(client.scope_grants, mode=GrantMode.APPLICATION),
         )
 
         matching_secret.last_used_at = issued_at

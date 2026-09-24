@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.models import ApplicationClient, ApplicationClientScopeGrant, GrantMode, PermissionScope
 
 from ..audit import AuditEventType, write_auth_audit_log
-from ..scopes import Scope, canonical, expand, parse_scopes
+from ..scopes import CLIENT_ONLY_SCOPES, Scope, canonical, expand, parse_scopes
 from .clients import get_application_client
 from .errors import ApplicationClientScopeGrantNotFoundError, InvalidClientScopeError
 
@@ -37,11 +37,12 @@ async def grant_application_client_scopes(
     *,
     client_id: str,
     scopes: Iterable[Scope | str],
+    mode: GrantMode = GrantMode.APPLICATION,
 ) -> ApplicationClient:
     await seed_default_scopes(session)
     client = await get_application_client(session, client_id=client_id)
     scope_keys = parse_scopes(scopes)
-    await grant_client_scopes(session, client=client, scope_keys=scope_keys)
+    await grant_client_scopes(session, client=client, scope_keys=scope_keys, mode=mode)
     return await get_application_client(session, client_id=client.client_id)
 
 
@@ -50,9 +51,10 @@ async def revoke_application_client_scope(
     *,
     client_id: str,
     scope_key: str,
+    mode: GrantMode = GrantMode.APPLICATION,
 ) -> None:
     client = await get_application_client(session, client_id=client_id)
-    grant = await session.get(ApplicationClientScopeGrant, (client.id, scope_key, GrantMode.APPLICATION))
+    grant = await session.get(ApplicationClientScopeGrant, (client.id, scope_key, mode))
     if grant is None:
         raise ApplicationClientScopeGrantNotFoundError("Application client scope grant not found")
 
@@ -64,15 +66,18 @@ async def revoke_application_client_scope(
         principal_id=client.id,
         event_type=AuditEventType.SCOPE_GRANT_REMOVED,
         success=True,
-        detail=f"Removed scope {scope_key} from application client {client.client_id}.",
+        detail=f"Removed scope {scope_key} in {mode} mode from application client {client.client_id}.",
     )
 
 
-def granted_active_scope_keys(scope_grants: list[ApplicationClientScopeGrant]) -> frozenset[str]:
+def granted_active_scope_keys(
+    scope_grants: Iterable[ApplicationClientScopeGrant], *, mode: GrantMode
+) -> frozenset[str]:
+    """Return the scopes of ``scope_grants`` granted in ``mode`` whose ``PermissionScope`` is active."""
     return frozenset(
         grant.scope_key
         for grant in scope_grants
-        if grant.permission_scope is not None and grant.permission_scope.active
+        if grant.mode == mode and grant.permission_scope is not None and grant.permission_scope.active
     )
 
 
@@ -81,41 +86,49 @@ async def grant_client_scopes(
     *,
     client: ApplicationClient,
     scope_keys: frozenset[str],
+    mode: GrantMode = GrantMode.APPLICATION,
 ) -> frozenset[str]:
+    """Grant ``scope_keys`` to ``client`` in ``mode``; a scope already granted in that mode is kept.
+
+    Checks the whole request before it writes a grant, so a refused request grants nothing: every
+    scope must be known and active, and a client-only scope is refused in ``delegated`` mode
+    (ADR 0008).
+    """
+    if mode == GrantMode.DELEGATED and not CLIENT_ONLY_SCOPES.isdisjoint(scope_keys):
+        raise InvalidClientScopeError("Client-only scopes cannot be granted in delegated mode")
+
+    permission_scopes = [await _active_permission_scope(session, scope_key) for scope_key in sorted(scope_keys)]
     existing_scope_keys = set(
         (
             await session.execute(
                 select(ApplicationClientScopeGrant.scope_key).where(
-                    ApplicationClientScopeGrant.application_client_id == client.id
+                    ApplicationClientScopeGrant.application_client_id == client.id,
+                    ApplicationClientScopeGrant.mode == mode,
                 )
             )
         )
         .scalars()
         .all()
     )
-    granted_scope_keys: set[str] = set()
 
-    for scope_key in sorted(scope_keys):
-        permission_scope = await session.get(PermissionScope, scope_key)
-        if permission_scope is None or not permission_scope.active:
-            raise InvalidClientScopeError("Requested scopes are not known or active")
-
-        granted_scope_keys.add(scope_key)
-        if scope_key in existing_scope_keys:
+    for permission_scope in permission_scopes:
+        if permission_scope.key in existing_scope_keys:
             continue
 
-        session.add(ApplicationClientScopeGrant(application_client=client, permission_scope=permission_scope))
+        session.add(
+            ApplicationClientScopeGrant(application_client=client, permission_scope=permission_scope, mode=mode)
+        )
         await write_auth_audit_log(
             session,
             principal_type="application",
             principal_id=client.id,
             event_type=AuditEventType.SCOPE_GRANT_ADDED,
             success=True,
-            detail=f"Granted scope {scope_key} to application client {client.client_id}.",
+            detail=f"Granted scope {permission_scope.key} in {mode} mode to application client {client.client_id}.",
         )
 
     await session.flush()
-    return frozenset(granted_scope_keys)
+    return scope_keys
 
 
 def resolve_token_scopes(
@@ -147,3 +160,11 @@ def resolve_token_scopes(
         raise InvalidClientScopeError("Client has no active scope grants")
 
     return token_scopes
+
+
+async def _active_permission_scope(session: AsyncSession, scope_key: str) -> PermissionScope:
+    permission_scope = await session.get(PermissionScope, scope_key)
+    if permission_scope is None or not permission_scope.active:
+        raise InvalidClientScopeError("Requested scopes are not known or active")
+
+    return permission_scope

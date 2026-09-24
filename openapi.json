@@ -61,15 +61,34 @@
         "type": "object"
       },
       "ApplicationClientResponse": {
+        "description": "An application client with its scope grants and secrets.",
         "properties": {
+          "application_scopes": {
+            "description": "Scopes granted in `application` mode - what the client may do for itself - sorted.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Application Scopes",
+            "type": "array"
+          },
           "client_id": {
+            "description": "Identifier the client authenticates with at `POST /auth/token`.",
             "title": "Client Id",
             "type": "string"
           },
           "created_at": {
+            "description": "When the client was created.",
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "delegated_scopes": {
+            "description": "Scopes granted in `delegated` mode - the most the client may do for a person - sorted.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Delegated Scopes",
+            "type": "array"
           },
           "description": {
             "anyOf": [
@@ -80,25 +99,22 @@
                 "type": "null"
               }
             ],
+            "description": "Free-text description; `null` when there is none.",
             "title": "Description"
           },
           "id": {
+            "description": "ID of the client; its application tokens carry it as `principal_id`.",
             "format": "uuid",
             "title": "Id",
             "type": "string"
           },
           "name": {
+            "description": "Display name of the client.",
             "title": "Name",
             "type": "string"
           },
-          "scopes": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Scopes",
-            "type": "array"
-          },
           "secrets": {
+            "description": "Secrets of the client, oldest first, without their values.",
             "items": {
               "$ref": "#/components/schemas/ApplicationClientSecretResponse"
             },
@@ -106,9 +122,11 @@
             "type": "array"
           },
           "status": {
-            "$ref": "#/components/schemas/ApplicationClientStatus"
+            "$ref": "#/components/schemas/ApplicationClientStatus",
+            "description": "An `active` client obtains tokens, a `disabled` one does not."
           },
           "updated_at": {
+            "description": "When the client was last changed.",
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
@@ -120,7 +138,8 @@
           "name",
           "description",
           "status",
-          "scopes",
+          "application_scopes",
+          "delegated_scopes",
           "secrets",
           "created_at",
           "updated_at"
@@ -129,8 +148,14 @@
         "type": "object"
       },
       "ApplicationClientScopeGrantRequest": {
+        "description": "Scopes to grant an application client in one mode (ADR 0008).",
         "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/GrantMode",
+            "description": "`application`: what the client may do for itself (`client_credentials`). `delegated`: the most it may do for a\nperson it acts for; a client-only scope such as `auth:users:login` is refused in this mode."
+          },
           "scopes": {
+            "description": "Scopes to grant, e.g. `crm:read`. A scope the client already holds in `mode` stays as it is; if one scope is\nrefused, none is granted.",
             "items": {
               "type": "string"
             },
@@ -140,7 +165,8 @@
           }
         },
         "required": [
-          "scopes"
+          "scopes",
+          "mode"
         ],
         "title": "ApplicationClientScopeGrantRequest",
         "type": "object"
@@ -1106,6 +1132,14 @@
         ],
         "title": "FieldError",
         "type": "object"
+      },
+      "GrantMode": {
+        "enum": [
+          "application",
+          "delegated"
+        ],
+        "title": "GrantMode",
+        "type": "string"
       },
       "GroupMembershipResponse": {
         "properties": {
@@ -3859,7 +3893,7 @@
         ]
       }
     },
-    "/api/v1/auth/clients/{client_id}/scopes/{scope_key}": {
+    "/api/v1/auth/clients/{client_id}/scopes/{mode}/{scope_key}": {
       "delete": {
         "operationId": "auth_revoke_application_client_scope",
         "parameters": [
@@ -3873,10 +3907,28 @@
             }
           },
           {
+            "description": "Mode of the grant: `application` (for the client itself) or `delegated` (the ceiling for people).",
+            "in": "path",
+            "name": "mode",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/GrantMode",
+              "description": "Mode of the grant: `application` (for the client itself) or `delegated` (the ceiling for people).",
+              "examples": [
+                "delegated"
+              ]
+            }
+          },
+          {
+            "description": "Scope of the grant.",
             "in": "path",
             "name": "scope_key",
             "required": true,
             "schema": {
+              "description": "Scope of the grant.",
+              "examples": [
+                "crm:read"
+              ],
               "title": "Scope Key",
               "type": "string"
             }

@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.models import ApplicationClient, ApplicationClientStatus
+from app.core.db.models import ApplicationClient, ApplicationClientStatus, GrantMode
 
 from ..audit import AuditEventType, write_auth_audit_log
 from ..results import BootstrappedApplicationClient
@@ -20,6 +20,7 @@ async def bootstrap_application_client(
     name: str,
     description: str | None,
     scopes: Iterable[Scope | str],
+    mode: GrantMode = GrantMode.APPLICATION,
 ) -> BootstrappedApplicationClient:
     await seed_default_scopes(session)
 
@@ -49,7 +50,7 @@ async def bootstrap_application_client(
         client.status = ApplicationClientStatus.ACTIVE
 
     requested_scope_keys = parse_scopes(scopes)
-    granted_scope_keys = await grant_client_scopes(session, client=client, scope_keys=requested_scope_keys)
+    granted_scope_keys = await grant_client_scopes(session, client=client, scope_keys=requested_scope_keys, mode=mode)
 
     created_secret = None
     if not await client_has_usable_secret(session, client_id=client.id, now=datetime.now(UTC)):

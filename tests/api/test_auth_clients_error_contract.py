@@ -50,8 +50,10 @@ ENDPOINTS = {
     "update_client": Endpoint("PATCH", "/x", "update_application_client", json={"name": "Y"}),
     "create_secret": Endpoint("POST", "/x/secrets", "create_application_client_secret", json={}),
     "revoke_secret": Endpoint("DELETE", f"/x/secrets/{ID}", "revoke_application_client_secret"),
-    "grant_scopes": Endpoint("POST", "/x/scopes", "grant_application_client_scopes", json={"scopes": ["bot:read"]}),
-    "revoke_scope": Endpoint("DELETE", "/x/scopes/bot:read", "revoke_application_client_scope"),
+    "grant_scopes": Endpoint(
+        "POST", "/x/scopes", "grant_application_client_scopes", json={"scopes": ["bot:read"], "mode": "application"}
+    ),
+    "revoke_scope": Endpoint("DELETE", "/x/scopes/application/bot:read", "revoke_application_client_scope"),
 }
 
 # (endpoint, raised error, status, detail, code)
@@ -124,7 +126,12 @@ def test_every_error_of_the_table_is_documented_on_its_route():
 
 
 def _template(path: str) -> str:
-    return path.replace("/x", "/{client_id}", 1).replace(ID, "{secret_id}").replace("bot:read", "{scope_key}")
+    return (
+        path
+        .replace("/x", "/{client_id}", 1)
+        .replace(ID, "{secret_id}")
+        .replace("application/bot:read", "{mode}/{scope_key}")
+    )
 
 
 def test_every_endpoint_of_the_table_is_exercised():

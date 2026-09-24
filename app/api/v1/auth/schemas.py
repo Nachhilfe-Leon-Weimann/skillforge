@@ -7,7 +7,7 @@ from app.api.v1.common import ApiModel
 from app.core.auth.principal import Principal
 from app.core.auth.results import CreatedClientSecret
 from app.core.auth.tokens import CreatedAccessToken
-from app.core.db.models import ApplicationClient, ApplicationClientStatus
+from app.core.db.models import ApplicationClient, ApplicationClientStatus, GrantMode
 
 
 class AccessTokenResponse(BaseModel):
@@ -62,8 +62,15 @@ class ApplicationClientSecretCreateRequest(BaseModel):
     expires_at: datetime | None = None
 
 
-class ApplicationClientScopeGrantRequest(BaseModel):
+class ApplicationClientScopeGrantRequest(ApiModel):
+    """Scopes to grant an application client in one mode (ADR 0008)."""
+
     scopes: list[str] = Field(min_length=1)
+    """Scopes to grant, e.g. `crm:read`. A scope the client already holds in `mode` stays as it is; if one scope is
+    refused, none is granted."""
+    mode: GrantMode
+    """`application`: what the client may do for itself (`client_credentials`). `delegated`: the most it may do for a
+    person it acts for; a client-only scope such as `auth:users:login` is refused in this mode."""
 
 
 class ApplicationClientSecretResponse(BaseModel):
@@ -77,16 +84,29 @@ class ApplicationClientSecretResponse(BaseModel):
     created_at: datetime
 
 
-class ApplicationClientResponse(BaseModel):
+class ApplicationClientResponse(ApiModel):
+    """An application client with its scope grants and secrets."""
+
     id: UUID
+    """ID of the client; its application tokens carry it as `principal_id`."""
     client_id: str
+    """Identifier the client authenticates with at `POST /auth/token`."""
     name: str
+    """Display name of the client."""
     description: str | None
+    """Free-text description; `null` when there is none."""
     status: ApplicationClientStatus
-    scopes: list[str]
+    """An `active` client obtains tokens, a `disabled` one does not."""
+    application_scopes: list[str]
+    """Scopes granted in `application` mode - what the client may do for itself - sorted."""
+    delegated_scopes: list[str]
+    """Scopes granted in `delegated` mode - the most the client may do for a person - sorted."""
     secrets: list[ApplicationClientSecretResponse]
+    """Secrets of the client, oldest first, without their values."""
     created_at: datetime
+    """When the client was created."""
     updated_at: datetime
+    """When the client was last changed."""
 
     @classmethod
     def from_model(cls, client: ApplicationClient) -> ApplicationClientResponse:
@@ -96,7 +116,8 @@ class ApplicationClientResponse(BaseModel):
             name=client.name,
             description=client.description,
             status=client.status,
-            scopes=sorted(grant.scope_key for grant in client.scope_grants),
+            application_scopes=_granted_scopes(client, GrantMode.APPLICATION),
+            delegated_scopes=_granted_scopes(client, GrantMode.DELEGATED),
             secrets=[
                 ApplicationClientSecretResponse.model_validate(secret)
                 for secret in sorted(client.secrets, key=lambda item: item.created_at)
@@ -104,6 +125,10 @@ class ApplicationClientResponse(BaseModel):
             created_at=client.created_at,
             updated_at=client.updated_at,
         )
+
+
+def _granted_scopes(client: ApplicationClient, mode: GrantMode) -> list[str]:
+    return sorted(grant.scope_key for grant in client.scope_grants if grant.mode == mode)
 
 
 class CreatedClientSecretResponse(BaseModel):
