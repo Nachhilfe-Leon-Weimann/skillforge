@@ -131,6 +131,11 @@ bootstrap-skillbot:
 bootstrap-client *args:
     uv run python -m app.core.auth.bootstrap client "$@"
 
+# Ensure an enabled admin account and print its invitation or reset token: --party-id <uuid> --email <address>
+[positional-arguments]
+bootstrap-admin *args:
+    uv run python -m app.core.auth.bootstrap admin "$@"
+
 # --- Docker ---
 
 docker-build image="skillforge:local":

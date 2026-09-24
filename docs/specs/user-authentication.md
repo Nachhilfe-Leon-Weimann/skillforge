@@ -686,36 +686,36 @@ Not built here; recorded so that this arc's shapes take it with no change but th
 - _Tests that change:_ `tests/auth/test_secrets.py` and `tests/db/models/test_auth_models.py` (the rename);
   `PAGED_ENDPOINTS` in `tests/api/test_openapi_contract.py` gains `/api/v1/auth/users`.
 - _Acceptance criteria:_
-  - [ ] Creating an account for a person party answers `201` with an `active` account and no token, with or
+  - [x] Creating an account for a person party answers `201` with an `active` account and no token, with or
         without an e-mail; the same party again is `user_account_already_exists`; an unknown `party_id` is `422`
         `unknown_account_party`; a company is `account_party_not_a_person`; another account's e-mail is
         `user_email_already_in_use`; `Anna@Example.org` is stored as `anna@example.org`.
-  - [ ] An invitation for an account without an e-mail, or with a password, is `user_account_state`; a reset for
+  - [x] An invitation for an account without an e-mail, or with a password, is `user_account_state`; a reset for
         an account without a password is `user_account_state`; issuing invalidates earlier unused tokens of the
         same purpose, and two issues arriving together leave one live token.
-  - [ ] Redeeming an invitation sets the password and leaves the status as it was; redeeming it again, an expired
+  - [x] Redeeming an invitation sets the password and leaves the status as it was; redeeming it again, an expired
         token and a replaced token all answer the same `invalid_action_token` body; two overlapping redeems of one
         token set one password.
-  - [ ] Redeeming a reset revokes every session of the account; redeeming an invitation revokes none.
-  - [ ] A password of 7 or 129 characters is `weak_password`; 8 and 128 are accepted.
-  - [ ] Disabling revokes the sessions; enabling an account without a password succeeds; changing or removing the
+  - [x] Redeeming a reset revokes every session of the account; redeeming an invitation revokes none.
+  - [x] A password of 7 or 129 characters is `weak_password`; 8 and 128 are accepted.
+  - [x] Disabling revokes the sessions; enabling an account without a password succeeds; changing or removing the
         e-mail invalidates unused action tokens; removing the e-mail of an account with a password is
         `user_account_state`; a `PATCH` that changes nothing records nothing.
-  - [ ] `roles` lists `student` for a party with a `Student` row, `guardian` for an outgoing `PAYS_FOR`, and
+  - [x] `roles` lists `student` for a party with a `Student` row, `guardian` for an outgoing `PAYS_FOR`, and
         `admin` + `tutor` for a tutor holding the stored role; `TUTOR_OF` does not make a tutor a guardian.
-  - [ ] Every account route is `403` for a token without `auth:users:manage`; the redeem route is `403` for a
+  - [x] Every account route is `403` for a token without `auth:users:manage`; the redeem route is `403` for a
         person's token, whatever its scopes, and for a client without `auth:users:login`.
-  - [ ] `just bootstrap-admin` is idempotent: run again it keeps the account, ensures the `admin` role, sets
+  - [x] `just bootstrap-admin` is idempotent: run again it keeps the account, ensures the `admin` role, sets
         `status = active`, replaces the e-mail when `--email` differs (`user_email_already_in_use` when another
         account holds it; the change invalidates unused action tokens as `PATCH` does), and issues an invitation
         while the account has no password or a `password_reset` token once it has one - earlier unused tokens of
         that purpose stop working. Every change writes its audit entry (`user_role.added`, `user_account.enabled`,
         `user_account.updated`, `invitation.issued` / `password_reset.issued`); a rerun that changes nothing records
         only the issued token. `--email` is validated by the API's rule.
-  - [ ] `just bootstrap-admin` needs nothing but an existing person party: `bootstrap-client`, `POST /crm/persons`
+  - [x] `just bootstrap-admin` needs nothing but an existing person party: `bootstrap-client`, `POST /crm/persons`
         and `bootstrap-admin` on an empty database yield an admin account with a live invitation (a DB test drives
         the three through their service entry points).
-  - [ ] The create-invite-redeem flow logs neither the token, the password nor the e-mail address.
+  - [x] The create-invite-redeem flow logs neither the token, the password nor the e-mail address.
 
 **P0-7 - Own data (reach).**
 
