@@ -30,8 +30,9 @@ Neither SkillForge's user-facing surface nor the portal exists yet; nothing but 
 ## Decision
 
 **1. SkillForge is the identity provider for people.** Accounts, password hashes and sessions live
-in the `auth` schema. An account belongs to exactly one person party, and only admins create
-accounts.
+in the `auth` schema. An account belongs to exactly one person party. Accounts are created only
+through `auth:users:manage`: by admins, or by a client an admin entrusts with it, such as an
+automated intake.
 
 **2. A client grant has a mode.** `application` grants are what the client may do for itself
 (`client_credentials`). `delegated` grants are the most it may do for any person. The same scope can
@@ -80,7 +81,8 @@ Deliberately _not_:
   everything.
 - **No asymmetric signing, no JWKS:** SkillForge is the only party that validates its tokens.
 - **No password rules beyond length:** 8 to 128 characters, no composition rules, no list of
-  forbidden passwords.
+  forbidden passwords. Lockout and the portal's per-IP limit throttle guessing, a restricted
+  person only reads their own data, and MFA for stored roles is planned.
 
 ## Consequences
 

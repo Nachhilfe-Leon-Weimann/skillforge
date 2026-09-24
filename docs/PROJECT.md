@@ -73,8 +73,8 @@ categories a Discord server holds" is a bot rule.
 7. **The client is the ceiling.** A frontend can never do more for a person than it is allowed to do
    for people at all - and a person can never do more through a frontend than the person may do.
 8. **The account is the door.** Only people with a user account use authenticated features. Admins
-   create accounts, always for a person who exists in the CRM. Without one, the bot offers a person
-   only what needs no identity.
+   create accounts - themselves or through a client they entrust with it - always for a person who
+   exists in the CRM. Without one, the bot offers a person only what needs no identity.
 9. **The API is a contract.** `openapi.json` is generated and versioned; the frontends build on it
    ([ADR 0001](decisions/0001-openapi-as-contract.md)).
 
