@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app.core.auth import bootstrap
 from app.core.auth.bootstrap import build_parser
 
 JUSTFILE = Path(__file__).resolve().parents[2] / "justfile"
@@ -45,6 +46,51 @@ def test_the_client_command_needs_both_scope_lists(given: list[str], missing: st
 
     assert exit_code.value.code == 2
     assert missing in capsys.readouterr().err
+
+
+def test_the_client_id_is_stripped():
+    arguments = build_parser().parse_args(["client", " operator ", "--application", "", "--delegated", ""])
+
+    assert arguments.client_id == "operator"
+
+
+@pytest.mark.parametrize("client_id", ["", "   "])
+def test_an_empty_client_id_is_refused(client_id: str, capsys):
+    with pytest.raises(SystemExit) as exit_code:
+        build_parser().parse_args(["client", client_id, "--application", "", "--delegated", ""])
+
+    assert exit_code.value.code == 2
+    assert "client_id: must not be empty" in capsys.readouterr().err
+
+
+def test_main_runs_the_client_command_with_the_scope_list_of_each_mode(monkeypatch):
+    calls = []
+
+    async def bootstrap_client(client_id: str, **scopes: frozenset[str]) -> None:
+        calls.append(("client", client_id, scopes))
+
+    monkeypatch.setattr(bootstrap, "bootstrap_client", bootstrap_client)
+    monkeypatch.setattr(
+        "sys.argv", ["bootstrap", "client", "op", "--application", "crm:write", "--delegated", "crm:read"]
+    )
+
+    bootstrap.main()
+
+    assert calls == [("client", "op", {"application": frozenset({"crm:write"}), "delegated": frozenset({"crm:read"})})]
+
+
+def test_main_runs_the_skillbot_command(monkeypatch):
+    calls = []
+
+    async def bootstrap_skillbot() -> None:
+        calls.append("skillbot")
+
+    monkeypatch.setattr(bootstrap, "bootstrap_skillbot", bootstrap_skillbot)
+    monkeypatch.setattr("sys.argv", ["bootstrap", "skillbot"])
+
+    bootstrap.main()
+
+    assert calls == ["skillbot"]
 
 
 def test_the_just_recipes_run_the_subcommands():

@@ -64,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("skillbot", help="Seed the SkillBot application client and print its secret.")
     client = commands.add_parser("client", help="Seed an application client with grants in both modes.")
-    client.add_argument("client_id", help="Client ID of the application client.")
+    client.add_argument("client_id", type=_client_id, help="Client ID of the application client.")
     client.add_argument(
         "--application",
         type=parse_scopes,
@@ -88,6 +88,14 @@ def main() -> None:
         asyncio.run(
             bootstrap_client(arguments.client_id, application=arguments.application, delegated=arguments.delegated)
         )
+
+
+def _client_id(value: str) -> str:
+    """The client ID as given on the command line, stripped; an empty one is refused."""
+    if not (client_id := value.strip()):
+        raise argparse.ArgumentTypeError("must not be empty")
+
+    return client_id
 
 
 @asynccontextmanager
