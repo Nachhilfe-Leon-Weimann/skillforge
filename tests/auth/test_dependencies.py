@@ -124,8 +124,8 @@ async def test_require_scopes_guards_a_route_from_the_decorator():
 def test_require_scopes_declares_the_scopes_in_openapi_for_both_positions():
     paths = _app(_settings()).openapi()["paths"]
 
-    assert paths["/write"]["post"]["security"] == [{"OAuth2ClientCredentialsBearer": ["bot:write"]}]
-    assert paths["/guarded"]["post"]["security"] == [{"OAuth2ClientCredentialsBearer": ["bot:write"]}]
+    assert paths["/write"]["post"]["security"] == [{"OAuth2": ["bot:write"]}]
+    assert paths["/guarded"]["post"]["security"] == [{"OAuth2": ["bot:write"]}]
 
 
 async def test_a_crm_read_own_token_is_forbidden_on_a_route_that_requires_crm_read():

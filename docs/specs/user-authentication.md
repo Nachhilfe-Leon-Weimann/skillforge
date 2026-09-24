@@ -659,7 +659,7 @@ Not built here; recorded so that this arc's shapes take it with no change but th
   `OAuth2`), `tests/auth/test_tokens.py` (`PrincipalType`), `tests/api/test_auth_me_endpoint.py` (the properties of
   `MeResponse`).
 - _Acceptance criteria:_
-  - [ ] `components.securitySchemes` has exactly one key, `OAuth2`; apart from the key, the `security` requirement
+  - [x] `components.securitySchemes` has exactly one key, `OAuth2`; apart from the key, the `security` requirement
         of every existing operation is unchanged (pinned against the operations of the branch below; P0-5 sits
         above P0-4 in the stack, so its pin carries P0-4's revoke path). A later slice that deliberately changes
         an operation's requirement removes that operation from the pin in the same PR, with a comment naming the
