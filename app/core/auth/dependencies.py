@@ -8,7 +8,7 @@ from app.core.logging import bind_request_log_context
 
 from .config import AuthSettings
 from .principal import Principal
-from .scopes import OWN_VARIANT, Scope, expand
+from .scopes import OWN_VARIANT, Scope, expand, format_scopes
 from .security import oauth2_scheme
 from .tokens import PRINCIPAL_TYPE_APPLICATION, TokenValidationError, validate_access_token
 
@@ -108,6 +108,6 @@ def require_scopes(*required_scopes: Scope | str) -> Any:
 
 def _authenticate_header(scopes: Sequence[str]) -> str:
     if scopes:
-        return f'Bearer scope="{" ".join(scopes)}"'
+        return f'Bearer scope="{format_scopes(frozenset(scopes))}"'
 
     return "Bearer"
