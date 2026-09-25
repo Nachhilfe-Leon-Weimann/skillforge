@@ -2,7 +2,7 @@
 
 from app.api.v1.common import ApiError
 
-INVALID_REQUEST = ApiError(422, code="invalid_request", detail="A parameter the grant requires is missing")
+INVALID_REQUEST = ApiError(422, code="invalid_request", detail="A required parameter is missing")
 INVALID_CLIENT = ApiError(
     401,
     code="invalid_client",

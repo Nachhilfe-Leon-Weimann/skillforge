@@ -10,14 +10,13 @@ Two hash families, chosen by what they protect:
 
 Argon2 takes tens of milliseconds of CPU by design. On the event loop that would stall every request the
 process serves - SkillBot's included - so request code awaits the ``*_async`` variants, which run the work
-in a worker thread (``off_the_loop``).
+in the framework's thread pool (``run_in_threadpool``).
 """
 
 import hashlib
 import secrets as random_secrets
-from collections.abc import Callable
 
-import anyio.to_thread
+from fastapi.concurrency import run_in_threadpool
 from pwdlib import PasswordHash
 from pwdlib import exceptions as pwdlib_exceptions
 
@@ -66,24 +65,19 @@ def verify_and_update(secret: str, secret_hash: str) -> tuple[bool, str | None]:
         return False, None
 
 
-async def off_the_loop[T](function: Callable[..., T], *args: object) -> T:
-    """Run slow hashing work in a worker thread, so the event loop keeps serving other requests."""
-    return await anyio.to_thread.run_sync(function, *args)
-
-
 async def hash_secret_async(secret: str) -> str:
     """``hash_secret``, off the event loop."""
-    return await off_the_loop(hash_secret, secret)
+    return await run_in_threadpool(hash_secret, secret)
 
 
 async def verify_secret_async(secret: str, secret_hash: str) -> bool:
     """``verify_secret``, off the event loop."""
-    return await off_the_loop(verify_secret, secret, secret_hash)
+    return await run_in_threadpool(verify_secret, secret, secret_hash)
 
 
 async def verify_and_update_async(secret: str, secret_hash: str) -> tuple[bool, str | None]:
     """``verify_and_update``, off the event loop."""
-    return await off_the_loop(verify_and_update, secret, secret_hash)
+    return await run_in_threadpool(verify_and_update, secret, secret_hash)
 
 
 def digest(token: str) -> str:

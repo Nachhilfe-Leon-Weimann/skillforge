@@ -5,14 +5,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from pwdlib.hashers.argon2 import Argon2Hasher
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthSettings, IssuedUserToken, TokenDenial, issue_user_token, refresh_user_token
 from app.core.auth.audit import AuditEventType
 from app.core.auth.principal import PrincipalType
-from app.core.auth.secrets import verify_secret
+from app.core.auth.secrets import hash_secret, verify_and_update_async, verify_secret
 from app.core.auth.services import tokens as tokens_service
+from app.core.auth.services.accounts import lock_user_account
 from app.core.auth.services.sessions import REFRESH_REUSE_GRACE
 from app.core.db.models import UserAccount, UserAccountStatus, UserSession
 
@@ -218,3 +219,47 @@ async def test_a_wrong_password_is_verified_against_the_account_not_the_dummy_ha
     assert await login(account, now=T0, with_password="not the password") is TokenDenial.INVALID_GRANT
 
     assert dummy_verifications == []
+
+
+async def test_the_password_is_verified_before_the_account_row_is_locked(
+    make_login_account, login: Callable, monkeypatch
+):
+    """A lock held through the hash would queue attempts on an existing address - an enumeration oracle."""
+    account = await make_login_account()
+    calls: list[str] = []
+
+    async def verify(password: str, password_hash: str) -> tuple[bool, str | None]:
+        calls.append("verify")
+        return await verify_and_update_async(password, password_hash)
+
+    async def lock(session: AsyncSession, user_id) -> UserAccount:
+        calls.append("lock")
+        return await lock_user_account(session, user_id)
+
+    monkeypatch.setattr(tokens_service, "verify_and_update_async", verify)
+    monkeypatch.setattr(tokens_service, "lock_user_account", lock)
+
+    assert await login(account, now=T0, with_password="not the password") is TokenDenial.INVALID_GRANT
+    assert isinstance(await login(account, now=T0), IssuedUserToken)
+
+    assert calls == ["verify", "lock"] * 2
+
+
+async def test_a_password_changed_during_the_login_is_refused_and_not_counted(
+    make_login_account, login: Callable, session: AsyncSession, monkeypatch
+):
+    """A reset redeemed between the unlocked read and the lock: the old password proves nothing any more."""
+    account = await make_login_account()
+
+    async def verify_then_reset(password: str, password_hash: str) -> tuple[bool, str | None]:
+        verified = await verify_and_update_async(password, password_hash)
+        await session.execute(
+            update(UserAccount).where(UserAccount.id == account.id).values(password_hash=hash_secret("a new one!"))
+        )
+        return verified
+
+    monkeypatch.setattr(tokens_service, "verify_and_update_async", verify_then_reset)
+
+    assert await login(account, now=T0) is TokenDenial.INVALID_GRANT
+    await session.refresh(account)
+    assert account.failed_login_count == 0

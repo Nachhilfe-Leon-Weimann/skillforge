@@ -447,7 +447,7 @@
                 "type": "null"
               }
             ],
-            "description": "`password` grant only, required there: the person's password.",
+            "description": "`password` grant only, required there: the person's password, at most 128 characters.",
             "title": "Password"
           },
           "refresh_token": {
@@ -483,7 +483,7 @@
                 "type": "null"
               }
             ],
-            "description": "`password` grant only, required there: the person's login e-mail address.",
+            "description": "`password` grant only, required there: the person's login e-mail address, at most 254 characters.",
             "title": "Username"
           }
         },
@@ -5154,7 +5154,7 @@
                   "invalid_request": {
                     "value": {
                       "code": "invalid_request",
-                      "detail": "A parameter the grant requires is missing"
+                      "detail": "A required parameter is missing"
                     }
                   },
                   "validation_error": {
@@ -5179,7 +5179,7 @@
                 }
               }
             },
-            "description": "A parameter the grant requires is missing"
+            "description": "A required parameter is missing"
           }
         },
         "summary": "Create Token",

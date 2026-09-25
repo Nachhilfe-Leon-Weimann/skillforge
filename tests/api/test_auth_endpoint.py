@@ -197,7 +197,7 @@ async def test_auth_token_endpoint_requires_client_credentials():
         response = await _post("/api/v1/auth/token", data={"grant_type": "client_credentials"})
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "A parameter the grant requires is missing", "code": "invalid_request"}
+    assert response.json() == {"detail": "A required parameter is missing", "code": "invalid_request"}
 
 
 def test_auth_token_endpoint_documents_every_error_it_returns():

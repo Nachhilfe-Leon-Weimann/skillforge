@@ -249,11 +249,13 @@ async def test_a_client_without_auth_users_login_is_unauthorized_client_for_both
 
 
 @pytest.mark.parametrize("field", ["client_id", "client_secret"])
-async def test_an_over_long_client_credential_is_invalid_client_and_never_reaches_the_audit_log(
-    token_api: AsyncClient, login_client, audit_rows, field: str
+async def test_an_over_long_client_credential_is_invalid_client_and_reaches_neither_audit_nor_log(
+    token_api: AsyncClient, login_client, audit_rows, field: str, restore_logging, capsys
 ):
     over_long = "x" * 8000
     form = login_client.form | {field: over_long}
+    configure_logging(LoggingSettings(level=LogLevel.DEBUG, format=LogFormat.JSON))
+    capsys.readouterr()
 
     responses = [
         await token_api.post("/token", data={"grant_type": grant_type, "username": EMAIL, "password": "pw", **form})
@@ -264,6 +266,9 @@ async def test_an_over_long_client_credential_is_invalid_client_and_never_reache
     denials = await audit_rows(AuditEventType.TOKEN_DENIED)
     assert [(row.principal_type, row.principal_id) for row in denials] == [(PrincipalType.APPLICATION, None)] * 2
     assert not any(over_long in (row.detail or "") for row in denials)
+    output = capsys.readouterr().out
+    assert output.count("http_request_") >= 2, "the requests were logged"
+    assert over_long not in output
 
 
 async def test_a_client_credential_of_the_longest_length_is_still_looked_up(token_api: AsyncClient, audit_rows):

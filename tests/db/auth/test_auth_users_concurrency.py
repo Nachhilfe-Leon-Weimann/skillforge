@@ -225,3 +225,32 @@ async def test_two_overlapping_refreshes_of_one_token_yield_one_rotation_and_lea
     assert user_session.revoked_at is None
     assert user_session.refresh_token_hash == digest(rotated.refresh_token)
     assert user_session.previous_refresh_token_hash == digest(login.refresh_token)
+
+
+async def test_two_overlapping_wrong_passwords_on_one_account_both_count(
+    db: Database,
+    user_id: uuid.UUID,
+    login_client_credentials: LoginClientCredentials,
+    auth_settings: AuthSettings,
+    session: AsyncSession,
+):
+    client_id, client_secret = login_client_credentials.basic
+    async with db.session() as setup:
+        (await setup.get_one(UserAccount, user_id)).password_hash = hash_secret(FIRST_PASSWORD)
+
+    async def wrong_password(session: AsyncSession) -> UserTokenResult:
+        return await issue_user_token(
+            session,
+            auth_settings,
+            client_id=client_id,
+            client_secret=client_secret,
+            username="race@example.org",
+            password=SECOND_PASSWORD,
+        )
+
+    # The first holds the row lock it took to count; the second verifies meanwhile, then waits for it.
+    second = await _overlapping(db, wrong_password, wrong_password)
+
+    assert second.result() is TokenDenial.INVALID_GRANT
+    count = await session.scalar(select(UserAccount.failed_login_count).where(UserAccount.id == user_id))
+    assert count == 2

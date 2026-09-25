@@ -30,13 +30,13 @@ async def lock_user_account(session: AsyncSession, user_id: uuid.UUID) -> UserAc
     return await _load(session, user_id, _account(UserAccount.id == user_id).with_for_update())
 
 
-async def lock_user_account_by_email(session: AsyncSession, email: str) -> UserAccount | None:
-    """Return the account that logs in with ``email`` (canonical form) with its row locked, or ``None``.
+async def find_user_account_by_email(session: AsyncSession, email: str) -> UserAccount | None:
+    """Return the account that logs in with ``email`` (canonical form), as the database says now, or ``None``.
 
-    The password login's look-up: the lock serializes two attempts on one account, so the failed-login
-    counter counts both.
+    The password login's look-up, deliberately without a lock: the login verifies the password before it
+    locks the row, so attempts on one account do not queue behind each other's hash.
     """
-    return await _read(session, _account(UserAccount.email == email).with_for_update())
+    return await _read(session, _account(UserAccount.email == email))
 
 
 async def find_user_account_by_party(session: AsyncSession, party_id: uuid.UUID) -> UserAccount | None:

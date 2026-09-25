@@ -7,7 +7,9 @@ like a client secret.
 
 from functools import cache
 
-from .secrets import hash_secret, off_the_loop, verify_secret
+from fastapi.concurrency import run_in_threadpool
+
+from .secrets import hash_secret, verify_secret
 
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
@@ -47,7 +49,7 @@ async def verify_dummy_password(password: str) -> None:
     What a login does when no account can be checked, so that it takes as long as a wrong password. The
     first call also computes the dummy hash - in the worker thread too.
     """
-    await off_the_loop(_verify_dummy, password)
+    await run_in_threadpool(_verify_dummy, password)
 
 
 def _verify_dummy(password: str) -> None:

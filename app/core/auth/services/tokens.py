@@ -30,11 +30,11 @@ from ..principal import ApplicationPrincipal, AuthMethod, PrincipalType, UserPri
 from ..results import IssuedUserToken, TokenDenial, UserTokenResult
 from ..roles import Role, scopes_for
 from ..scopes import Scope, parse_scopes
-from ..secrets import verify_and_update_async, verify_secret_async
+from ..secrets import digest, verify_and_update_async, verify_secret_async
 from ..tokens import CreatedAccessToken, create_access_token, create_application_access_token
-from .accounts import get_user_account, lock_user_account_by_email
+from .accounts import find_user_account_by_email, get_user_account, lock_user_account
 from .clients import find_application_client
-from .errors import InvalidClientCredentialsError, InvalidClientScopeError
+from .errors import InvalidClientCredentialsError, InvalidClientScopeError, UserAccountNotFoundError
 from .roles import account_roles
 from .scopes import granted_active_scope_keys, resolve_token_scopes
 from .secrets import is_secret_usable, normalize_datetime
@@ -145,18 +145,30 @@ async def issue_user_token(
     if isinstance(authenticated, TokenDenial):
         return authenticated
 
-    # The row lock is held until the transaction ends: two wrong passwords arriving together must both count,
-    # so the second reads the counter the first wrote. The Argon2 work below runs in a worker thread, so
-    # waiting for the lock or the hash stalls only this login, not the event loop.
-    account = await _find_login_account(session, username)
-    if account is None:
+    # Read without a lock and verify without one: a lock held through the hash would make attempts on an
+    # existing address queue behind each other - slower than on an unknown one (enumeration) and holding a
+    # pooled connection each. Exactly one Argon2 verification runs on every path.
+    found = await _find_login_account(session, username)
+    if found is None:
         return await _refuse_login(session, None, "unknown account", password=password)
-    if (refusal := _login_refusal(account, now=issued_at)) is not None:
-        return await _refuse_login(session, account.id, refusal, password=password)
-    if account.password_hash is None:
-        return await _refuse_login(session, account.id, "no password set", password=password)
+    if (refusal := _login_refusal(found, now=issued_at)) is not None:
+        return await _refuse_login(session, found.id, refusal, password=password)
+    if found.password_hash is None:
+        return await _refuse_login(session, found.id, "no password set", password=password)
 
-    verified, upgraded_hash = await verify_and_update_async(password, account.password_hash)
+    checked_hash = found.password_hash
+    verified, upgraded_hash = await verify_and_update_async(password, checked_hash)
+
+    # Only now the row lock, and the outcome applied to the row as it is under it: concurrent wrong passwords
+    # each re-read the counter the one before wrote, so all of them count. What changed since the unlocked
+    # read wins - disabled, locked by another attempt, or a new password (a reset redeemed meanwhile): the
+    # answer is the same ``invalid_grant`` and the verification, made against a stale state, counts for nothing.
+    try:
+        account = await lock_user_account(session, found.id)
+    except UserAccountNotFoundError:
+        return await _deny_user(session, None, "account deleted during login", TokenDenial.INVALID_GRANT)
+    if _login_refusal(account, now=issued_at) is not None or account.password_hash != checked_hash:
+        return await _deny_user(session, account.id, "account changed during login", TokenDenial.INVALID_GRANT)
     if not verified:
         _count_failed_login(account, settings, now=issued_at)
         return await _deny_user(session, account.id, "wrong password", TokenDenial.INVALID_GRANT)
@@ -221,13 +233,14 @@ async def refresh_user_token(
     if isinstance(authenticated, TokenDenial):
         return authenticated
 
+    token_digest = digest(refresh_token)
     user_session = await lock_session_by_refresh_token(
-        session, refresh_token, application_client_id=authenticated.client.id
+        session, token_digest, application_client_id=authenticated.client.id
     )
     if user_session is None:
         return await _deny_user(session, None, "unknown refresh token", TokenDenial.INVALID_GRANT)
 
-    state = refresh_token_state(user_session, refresh_token, now=issued_at)
+    state = refresh_token_state(user_session, token_digest, now=issued_at)
     if state is RefreshTokenState.ENDED:
         return await _deny_user(
             session, user_session.user_account_id, "refresh token of an ended session", TokenDenial.INVALID_GRANT
@@ -362,13 +375,13 @@ async def _authenticate_login_client(
 
 
 async def _find_login_account(session: AsyncSession, username: str) -> UserAccount | None:
-    """The account ``username`` logs in to, its row locked; a username that is no address matches none."""
+    """The account ``username`` logs in to, unlocked; a username that is no address matches none."""
     try:
         email = normalize_email(username)
     except ValueError:
         return None
 
-    return await lock_user_account_by_email(session, email)
+    return await find_user_account_by_email(session, email)
 
 
 def _login_refusal(account: UserAccount, *, now: datetime) -> str | None:

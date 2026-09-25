@@ -28,6 +28,9 @@ from app.core.auth import (
     refresh_user_token,
 )
 from app.core.auth.dependencies import AuthConfig
+from app.core.auth.inputs import MAX_EMAIL_LENGTH
+from app.core.auth.passwords import MAX_PASSWORD_LENGTH
+from app.core.auth.services.tokens import MAX_CLIENT_CREDENTIAL_LENGTH
 from app.core.logging import bind_request_log_context
 
 from .errors import (
@@ -125,10 +128,15 @@ async def get_token_form(
         Form(description="Space-separated scopes to narrow the token to; without it the token gets all it may hold."),
     ] = None,
     username: Annotated[
-        str | None, Form(description="`password` grant only, required there: the person's login e-mail address.")
+        str | None,
+        Form(
+            description="`password` grant only, required there: the person's login e-mail address, at most 254 "
+            "characters."
+        ),
     ] = None,
     password: Annotated[
-        str | None, Form(description="`password` grant only, required there: the person's password.")
+        str | None,
+        Form(description="`password` grant only, required there: the person's password, at most 128 characters."),
     ] = None,
     refresh_token: Annotated[
         str | None, Form(description="`refresh_token` grant only, required there: the session's current refresh token.")
@@ -147,7 +155,9 @@ async def get_token_form(
 
     grant = _parse_grant(parsed_grant_type, username=username, password=password, refresh_token=refresh_token)
     if grant is None:
-        bind_request_log_context(request, auth_reason="missing_grant_parameters", client_id=resolved_client_id)
+        bind_request_log_context(
+            request, auth_reason="invalid_grant_parameters", **_client_log_context(resolved_client_id)
+        )
         raise INVALID_REQUEST.exception()
 
     return TokenForm(client_id=resolved_client_id, client_secret=resolved_client_secret, scope=scope, grant=grant)
@@ -156,11 +166,17 @@ async def get_token_form(
 def _parse_grant(
     grant_type: GrantType, *, username: str | None, password: str | None, refresh_token: str | None
 ) -> Grant | None:
-    """The grant with the parameters it needs, or ``None`` when one of them is missing."""
+    """The grant with the parameters it needs, or ``None`` when one of them is missing or over-long.
+
+    No login address is longer than ``MAX_EMAIL_LENGTH`` and no stored password longer than
+    ``MAX_PASSWORD_LENGTH``: a longer value is refused before any look-up or hash, alike for every account.
+    """
     match grant_type:
         case GrantType.CLIENT_CREDENTIALS:
             return ClientCredentialsGrant()
-        case GrantType.PASSWORD if username and password:
+        case GrantType.PASSWORD if (
+            username and password and len(username) <= MAX_EMAIL_LENGTH and len(password) <= MAX_PASSWORD_LENGTH
+        ):
             return PasswordGrant(username=username, password=password)
         case GrantType.REFRESH_TOKEN if refresh_token:
             return RefreshTokenGrant(refresh_token=refresh_token)
@@ -256,5 +272,10 @@ async def create_token(
 def _deny(request: Request, denial: TokenDenial, client_id: str) -> JSONResponse:
     """Answer ``denial``, naming the reason in the request log - never the username or a secret."""
     error, auth_reason = _DENIALS[denial]
-    bind_request_log_context(request, auth_reason=auth_reason, client_id=client_id)
+    bind_request_log_context(request, auth_reason=auth_reason, **_client_log_context(client_id))
     return error.response()
+
+
+def _client_log_context(client_id: str) -> dict[str, str]:
+    """The client as the request log names it: a value longer than any client's ID is left out, never bound."""
+    return {"client_id": client_id} if len(client_id) <= MAX_CLIENT_CREDENTIAL_LENGTH else {}

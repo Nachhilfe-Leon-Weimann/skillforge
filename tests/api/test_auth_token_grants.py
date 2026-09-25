@@ -163,8 +163,30 @@ async def test_a_parameter_the_grant_needs_and_lacks_is_invalid_request(form: di
         response = await _post(form, auth=("portal", "secret"))
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "A parameter the grant requires is missing", "code": "invalid_request"}
+    assert response.json() == {"detail": "A required parameter is missing", "code": "invalid_request"}
     assert fakes.calls == []
+
+
+@pytest.mark.parametrize(
+    ("username", "password", "accepted"),
+    [
+        ("a" * 242 + "@example.org", "p" * 128, True),
+        ("a" * 243 + "@example.org", "pw", False),
+        ("anna@example.org", "p" * 129, False),
+    ],
+)
+async def test_an_over_long_username_or_password_is_invalid_request_before_any_look_up(
+    username: str, password: str, accepted: bool
+):
+    with _Fakes(ISSUED) as fakes:
+        response = await _post(
+            {"grant_type": "password", "username": username, "password": password}, auth=("portal", "secret")
+        )
+
+    assert (response.status_code == 200) is accepted
+    assert len(fakes.calls) == int(accepted)
+    if not accepted:
+        assert response.json() == {"detail": "A required parameter is missing", "code": "invalid_request"}
 
 
 def test_swagger_uis_authorize_dialog_offers_the_password_flow():

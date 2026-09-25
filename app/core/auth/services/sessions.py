@@ -79,15 +79,14 @@ async def open_session(
 
 
 async def lock_session_by_refresh_token(
-    session: AsyncSession, refresh_token: str, *, application_client_id: uuid.UUID
+    session: AsyncSession, token_digest: str, *, application_client_id: uuid.UUID
 ) -> UserSession | None:
-    """Return the session of this client whose current *or* previous refresh token is ``refresh_token``, locked.
+    """Return the session of this client whose current *or* previous refresh token has ``token_digest``, locked.
 
     One statement against both digests, so a refresh that waits for a concurrent rotation still finds the
     session - now by its previous token. ``populate_existing`` makes the checks after the lock read what the
     database holds. Another client's session is not found: only the client that opened it may use it.
     """
-    token_digest = digest(refresh_token)
     return await session.scalar(
         select(UserSession)
         .where(
@@ -102,11 +101,12 @@ async def lock_session_by_refresh_token(
     )
 
 
-def refresh_token_state(user_session: UserSession, refresh_token: str, *, now: datetime) -> RefreshTokenState:
-    """Classify ``refresh_token`` - one ``lock_session_by_refresh_token`` found ``user_session`` by."""
+def refresh_token_state(user_session: UserSession, token_digest: str, *, now: datetime) -> RefreshTokenState:
+    """Classify the refresh token with ``token_digest`` - the one ``lock_session_by_refresh_token`` found
+    ``user_session`` by."""
     if user_session.revoked_at is not None or user_session.expires_at <= now:
         return RefreshTokenState.ENDED
-    if user_session.refresh_token_hash == digest(refresh_token):
+    if user_session.refresh_token_hash == token_digest:
         return RefreshTokenState.CURRENT
     if user_session.rotated_at is not None and now - user_session.rotated_at <= REFRESH_REUSE_GRACE:
         return RefreshTokenState.RACED
@@ -150,8 +150,9 @@ async def revoke_session_by_refresh_token(
     session as well, so a logout with a stale token still ends it.
     """
     now = now or datetime.now(UTC)
-    found = await lock_session_by_refresh_token(session, refresh_token, application_client_id=client.principal_id)
-    if found is not None and refresh_token_state(found, refresh_token, now=now) is not RefreshTokenState.ENDED:
+    token_digest = digest(refresh_token)
+    found = await lock_session_by_refresh_token(session, token_digest, application_client_id=client.principal_id)
+    if found is not None and refresh_token_state(found, token_digest, now=now) is not RefreshTokenState.ENDED:
         await revoke_session(session, found, reason=SessionRevokedReason.LOGOUT, actor=client, now=now)
 
 

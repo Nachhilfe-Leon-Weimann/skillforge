@@ -75,14 +75,14 @@ def _session(**fields: object) -> UserSession:
 def test_a_presented_refresh_token_is_classified_against_its_session(
     token: str, now: datetime, state: RefreshTokenState
 ):
-    assert refresh_token_state(_session(), token, now=now) is state
+    assert refresh_token_state(_session(), digest(token), now=now) is state
 
 
 def test_any_token_of_a_revoked_session_is_ended():
     revoked = _session(revoked_at=NOW)
 
-    assert refresh_token_state(revoked, "current", now=NOW) is RefreshTokenState.ENDED
-    assert refresh_token_state(revoked, "previous", now=NOW) is RefreshTokenState.ENDED
+    assert refresh_token_state(revoked, digest("current"), now=NOW) is RefreshTokenState.ENDED
+    assert refresh_token_state(revoked, digest("previous"), now=NOW) is RefreshTokenState.ENDED
 
 
 def test_the_reuse_grace_is_ten_seconds():
