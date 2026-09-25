@@ -12,8 +12,9 @@ from app.core.auth import AuthSettings, IssuedUserToken, TokenDenial, issue_user
 from app.core.auth.audit import AuditEventType
 from app.core.auth.principal import PrincipalType
 from app.core.auth.secrets import verify_secret
+from app.core.auth.services import tokens as tokens_service
 from app.core.auth.services.sessions import REFRESH_REUSE_GRACE
-from app.core.db.models import AuthAuditLog, UserAccount, UserSession
+from app.core.db.models import UserAccount, UserAccountStatus, UserSession
 
 pytestmark = pytest.mark.db
 
@@ -58,11 +59,6 @@ async def _issued(result: Awaitable[IssuedUserToken | TokenDenial]) -> IssuedUse
     issued = await result
     assert isinstance(issued, IssuedUserToken), issued
     return issued
-
-
-async def _events(session: AsyncSession, event_type: AuditEventType) -> list[AuthAuditLog]:
-    statement = select(AuthAuditLog).where(AuthAuditLog.event_type == event_type)
-    return list(await session.scalars(statement))
 
 
 async def test_the_lock_starts_at_the_threshold_doubles_per_failure_and_stops_at_the_maximum(
@@ -110,7 +106,7 @@ async def test_a_login_with_an_outdated_hash_stores_an_upgraded_one(
 
 
 async def test_a_rotated_out_token_within_the_grace_only_fails_and_leaves_the_session_alone(
-    make_login_account, login: Callable, refresh: Callable, session: AsyncSession
+    make_login_account, login: Callable, refresh: Callable, session: AsyncSession, audit_rows
 ):
     account = await make_login_account()
     first = await _issued(login(account, now=T0))
@@ -121,16 +117,16 @@ async def test_a_rotated_out_token_within_the_grace_only_fails_and_leaves_the_se
     user_session = await session.scalar(select(UserSession).where(UserSession.user_account_id == account.id))
     assert raced is TokenDenial.INVALID_GRANT
     assert user_session is not None and user_session.revoked_at is None
-    denied = await _events(session, AuditEventType.TOKEN_DENIED)
+    denied = await audit_rows(AuditEventType.TOKEN_DENIED)
     assert [(row.principal_type, row.principal_id, row.detail) for row in denied] == [
         (PrincipalType.USER, str(account.id), "refresh token reused within grace")
     ]
-    assert await _events(session, AuditEventType.SESSION_REUSE_DETECTED) == []
+    assert await audit_rows(AuditEventType.SESSION_REUSE_DETECTED) == []
     assert isinstance(await refresh(second.refresh_token, now=T0 + timedelta(minutes=2)), IssuedUserToken)
 
 
 async def test_a_rotated_out_token_after_the_grace_revokes_the_session(
-    make_login_account, login: Callable, refresh: Callable, session: AsyncSession
+    make_login_account, login: Callable, refresh: Callable, session: AsyncSession, audit_rows
 ):
     account = await make_login_account()
     first = await _issued(login(account, now=T0))
@@ -143,7 +139,82 @@ async def test_a_rotated_out_token_after_the_grace_revokes_the_session(
     user_session = await session.scalar(select(UserSession).where(UserSession.user_account_id == account.id))
     assert replayed is TokenDenial.INVALID_GRANT
     assert user_session is not None and user_session.revoked_reason == "reuse_detected"
-    detected = await _events(session, AuditEventType.SESSION_REUSE_DETECTED)
+    detected = await audit_rows(AuditEventType.SESSION_REUSE_DETECTED)
     assert [(row.principal_type, row.principal_id) for row in detected] == [(PrincipalType.USER, str(account.id))]
     # An old refresh token is never answered with the current one - and the current one died with the session.
     assert await refresh(second.refresh_token, now=T0 + timedelta(minutes=2)) is TokenDenial.INVALID_GRANT
+
+
+async def test_a_rotated_out_token_of_a_disabled_account_revokes_the_session(
+    make_login_account, login: Callable, refresh: Callable, session: AsyncSession, audit_rows
+):
+    account = await make_login_account()
+    first = await _issued(login(account, now=T0))
+    await _issued(refresh(first.refresh_token, now=T0 + timedelta(minutes=1)))
+    account.status = UserAccountStatus.DISABLED
+    await session.flush()
+
+    refused = await refresh(first.refresh_token, now=T0 + timedelta(minutes=1, seconds=1))
+
+    user_session = await session.scalar(select(UserSession).where(UserSession.user_account_id == account.id))
+    assert refused is TokenDenial.INVALID_GRANT
+    assert user_session is not None and user_session.revoked_reason == "account_disabled"
+    assert len(await audit_rows(AuditEventType.SESSION_REVOKED)) == 1
+    assert await audit_rows(AuditEventType.TOKEN_DENIED) == [], "the raced-token branch did not run first"
+
+
+async def test_a_refresh_answers_the_seconds_left_until_the_session_expires(
+    make_login_account, login: Callable, refresh: Callable
+):
+    account = await make_login_account()
+    first = await _issued(login(account, now=T0))
+
+    refreshed = await _issued(refresh(first.refresh_token, now=T0 + timedelta(days=1)))
+
+    assert first.refresh_expires_in == 30 * 86400
+    assert refreshed.refresh_expires_in == 29 * 86400
+
+
+@pytest.fixture
+def dummy_verifications(monkeypatch) -> list[str]:
+    """Record every verification against the dummy hash the login makes."""
+    calls: list[str] = []
+
+    async def spy(password: str) -> None:
+        calls.append(password)
+
+    monkeypatch.setattr(tokens_service, "verify_dummy_password", spy)
+    return calls
+
+
+async def test_every_refusal_before_the_password_check_verifies_once_against_the_dummy_hash(
+    make_login_account, login: Callable, session: AsyncSession, dummy_verifications: list[str], password: str
+):
+    disabled = await make_login_account("disabled@example.org")
+    disabled.status = UserAccountStatus.DISABLED
+    no_password = await make_login_account("nopassword@example.org")
+    no_password.password_hash = None
+    locked = await make_login_account("locked@example.org")
+    locked.locked_until = T0 + timedelta(minutes=5)
+    await session.flush()
+    unknown = UserAccount(email="unknown@example.org")
+    no_address = UserAccount(email="no address at all")
+
+    counts = []
+    for account in (unknown, disabled, no_password, locked, no_address):
+        before = len(dummy_verifications)
+        assert await login(account, now=T0) is TokenDenial.INVALID_GRANT
+        counts.append(len(dummy_verifications) - before)
+
+    assert counts == [1, 1, 1, 1, 1]
+    assert set(dummy_verifications) == {password}
+
+
+async def test_a_wrong_password_is_verified_against_the_account_not_the_dummy_hash(
+    make_login_account, login: Callable, dummy_verifications: list[str]
+):
+    account = await make_login_account()
+
+    assert await login(account, now=T0, with_password="not the password") is TokenDenial.INVALID_GRANT
+
+    assert dummy_verifications == []

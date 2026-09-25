@@ -8,7 +8,7 @@ from app.core.db.models import ApplicationClientSecret
 
 from ..audit import AuditEventType, write_auth_audit_log
 from ..results import CreatedClientSecret
-from ..secrets import SECRET_PREFIX, generate_secret, hash_secret
+from ..secrets import SECRET_PREFIX, generate_secret, hash_secret_async
 from .clients import get_application_client
 from .errors import ApplicationClientSecretNotFoundError
 
@@ -23,7 +23,7 @@ async def create_client_secret(
     plaintext = generate_secret(SECRET_PREFIX)
     secret = ApplicationClientSecret(
         application_client_id=application_client_id,
-        secret_hash=hash_secret(plaintext),
+        secret_hash=await hash_secret_async(plaintext),
         label=label,
         expires_at=expires_at,
     )

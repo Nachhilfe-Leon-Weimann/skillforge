@@ -1,68 +1,53 @@
 """The token endpoint's person grants without a database: parsing the form, dispatching on the grant, and turning
 a denial into its OAuth2 answer (user-authentication spec, P0-8)."""
 
+import inspect
 import re
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 import pytest
-from httpx import ASGITransport, AsyncClient
-from pydantic import SecretStr
 
-from app.api.v1.auth.token import get_issue_client_token, get_issue_user_token, get_refresh_user_token
-from app.core.auth import AuthSettings, CreatedAccessToken, IssuedUserToken, Scope, TokenDenial
-from app.core.auth.dependencies import get_auth_settings
+from app.api.v1.auth.token import create_token, get_issue_user_token, get_refresh_user_token
+from app.api.v1.common import DBSession
+from app.core.auth import IssuedUserToken, Scope, TokenDenial
 from app.core.auth.scopes import CLIENT_ONLY_SCOPES
 from app.core.db.dependencies import get_db_session
 from app.main import app
+from tests.api.test_auth_endpoint import _overrides, _token
+from tests.api.test_auth_endpoint import _post as _post_to
 
 ISSUED = IssuedUserToken(
-    token=CreatedAccessToken(
-        access_token="encoded-token",
-        token_type="bearer",
-        expires_at=datetime.now(UTC) + timedelta(minutes=15),
-        expires_in=900,
-        scope="account:self crm:read:own",
-    ),
-    refresh_token="sf_rt_refresh",
-    refresh_expires_in=2592000,
+    token=_token(scope="account:self crm:read:own"), refresh_token="sf_rt_refresh", refresh_expires_in=2592000
 )
 
 
-class _Fakes:
-    """Stand-ins for the three grant seams that record their keyword arguments and answer ``result``."""
+class _Fakes(_overrides):
+    """``_overrides`` with all three grant seams faked: each records its keyword arguments and answers ``result``."""
 
     def __init__(self, result: object) -> None:
         self.result = result
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        super().__init__(self._fake("client_credentials"))
 
-    def seam(self, name: str):
+    def _fake(self, name: str):
         async def fake(session, settings, **kwargs):
             self.calls.append((name, kwargs))
             if isinstance(self.result, Exception):
                 raise self.result
             return self.result
 
-        return lambda: fake
+        return fake
 
     def __enter__(self) -> _Fakes:
-        app.dependency_overrides[get_db_session] = lambda: "session"
-        app.dependency_overrides[get_auth_settings] = lambda: AuthSettings(
-            secret_key=SecretStr("test-signing-secret-with-at-least-32-bytes")
-        )
-        app.dependency_overrides[get_issue_client_token] = self.seam("client_credentials")
-        app.dependency_overrides[get_issue_user_token] = self.seam("password")
-        app.dependency_overrides[get_refresh_user_token] = self.seam("refresh_token")
+        super().__enter__()
+        app.dependency_overrides[get_issue_user_token] = lambda: self._fake("password")
+        app.dependency_overrides[get_refresh_user_token] = lambda: self._fake("refresh_token")
         return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        app.dependency_overrides.clear()
 
 
 async def _post(data: dict[str, str], **kwargs: Any) -> httpx.Response:
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
-        return await client.post("/api/v1/auth/token", data=data, **kwargs)
+    return await _post_to("/api/v1/auth/token", data=data, **kwargs)
 
 
 async def test_the_password_grant_calls_its_seam_and_answers_with_the_refresh_token():
@@ -227,3 +212,8 @@ def test_the_auth_tag_describes_person_logins():
 
     assert "password" in auth["description"]
     assert "refresh" in auth["description"]
+
+
+def test_create_token_shares_the_function_scoped_request_session():
+    """``DBSession`` commits before the response is sent: a denial's audit entry is durable once it is answered."""
+    assert inspect.signature(create_token).parameters["session"].annotation == DBSession

@@ -7,7 +7,6 @@ handed out stay valid until they expire.
 """
 
 import uuid
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import cast
@@ -19,6 +18,7 @@ from app.core.db.models import UserSession
 
 from ..audit import Actor, AuditEventType, write_user_account_audit_log
 from ..principal import ApplicationPrincipal
+from ..results import OpenedSession
 from ..scopes import format_scopes
 from ..secrets import digest, generate_secret
 from .accounts import get_user_account
@@ -56,14 +56,6 @@ class RefreshTokenState(StrEnum):
     """A token of a revoked or expired session."""
 
 
-@dataclass(frozen=True)
-class OpenedSession:
-    """A new session together with its first refresh token - the only place that plaintext exists."""
-
-    row: UserSession
-    refresh_token: str
-
-
 async def open_session(
     session: AsyncSession,
     *,
@@ -73,17 +65,17 @@ async def open_session(
     expires_at: datetime,
 ) -> OpenedSession:
     """Open a session of the account through the client; ``scope`` becomes the ceiling of every refresh."""
-    refresh_token = generate_secret(REFRESH_TOKEN_PREFIX)
-    row = UserSession(
+    plaintext = generate_secret(REFRESH_TOKEN_PREFIX)
+    user_session = UserSession(
         user_account_id=user_id,
         application_client_id=application_client_id,
         scope=format_scopes(scope),
-        refresh_token_hash=digest(refresh_token),
+        refresh_token_hash=digest(plaintext),
         expires_at=expires_at,
     )
-    session.add(row)
+    session.add(user_session)
     await session.flush()
-    return OpenedSession(row=row, refresh_token=refresh_token)
+    return OpenedSession(plaintext=plaintext, user_session=user_session)
 
 
 async def lock_session_by_refresh_token(
@@ -150,14 +142,14 @@ async def revoke_session(
 
 
 async def revoke_session_by_refresh_token(
-    session: AsyncSession, *, refresh_token: str, client: ApplicationPrincipal
+    session: AsyncSession, *, refresh_token: str, client: ApplicationPrincipal, now: datetime | None = None
 ) -> None:
     """Log out: end the live session ``refresh_token`` belongs to, if ``client`` opened it (RFC 7009).
 
     Finding none is no error - the caller answers the same either way. A rotated-out token names its
     session as well, so a logout with a stale token still ends it.
     """
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     found = await lock_session_by_refresh_token(session, refresh_token, application_client_id=client.principal_id)
     if found is not None and refresh_token_state(found, refresh_token, now=now) is not RefreshTokenState.ENDED:
         await revoke_session(session, found, reason=SessionRevokedReason.LOGOUT, actor=client, now=now)

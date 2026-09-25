@@ -19,7 +19,6 @@ from app.core.auth import (
     Scope,
     TokenDenial,
     UserTokenResult,
-    bootstrap_application_client,
     issue_user_token,
     refresh_user_token,
 )
@@ -33,7 +32,6 @@ from app.core.db import Database
 from app.core.db.models import (
     ApplicationClient,
     AuthAuditLog,
-    GrantMode,
     Party,
     PermissionScope,
     UserAccount,
@@ -41,6 +39,7 @@ from app.core.db.models import (
     UserSession,
 )
 from app.services.crm import parties, persons
+from tests.db.auth.logins import LoginClientCredentials, bootstrap_login_client
 
 pytestmark = pytest.mark.db
 
@@ -173,30 +172,24 @@ async def _invitation(db: Database, user_id: uuid.UUID, settings: AuthSettings) 
 
 
 @pytest.fixture
-async def login_client_credentials(db: Database) -> AsyncIterator[tuple[str, str]]:
-    """A committed login client ``(client_id, client_secret)``, removed afterwards with its audit entries and the
-    scope rows its grants seeded."""
+async def login_client_credentials(db: Database) -> AsyncIterator[LoginClientCredentials]:
+    """A committed login client, removed afterwards with its audit entries and the scope rows its grants seeded."""
     async with db.session() as setup:
         known_scopes = set(await setup.scalars(select(PermissionScope.key)))
-        created = await bootstrap_application_client(setup, client_id="race-portal", scopes=[Scope.AUTH_USERS_LOGIN])
-        await bootstrap_application_client(
-            setup, client_id="race-portal", scopes=[Scope.ACCOUNT_SELF], mode=GrantMode.DELEGATED
-        )
-        assert created.created_secret is not None
-        client_row_id = created.client.id
+        credentials = await bootstrap_login_client(setup, client_id="race-portal", delegated=[Scope.ACCOUNT_SELF])
     try:
-        yield "race-portal", created.created_secret.plaintext
+        yield credentials
     finally:
         async with db.session() as cleanup:
-            await cleanup.execute(delete(ApplicationClient).where(ApplicationClient.id == client_row_id))
-            await cleanup.execute(delete(AuthAuditLog).where(AuthAuditLog.principal_id == str(client_row_id)))
+            await cleanup.execute(delete(ApplicationClient).where(ApplicationClient.id == credentials.id))
+            await cleanup.execute(delete(AuthAuditLog).where(AuthAuditLog.principal_id == str(credentials.id)))
             await cleanup.execute(delete(PermissionScope).where(PermissionScope.key.not_in(known_scopes)))
 
 
 async def test_two_overlapping_refreshes_of_one_token_yield_one_rotation_and_leave_the_session_live(
-    db: Database, user_id: uuid.UUID, login_client_credentials: tuple[str, str], auth_settings: AuthSettings
+    db: Database, user_id: uuid.UUID, login_client_credentials: LoginClientCredentials, auth_settings: AuthSettings
 ):
-    client_id, client_secret = login_client_credentials
+    client_id, client_secret = login_client_credentials.basic
     async with db.session() as setup:
         account = await setup.get_one(UserAccount, user_id)
         account.password_hash = hash_secret(FIRST_PASSWORD)

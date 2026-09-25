@@ -25,16 +25,17 @@ from app.core.db.models import (
 from ..audit import AuditEventType, write_auth_audit_log
 from ..config import AuthSettings
 from ..inputs import normalize_email
-from ..passwords import dummy_password_hash
+from ..passwords import verify_dummy_password
 from ..principal import ApplicationPrincipal, AuthMethod, PrincipalType, UserPrincipal
 from ..results import IssuedUserToken, TokenDenial, UserTokenResult
 from ..roles import Role, scopes_for
 from ..scopes import Scope, parse_scopes
-from ..secrets import verify_and_update, verify_secret
+from ..secrets import verify_and_update_async, verify_secret_async
 from ..tokens import CreatedAccessToken, create_access_token, create_application_access_token
 from .accounts import get_user_account, lock_user_account_by_email
 from .clients import find_application_client
 from .errors import InvalidClientCredentialsError, InvalidClientScopeError
+from .roles import account_roles
 from .scopes import granted_active_scope_keys, resolve_token_scopes
 from .secrets import is_secret_usable, normalize_datetime
 from .sessions import (
@@ -46,9 +47,11 @@ from .sessions import (
     revoke_session,
     rotate_session,
 )
-from .users import account_roles
 
 INVALID_CLIENT_CREDENTIALS = "Invalid client credentials"
+MAX_CLIENT_CREDENTIAL_LENGTH = 255
+"""The longest ``client_id`` or ``client_secret`` worth looking at. A secret is 51 characters; a longer value
+is ``invalid_client`` at once - never hashed, never looked up, never written into the audit log."""
 RACED_REFRESH_DETAIL = "refresh token reused within grace"
 """The fixed ``token.denied`` detail of a rotated-out refresh token presented within ``REFRESH_REUSE_GRACE``."""
 
@@ -65,6 +68,13 @@ class _AuthenticatedClient:
 
     def granted(self, mode: GrantMode) -> frozenset[str]:
         return granted_active_scope_keys(self.client.scope_grants, mode=mode)
+
+    @property
+    def actor(self) -> ApplicationPrincipal:
+        """The client as the actor of a revocation its request causes."""
+        return ApplicationPrincipal(
+            principal_id=self.client.id, client_id=self.client.client_id, scopes=self.granted(GrantMode.APPLICATION)
+        )
 
 
 async def issue_client_token(
@@ -135,6 +145,9 @@ async def issue_user_token(
     if isinstance(authenticated, TokenDenial):
         return authenticated
 
+    # The row lock is held until the transaction ends: two wrong passwords arriving together must both count,
+    # so the second reads the counter the first wrote. The Argon2 work below runs in a worker thread, so
+    # waiting for the lock or the hash stalls only this login, not the event loop.
     account = await _find_login_account(session, username)
     if account is None:
         return await _refuse_login(session, None, "unknown account", password=password)
@@ -143,7 +156,7 @@ async def issue_user_token(
     if account.password_hash is None:
         return await _refuse_login(session, account.id, "no password set", password=password)
 
-    verified, upgraded_hash = verify_and_update(password, account.password_hash)
+    verified, upgraded_hash = await verify_and_update_async(password, account.password_hash)
     if not verified:
         _count_failed_login(account, settings, now=issued_at)
         return await _deny_user(session, account.id, "wrong password", TokenDenial.INVALID_GRANT)
@@ -176,8 +189,8 @@ async def issue_user_token(
         settings,
         authenticated,
         account=account,
-        user_session=opened.row,
-        refresh_token=opened.refresh_token,
+        user_session=opened.user_session,
+        refresh_token=opened.plaintext,
         roles=roles,
         scopes=token_scopes,
         now=issued_at,
@@ -214,30 +227,38 @@ async def refresh_user_token(
     if user_session is None:
         return await _deny_user(session, None, "unknown refresh token", TokenDenial.INVALID_GRANT)
 
-    actor = _client_actor(authenticated)
-    match refresh_token_state(user_session, refresh_token, now=issued_at):
-        case RefreshTokenState.ENDED:
-            return await _deny_user(
-                session, user_session.user_account_id, "refresh token of an ended session", TokenDenial.INVALID_GRANT
-            )
+    state = refresh_token_state(user_session, refresh_token, now=issued_at)
+    if state is RefreshTokenState.ENDED:
+        return await _deny_user(
+            session, user_session.user_account_id, "refresh token of an ended session", TokenDenial.INVALID_GRANT
+        )
+
+    # A disabled account ends the session whichever of its tokens arrives.
+    account = await get_user_account(session, user_session.user_account_id)
+    if account.status is UserAccountStatus.DISABLED:
+        await revoke_session(
+            session,
+            user_session,
+            reason=SessionRevokedReason.ACCOUNT_DISABLED,
+            actor=authenticated.actor,
+            now=issued_at,
+        )
+        return TokenDenial.INVALID_GRANT
+
+    match state:
         case RefreshTokenState.RACED:
-            return await _deny_user(
-                session, user_session.user_account_id, RACED_REFRESH_DETAIL, TokenDenial.INVALID_GRANT
-            )
+            return await _deny_user(session, account.id, RACED_REFRESH_DETAIL, TokenDenial.INVALID_GRANT)
         case RefreshTokenState.REUSED:
             await revoke_session(
-                session, user_session, reason=SessionRevokedReason.REUSE_DETECTED, actor=actor, now=issued_at
+                session,
+                user_session,
+                reason=SessionRevokedReason.REUSE_DETECTED,
+                actor=authenticated.actor,
+                now=issued_at,
             )
             return TokenDenial.INVALID_GRANT
         case RefreshTokenState.CURRENT:
             pass
-
-    account = await get_user_account(session, user_session.user_account_id)
-    if account.status is UserAccountStatus.DISABLED:
-        await revoke_session(
-            session, user_session, reason=SessionRevokedReason.ACCOUNT_DISABLED, actor=actor, now=issued_at
-        )
-        return TokenDenial.INVALID_GRANT
 
     roles = await account_roles(session, account)
     try:
@@ -308,20 +329,18 @@ async def _authenticate_client(
 ) -> _AuthenticatedClient | None:
     """Return the active client ``client_id`` if one of its usable secrets is ``client_secret``.
 
-    ``None`` is ``invalid_client``, and its ``token.denied`` entry is written here.
+    ``None`` is ``invalid_client``, and its ``token.denied`` entry is written here. It names the client, or for
+    an unknown one the submitted ``client_id`` - unless that is longer than ``MAX_CLIENT_CREDENTIAL_LENGTH``.
     """
+    if len(client_id) > MAX_CLIENT_CREDENTIAL_LENGTH or len(client_secret) > MAX_CLIENT_CREDENTIAL_LENGTH:
+        await _deny_client(session, None, INVALID_CLIENT_CREDENTIALS)
+        return None
+
     client = await find_application_client(session, client_id)
     if client is not None and client.status == ApplicationClientStatus.ACTIVE:
-        secret = next(
-            (
-                secret
-                for secret in client.secrets
-                if is_secret_usable(secret, now=now) and verify_secret(client_secret, secret.secret_hash)
-            ),
-            None,
-        )
-        if secret is not None:
-            return _AuthenticatedClient(client=client, secret=secret)
+        for secret in client.secrets:
+            if is_secret_usable(secret, now=now) and await verify_secret_async(client_secret, secret.secret_hash):
+                return _AuthenticatedClient(client=client, secret=secret)
 
     await _deny_client(session, client.id if client is not None else client_id, INVALID_CLIENT_CREDENTIALS)
     return None
@@ -367,7 +386,7 @@ def _login_refusal(account: UserAccount, *, now: datetime) -> str | None:
 
 async def _refuse_login(session: AsyncSession, user_id: uuid.UUID | None, detail: str, *, password: str) -> TokenDenial:
     """Refuse a login before its password is checked - as slowly as a wrong password (no enumeration)."""
-    verify_secret(password, dummy_password_hash())
+    await verify_dummy_password(password)
     return await _deny_user(session, user_id, detail, TokenDenial.INVALID_GRANT)
 
 
@@ -379,16 +398,7 @@ def _count_failed_login(account: UserAccount, settings: AuthSettings, *, now: da
         account.locked_until = now + timedelta(minutes=min(settings.login_lockout_max_minutes, 2**beyond))
 
 
-def _client_actor(authenticated: _AuthenticatedClient) -> ApplicationPrincipal:
-    """The client a refresh speaks through, as the actor of a revocation it causes."""
-    return ApplicationPrincipal(
-        principal_id=authenticated.client.id,
-        client_id=authenticated.client.client_id,
-        scopes=authenticated.granted(GrantMode.APPLICATION),
-    )
-
-
-async def _deny_client(session: AsyncSession, principal_id: uuid.UUID | str, detail: str) -> None:
+async def _deny_client(session: AsyncSession, principal_id: uuid.UUID | str | None, detail: str) -> None:
     """Record a request the client itself was refused for (steps 1 and 2 of every grant)."""
     await write_auth_audit_log(
         session,

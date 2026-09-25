@@ -3,7 +3,6 @@
 from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -18,12 +17,10 @@ from app.core.auth import (
     PrincipalType,
     Scope,
     bootstrap,
-    bootstrap_application_client,
     create_application_access_token,
 )
 from app.core.auth.audit import AuditEventType, Operator
 from app.core.auth.dependencies import get_auth_settings
-from app.core.auth.roles import BASE_USER_SCOPES, ROLE_SCOPES, Role
 from app.core.auth.secrets import hash_secret
 from app.core.auth.services.users import create_user_account
 from app.core.db.dependencies import get_db_session
@@ -43,6 +40,7 @@ from app.core.db.models import (
     UserSession,
 )
 from app.main import app
+from tests.db.auth.logins import PORTAL_DELEGATED_SCOPES, LoginClientCredentials, bootstrap_login_client
 
 AUTH_SETTINGS = AuthSettings(secret_key=SecretStr("test-signing-secret-with-at-least-32-bytes"))
 OPERATOR_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -123,49 +121,22 @@ async def token_api(session: AsyncSession) -> AsyncIterator[AsyncClient]:
         yield api_client
 
 
-@dataclass(frozen=True)
-class LoginClient:
-    """A real application client with a secret, as `POST /token` authenticates it."""
-
-    id: UUID
-    client_id: str
-    client_secret: str
-
-    @property
-    def basic(self) -> tuple[str, str]:
-        """The credentials for HTTP Basic authentication."""
-        return self.client_id, self.client_secret
-
-    @property
-    def form(self) -> dict[str, str]:
-        """The credentials as form fields."""
-        return {"client_id": self.client_id, "client_secret": self.client_secret}
-
-
-PORTAL_DELEGATED_SCOPES: frozenset[Scope] = BASE_USER_SCOPES | ROLE_SCOPES[Role.ADMIN]
-"""What the portal may do for a person at most: everything a role grants (see "Operating without a portal")."""
-
-
 @pytest.fixture
-def make_login_client(session: AsyncSession) -> Callable[..., Awaitable[LoginClient]]:
-    """Create a client with a secret and grants in both modes; by default a login client with the portal's ceiling."""
+def make_login_client(session: AsyncSession) -> Callable[..., Awaitable[LoginClientCredentials]]:
+    """Create a client with a secret on the test's ``session`` (see ``bootstrap_login_client``)."""
 
     async def _make_login_client(
         *,
         application: Iterable[Scope] = (Scope.AUTH_USERS_LOGIN,),
         delegated: Iterable[Scope] = PORTAL_DELEGATED_SCOPES,
-    ) -> LoginClient:
-        client_id = f"portal-{uuid4().hex[:8]}"
-        created = await bootstrap_application_client(session, client_id=client_id, scopes=application)
-        await bootstrap_application_client(session, client_id=client_id, scopes=delegated, mode=GrantMode.DELEGATED)
-        assert created.created_secret is not None
-        return LoginClient(id=created.client.id, client_id=client_id, client_secret=created.created_secret.plaintext)
+    ) -> LoginClientCredentials:
+        return await bootstrap_login_client(session, application=application, delegated=delegated)
 
     return _make_login_client
 
 
 @pytest.fixture
-async def login_client(make_login_client) -> LoginClient:
+async def login_client(make_login_client) -> LoginClientCredentials:
     """A login client with the portal's ceiling."""
     return await make_login_client()
 
@@ -252,7 +223,7 @@ async def application_client(session: AsyncSession) -> ApplicationClient:
 def add_user_session(
     session: AsyncSession, application_client: ApplicationClient
 ) -> Callable[[UUID], Awaitable[UserSession]]:
-    """Insert a live session for an account through the model: nothing opens sessions before P0-8.
+    """Insert a live session for an account straight through the model, without a login.
 
     The hash is an arbitrary unique string, never anything that looks like a real refresh token.
     """
@@ -285,6 +256,21 @@ def audit_events(session: AsyncSession) -> Callable[[UUID], Awaitable[Counter[st
         return Counter(event_type for _, event_type in rows)
 
     return _audit_events
+
+
+@pytest.fixture
+def audit_rows(session: AsyncSession) -> Callable[..., Awaitable[list[AuthAuditLog]]]:
+    """Read the audit entries of one event type, optionally only those naming one principal type."""
+
+    async def _audit_rows(
+        event_type: AuditEventType, principal_type: PrincipalType | None = None
+    ) -> list[AuthAuditLog]:
+        statement = select(AuthAuditLog).where(AuthAuditLog.event_type == event_type)
+        if principal_type is not None:
+            statement = statement.where(AuthAuditLog.principal_type == principal_type)
+        return list(await session.scalars(statement))
+
+    return _audit_rows
 
 
 @pytest.fixture

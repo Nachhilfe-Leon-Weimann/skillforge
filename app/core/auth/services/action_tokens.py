@@ -17,7 +17,7 @@ from ..audit import Actor, AuditEventType, format_actor, write_user_account_audi
 from ..config import AuthSettings
 from ..passwords import meets_password_policy
 from ..results import IssuedActionToken
-from ..secrets import digest, generate_secret, hash_secret
+from ..secrets import digest, generate_secret, hash_secret_async
 from .accounts import lock_user_account
 from .errors import InvalidActionTokenError, UserAccountNotFoundError, UserAccountStateError, WeakPasswordError
 from .sessions import SessionRevokedReason, revoke_sessions
@@ -76,7 +76,7 @@ async def redeem_action_token(session: AsyncSession, *, plaintext: str, new_pass
 
     # Hashed before the lock: Argon2 is slow by design, and every other issue or redeem on this
     # account would queue behind it. The re-read under the lock still decides whether it is stored.
-    password_hash = hash_secret(new_password)
+    password_hash = await hash_secret_async(new_password)
     try:
         account = await lock_user_account(session, found.user_account_id)
     except UserAccountNotFoundError:

@@ -1,5 +1,5 @@
-"""The roles the CRM derives (user-authentication spec, decision K): ``student``, ``tutor`` and ``guardian``
-are never stored.
+"""The roles of an account (user-authentication spec, decision K): the stored ones and the ones the CRM derives -
+``student``, ``tutor`` and ``guardian`` are never stored.
 
 This module reads the CRM *models*; it never imports ``app.services`` (ADR 0007).
 """
@@ -10,10 +10,20 @@ from collections.abc import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.models import PartyRelation, Student, Tutor
+from app.core.db.models import PartyRelation, Student, Tutor, UserAccount
 
 from ..reach import DELEGATION_RELATION_TYPES
 from ..roles import Role
+
+
+async def account_roles(session: AsyncSession, account: UserAccount) -> frozenset[Role]:
+    """Return every role ``account`` holds: its stored roles (loaded with it) plus the ones the CRM derives."""
+    return stored_roles(account) | await derive_roles(session, account.party_id)
+
+
+def stored_roles(account: UserAccount) -> frozenset[Role]:
+    """Return the roles stored on ``account``; its ``roles`` must be loaded."""
+    return frozenset(Role(held.role) for held in account.roles)
 
 
 async def derive_roles(session: AsyncSession, party_id: uuid.UUID) -> frozenset[Role]:

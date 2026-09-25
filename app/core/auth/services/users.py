@@ -20,7 +20,6 @@ from app.core.unset import UNSET, Unset
 from ..audit import Actor, AuditEventType, write_user_account_audit_log
 from ..inputs import normalize_email
 from ..results import UserAccountWithRoles
-from ..roles import Role
 from .accounts import find_user_account_by_party, get_user_account, lock_user_account
 from .action_tokens import invalidate_action_tokens
 from .errors import (
@@ -31,7 +30,7 @@ from .errors import (
     UserEmailAlreadyInUseError,
     UserRoleNotFoundError,
 )
-from .roles import derive_roles, derive_roles_for
+from .roles import account_roles, derive_roles_for, stored_roles
 from .sessions import SessionRevokedReason, revoke_sessions
 
 EMAIL_CONSTRAINT = "user_account_email_key"
@@ -61,12 +60,12 @@ async def create_user_account(
         raise UserAccountAlreadyExistsError(f"Party {party_id} already has a user account")
 
     normalized = None if email is None else normalize_email(email)
-    stored_roles = sorted(set(roles))
+    role_names = sorted(set(roles))
     account = UserAccount(
         party_id=party_id,
         email=normalized,
         status=UserAccountStatus.ACTIVE,
-        roles=[UserAccountRole(role=role) for role in stored_roles],
+        roles=[UserAccountRole(role=role) for role in role_names],
     )
     async with _unique_email(session):
         session.add(account)
@@ -74,7 +73,7 @@ async def create_user_account(
         session,
         account.id,
         AuditEventType.USER_ACCOUNT_CREATED,
-        f"Created the user account of party {party_id} with the stored roles [{', '.join(stored_roles)}]",
+        f"Created the user account of party {party_id} with the stored roles [{', '.join(role_names)}]",
         actor=actor,
     )
 
@@ -85,11 +84,6 @@ async def load_user_account(session: AsyncSession, user_id: uuid.UUID) -> UserAc
     """Return the account behind ``user_id`` with its stored *and* derived roles."""
     account = await get_user_account(session, user_id)
     return UserAccountWithRoles(account=account, roles=await account_roles(session, account))
-
-
-async def account_roles(session: AsyncSession, account: UserAccount) -> frozenset[Role]:
-    """Return every role ``account`` holds: its stored roles (loaded with it) plus the ones the CRM derives."""
-    return _stored_roles(account) | await derive_roles(session, account.party_id)
 
 
 async def list_user_accounts(
@@ -127,7 +121,7 @@ async def list_user_accounts(
     )
     derived = await derive_roles_for(session, (account.party_id for account in accounts))
     page = [
-        UserAccountWithRoles(account=account, roles=_stored_roles(account) | derived[account.party_id])
+        UserAccountWithRoles(account=account, roles=stored_roles(account) | derived[account.party_id])
         for account in accounts
     ]
     return page, total
@@ -247,7 +241,3 @@ def _status_event(status: UserAccountStatus) -> AuditEventType:
             return AuditEventType.USER_ACCOUNT_ENABLED
         case UserAccountStatus.DISABLED:
             return AuditEventType.USER_ACCOUNT_DISABLED
-
-
-def _stored_roles(account: UserAccount) -> frozenset[Role]:
-    return frozenset(Role(held.role) for held in account.roles)

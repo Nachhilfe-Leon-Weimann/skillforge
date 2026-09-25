@@ -43,8 +43,8 @@ from .schemas import AccessTokenResponse
 router = APIRouter()
 
 IssueClientToken = Callable[..., Awaitable[CreatedAccessToken]]
-IssueUserToken = Callable[..., Awaitable[UserTokenResult]]
-RefreshUserToken = Callable[..., Awaitable[UserTokenResult]]
+UserGrant = Callable[..., Awaitable[UserTokenResult]]
+"""The service behind a person's grant: ``issue_user_token`` or ``refresh_user_token``."""
 
 
 class GrantType(StrEnum):
@@ -101,11 +101,11 @@ def get_issue_client_token() -> IssueClientToken:
     return issue_client_token
 
 
-def get_issue_user_token() -> IssueUserToken:
+def get_issue_user_token() -> UserGrant:
     return issue_user_token
 
 
-def get_refresh_user_token() -> RefreshUserToken:
+def get_refresh_user_token() -> UserGrant:
     return refresh_user_token
 
 
@@ -199,8 +199,8 @@ async def create_token(
     session: DBSession,
     settings: AuthConfig,
     issue_client: Annotated[IssueClientToken, Depends(get_issue_client_token)],
-    issue_user: Annotated[IssueUserToken, Depends(get_issue_user_token)],
-    refresh_user: Annotated[RefreshUserToken, Depends(get_refresh_user_token)],
+    issue_user: Annotated[UserGrant, Depends(get_issue_user_token)],
+    refresh_user: Annotated[UserGrant, Depends(get_refresh_user_token)],
     form: Annotated[TokenForm, Depends(get_token_form)],
 ) -> AccessTokenResponse | JSONResponse:
     """Issue an access token.
@@ -224,9 +224,9 @@ async def create_token(
                     requested_scopes=form.scope,
                 )
             except InvalidClientCredentialsError:
-                return _deny(request, TokenDenial.INVALID_CLIENT, form)
+                return _deny(request, TokenDenial.INVALID_CLIENT, form.client_id)
             except InvalidClientScopeError:
-                return _deny(request, TokenDenial.INVALID_SCOPE, form)
+                return _deny(request, TokenDenial.INVALID_SCOPE, form.client_id)
             return AccessTokenResponse.from_created_token(token)
         case PasswordGrant(username=username, password=password):
             result = await issue_user(
@@ -249,12 +249,12 @@ async def create_token(
             )
 
     if isinstance(result, TokenDenial):
-        return _deny(request, result, form)
+        return _deny(request, result, form.client_id)
     return AccessTokenResponse.from_issued_user_token(result)
 
 
-def _deny(request: Request, denial: TokenDenial, form: TokenForm) -> JSONResponse:
+def _deny(request: Request, denial: TokenDenial, client_id: str) -> JSONResponse:
     """Answer ``denial``, naming the reason in the request log - never the username or a secret."""
     error, auth_reason = _DENIALS[denial]
-    bind_request_log_context(request, auth_reason=auth_reason, client_id=form.client_id)
+    bind_request_log_context(request, auth_reason=auth_reason, client_id=client_id)
     return error.response()

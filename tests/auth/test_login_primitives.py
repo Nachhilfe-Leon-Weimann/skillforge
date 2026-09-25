@@ -1,13 +1,16 @@
-"""The pure building blocks of the login: password verification with upgrade, the login settings, and how a
-presented refresh token relates to its session."""
+"""The building blocks of the login: password verification with upgrade and off the event loop, the login
+settings, and how a presented refresh token relates to its session."""
 
+import asyncio
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from pwdlib.hashers.argon2 import Argon2Hasher
 from pydantic import ValidationError
 
-from app.core.auth import AuthSettings
+from app.core.auth import AuthSettings, passwords, secrets
 from app.core.auth.secrets import digest, hash_secret, verify_and_update, verify_secret
 from app.core.auth.services.sessions import REFRESH_REUSE_GRACE, RefreshTokenState, refresh_token_state
 from app.core.db.models import UserSession
@@ -84,3 +87,42 @@ def test_any_token_of_a_revoked_session_is_ended():
 
 def test_the_reuse_grace_is_ten_seconds():
     assert timedelta(seconds=10) == REFRESH_REUSE_GRACE
+
+
+@pytest.mark.parametrize(
+    ("module", "name", "call"),
+    [
+        (secrets, "hash_secret", lambda: secrets.hash_secret_async("pw")),
+        (secrets, "verify_secret", lambda: secrets.verify_secret_async("pw", "hash")),
+        (secrets, "verify_and_update", lambda: secrets.verify_and_update_async("pw", "hash")),
+        (passwords, "_verify_dummy", lambda: passwords.verify_dummy_password("pw")),
+    ],
+)
+async def test_the_argon2_work_runs_in_a_worker_thread(monkeypatch, module, name: str, call):
+    threads: list[threading.Thread] = []
+    monkeypatch.setattr(module, name, lambda *args: threads.append(threading.current_thread()))
+
+    await call()
+
+    assert threads and threads[0] is not threading.main_thread()
+
+
+async def test_the_event_loop_keeps_running_while_a_secret_is_verified(monkeypatch):
+    def slow_verify(secret: str, secret_hash: str) -> bool:
+        time.sleep(0.3)
+        return True
+
+    monkeypatch.setattr(secrets, "verify_secret", slow_verify)
+    ticks = 0
+
+    async def tick() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    ticker = asyncio.create_task(tick())
+    assert await secrets.verify_secret_async("pw", "hash")
+    ticker.cancel()
+
+    assert ticks >= 10, "the loop served other tasks during the verification"

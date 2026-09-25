@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from app.core.db.models import ApplicationClient, ApplicationClientSecret, UserAccount, UserActionToken
+from app.core.db.models import ApplicationClient, ApplicationClientSecret, UserAccount, UserActionToken, UserSession
 
 from .roles import Role
 from .tokens import CreatedAccessToken
@@ -51,6 +51,17 @@ class BootstrappedAdminAccount:
 
 
 @dataclass(frozen=True)
+class OpenedSession:
+    """A new login session as it leaves the service: the only place its first refresh token's plaintext exists.
+
+    ``user_session`` holds only the digest; the plaintext travels next to it, straight into the response.
+    """
+
+    plaintext: str
+    user_session: UserSession
+
+
+@dataclass(frozen=True)
 class IssuedUserToken:
     """What a person's login or refresh hands out: the access token plus the session's new refresh token.
 
@@ -64,7 +75,7 @@ class IssuedUserToken:
 
 
 class TokenDenial(StrEnum):
-    """Why a person's grant was refused: the OAuth2 error code (RFC 6749, section 5.2) of the answer.
+    """Why a grant was refused: the OAuth2 error code (RFC 6749, section 5.2) of the answer.
 
     Returned, never raised (user-authentication spec, decision O): a denial may have written state - an
     audit entry, the failed-login counter, a revoked session - that raising would roll back.

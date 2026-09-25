@@ -12,12 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import AuthSettings, UserPrincipal, validate_access_token
 from app.core.auth.audit import AuditEventType, Operator
 from app.core.auth.principal import AuthMethod, PrincipalType
-from app.core.auth.roles import BASE_USER_SCOPES, ROLE_SCOPES, Role
 from app.core.auth.scopes import Scope, canonical, format_scopes
 from app.core.auth.secrets import digest
 from app.core.auth.services import users as users_service
 from app.core.db.models import AuthAuditLog, UserAccount, UserAccountRoleName, UserAccountStatus, UserSession
 from app.core.logging import LogFormat, LoggingSettings, LogLevel, configure_logging
+from tests.db.auth.logins import PORTAL_DELEGATED_SCOPES, LoginClientCredentials
 
 pytestmark = pytest.mark.db
 
@@ -25,30 +25,33 @@ EMAIL = "anna.schmidt@example.org"
 INVALID_GRANT = {"detail": "Invalid credentials or refresh token", "code": "invalid_grant"}
 UNAUTHORIZED_CLIENT = {"detail": "Client may not use this grant", "code": "unauthorized_client"}
 INVALID_SCOPE = {"detail": "Invalid requested scope", "code": "invalid_scope"}
-ADMIN_SCOPES = format_scopes(canonical(BASE_USER_SCOPES | ROLE_SCOPES[Role.ADMIN]))
+ADMIN_SCOPES = format_scopes(canonical(PORTAL_DELEGATED_SCOPES))
+"""What an admin gets through the portal: its whole ceiling, in canonical form."""
 
 
 async def _login(
-    token_api: AsyncClient, client, password: str, *, username: str = EMAIL, **form: str
+    token_api: AsyncClient, client: LoginClientCredentials, password: str, *, username: str = EMAIL, **form: str
 ) -> httpx.Response:
     return await token_api.post(
         "/token", auth=client.basic, data={"grant_type": "password", "username": username, "password": password, **form}
     )
 
 
-async def _refresh(token_api: AsyncClient, client, refresh_token: str, **form: str) -> httpx.Response:
+async def _refresh(
+    token_api: AsyncClient, client: LoginClientCredentials, refresh_token: str, **form: str
+) -> httpx.Response:
     return await token_api.post(
         "/token", auth=client.basic, data={"grant_type": "refresh_token", "refresh_token": refresh_token, **form}
     )
 
 
-async def _logged_in(token_api: AsyncClient, client, password: str, **form: str) -> dict:
+async def _logged_in(token_api: AsyncClient, client: LoginClientCredentials, password: str, **form: str) -> dict:
     response = await _login(token_api, client, password, **form)
     assert response.status_code == 200, response.text
     return response.json()
 
 
-async def _client_token(token_api: AsyncClient, client) -> dict[str, str]:
+async def _client_token(token_api: AsyncClient, client: LoginClientCredentials) -> dict[str, str]:
     """The bearer header of ``client``'s own token: redeem and revoke take the client's token."""
     response = await token_api.post("/token", auth=client.basic, data={"grant_type": "client_credentials"})
     assert response.status_code == 200, response.text
@@ -74,13 +77,6 @@ async def _session_of(session: AsyncSession, refresh_token: str) -> UserSession:
 async def _fresh(session: AsyncSession, account: UserAccount) -> UserAccount:
     await session.refresh(account)
     return account
-
-
-async def _denials(session: AsyncSession) -> list[AuthAuditLog]:
-    statement = select(AuthAuditLog).where(
-        AuthAuditLog.event_type == AuditEventType.TOKEN_DENIED, AuthAuditLog.principal_type == PrincipalType.USER
-    )
-    return list(await session.scalars(statement))
 
 
 @pytest.fixture
@@ -234,7 +230,7 @@ async def test_password_accepts_basic_and_form_client_authentication_and_basic_w
 
 
 async def test_a_client_without_auth_users_login_is_unauthorized_client_for_both_grants(
-    token_api: AsyncClient, login_client, make_login_client, make_login_account, password: str
+    token_api: AsyncClient, login_client, make_login_client, make_login_account, audit_rows, password: str
 ):
     await make_login_account()
     refresh_token = (await _logged_in(token_api, login_client, password))["refresh_token"]
@@ -245,6 +241,40 @@ async def test_a_client_without_auth_users_login_is_unauthorized_client_for_both
 
     assert (login.status_code, login.json()) == (400, UNAUTHORIZED_CLIENT)
     assert (refresh.status_code, refresh.json()) == (400, UNAUTHORIZED_CLIENT)
+    # Step 2 is the client's own denial: recorded against the client, as `invalid_client` is.
+    denials = await audit_rows(AuditEventType.TOKEN_DENIED)
+    assert [(row.principal_type, row.principal_id, row.success, row.detail) for row in denials] == [
+        (PrincipalType.APPLICATION, str(outsider.id), False, "Client may not log people in")
+    ] * 2
+
+
+@pytest.mark.parametrize("field", ["client_id", "client_secret"])
+async def test_an_over_long_client_credential_is_invalid_client_and_never_reaches_the_audit_log(
+    token_api: AsyncClient, login_client, audit_rows, field: str
+):
+    over_long = "x" * 8000
+    form = login_client.form | {field: over_long}
+
+    responses = [
+        await token_api.post("/token", data={"grant_type": grant_type, "username": EMAIL, "password": "pw", **form})
+        for grant_type in ("client_credentials", "password")
+    ]
+
+    assert [(r.status_code, r.json()["code"]) for r in responses] == [(401, "invalid_client")] * 2
+    denials = await audit_rows(AuditEventType.TOKEN_DENIED)
+    assert [(row.principal_type, row.principal_id) for row in denials] == [(PrincipalType.APPLICATION, None)] * 2
+    assert not any(over_long in (row.detail or "") for row in denials)
+
+
+async def test_a_client_credential_of_the_longest_length_is_still_looked_up(token_api: AsyncClient, audit_rows):
+    longest = "x" * 255
+
+    response = await token_api.post(
+        "/token", data={"grant_type": "client_credentials", "client_id": longest, "client_secret": "secret"}
+    )
+
+    assert response.json()["code"] == "invalid_client"
+    assert [row.principal_id for row in await audit_rows(AuditEventType.TOKEN_DENIED)] == [longest]
 
 
 async def test_the_login_scope_granted_as_delegated_does_not_make_a_login_client(
@@ -306,15 +336,28 @@ async def test_every_refused_login_answers_the_identical_invalid_grant_body(
     assert (await _fresh(session, locked)).failed_login_count == 0, "a locked account's counter does not move"
 
 
+@pytest.mark.parametrize(
+    "username", ["Anna.Schmidt@Example.org", "  anna.schmidt@example.org  ", "Anna Schmidt <Anna.Schmidt@example.org>"]
+)
+async def test_every_spelling_of_the_address_logs_in_to_the_account(
+    token_api: AsyncClient, login_client, make_login_account, password: str, auth_settings: AuthSettings, username: str
+):
+    account = await make_login_account()
+
+    login = await _logged_in(token_api, login_client, password, username=username)
+
+    assert _person(auth_settings, login).principal_id == account.id
+
+
 async def test_a_denied_login_names_the_account_it_matched_and_none_otherwise(
-    token_api: AsyncClient, login_client, make_login_account, session: AsyncSession, password: str
+    token_api: AsyncClient, login_client, make_login_account, audit_rows, password: str
 ):
     account = await make_login_account()
 
     await _login(token_api, login_client, "not the password")
     await _login(token_api, login_client, password, username="unknown@example.org")
 
-    denials = await _denials(session)
+    denials = await audit_rows(AuditEventType.TOKEN_DENIED, PrincipalType.USER)
     assert sorted((row.principal_id or "", row.success) for row in denials) == [("", False), (str(account.id), False)]
     assert not any("example.org" in (row.detail or "") for row in denials)
 
@@ -343,7 +386,7 @@ async def test_after_five_wrong_passwords_the_right_one_is_refused_and_the_count
 
 
 async def test_a_denied_scope_keeps_the_counter_reset_and_opens_no_session(
-    token_api: AsyncClient, login_client, make_login_account, session: AsyncSession, password: str
+    token_api: AsyncClient, login_client, make_login_account, session: AsyncSession, audit_rows, password: str
 ):
     account = await make_login_account()
     account.failed_login_count = 3
@@ -354,7 +397,8 @@ async def test_a_denied_scope_keeps_the_counter_reset_and_opens_no_session(
     assert response.json() == INVALID_SCOPE
     assert (await _fresh(session, account)).failed_login_count == 0
     assert await session.scalar(select(UserSession).where(UserSession.user_account_id == account.id)) is None
-    assert [row.principal_id for row in await _denials(session)] == [str(account.id)]
+    denials = await audit_rows(AuditEventType.TOKEN_DENIED, PrincipalType.USER)
+    assert [row.principal_id for row in denials] == [str(account.id)]
 
 
 # --- Scopes --------------------------------------------------------------------------------------

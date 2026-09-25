@@ -7,11 +7,17 @@ Two hash families, chosen by what they protect:
   a lookup key.
 - SHA-256 (``digest``) for opaque tokens that are looked up by their hash: action tokens and refresh
   tokens. They carry full entropy, so a fast, deterministic hash is enough.
+
+Argon2 takes tens of milliseconds of CPU by design. On the event loop that would stall every request the
+process serves - SkillBot's included - so request code awaits the ``*_async`` variants, which run the work
+in a worker thread (``off_the_loop``).
 """
 
 import hashlib
 import secrets as random_secrets
+from collections.abc import Callable
 
+import anyio.to_thread
 from pwdlib import PasswordHash
 from pwdlib import exceptions as pwdlib_exceptions
 
@@ -20,6 +26,8 @@ SECRET_PREFIX = "sf_live_"
 SECRET_BYTES = 32
 
 _PASSWORD_HASH = PasswordHash.recommended()
+_UNREADABLE_HASH = (pwdlib_exceptions.UnknownHashError, ValueError, TypeError)
+"""What verifying against a hash of an unknown or broken format raises: a mismatch, not an error."""
 
 
 def generate_secret(prefix: str, nbytes: int = SECRET_BYTES) -> str:
@@ -42,7 +50,7 @@ def verify_secret(secret: str, secret_hash: str) -> bool:
     """Whether ``secret`` produced ``secret_hash``; a hash of an unknown format is a mismatch."""
     try:
         return _PASSWORD_HASH.verify(secret, secret_hash)
-    except pwdlib_exceptions.UnknownHashError, ValueError, TypeError:
+    except _UNREADABLE_HASH:
         return False
 
 
@@ -54,8 +62,28 @@ def verify_and_update(secret: str, secret_hash: str) -> tuple[bool, str | None]:
     """
     try:
         return _PASSWORD_HASH.verify_and_update(secret, secret_hash)
-    except pwdlib_exceptions.UnknownHashError, ValueError, TypeError:
+    except _UNREADABLE_HASH:
         return False, None
+
+
+async def off_the_loop[T](function: Callable[..., T], *args: object) -> T:
+    """Run slow hashing work in a worker thread, so the event loop keeps serving other requests."""
+    return await anyio.to_thread.run_sync(function, *args)
+
+
+async def hash_secret_async(secret: str) -> str:
+    """``hash_secret``, off the event loop."""
+    return await off_the_loop(hash_secret, secret)
+
+
+async def verify_secret_async(secret: str, secret_hash: str) -> bool:
+    """``verify_secret``, off the event loop."""
+    return await off_the_loop(verify_secret, secret, secret_hash)
+
+
+async def verify_and_update_async(secret: str, secret_hash: str) -> tuple[bool, str | None]:
+    """``verify_and_update``, off the event loop."""
+    return await off_the_loop(verify_and_update, secret, secret_hash)
 
 
 def digest(token: str) -> str:
