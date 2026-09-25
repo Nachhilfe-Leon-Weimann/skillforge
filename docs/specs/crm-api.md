@@ -102,7 +102,8 @@ settings (`autoflush=False`, `expire_on_commit=False`). Agents can rely on these
 ## Route map
 
 All routes live under `/api/v1/crm`, tag `crm`. Reads need `crm:read`, everything else `crm:write`, declared with
-`dependencies=[require_scopes(...)]` on the decorator.
+`dependencies=[require_scopes(...)]` on the decorator. Exception: `GET /parties` and `GET /parties/{party_id}` take
+`CrmReadAccess` and accept `crm:read` or `crm:read:own` (P0-7 of [`user-authentication.md`](user-authentication.md)).
 
 ```
 # Parties - polymorphic read side
@@ -299,10 +300,11 @@ class RelationListParams(PageParams):
 ## Service layer
 
 ```
-app/api/v1/common/dependencies.py    DBSession with scope="function"                                  (new)
+app/core/db/dependencies.py          DBSession with scope="function"; re-exported from app.api.v1.common
 app/api/v1/crm/
   __init__.py                        router: prefix /crm, tag crm
-  params.py                          PartyId, SubjectId, ContactInfoId, PartyListQuery, RelationListQuery
+  params.py                          PartyId, SubjectId, ContactInfoId, PartyListQuery, RelationListQuery,
+                                     CrmReadAccess, VisibleParty
   schemas.py                         read and write models, from_model mappers, party_detail()
   subjects.py  parties.py  persons.py  companies.py  roles.py  contact_infos.py  relations.py
 app/services/crm/

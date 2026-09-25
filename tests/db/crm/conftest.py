@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -10,7 +10,14 @@ from pydantic import SecretStr
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthSettings, Scope, create_application_access_token
+from app.core.auth import (
+    AuthMethod,
+    AuthSettings,
+    Scope,
+    UserPrincipal,
+    create_access_token,
+    create_application_access_token,
+)
 from app.core.auth.dependencies import get_auth_settings
 from app.core.db.dependencies import get_db_session
 from app.core.db.models import Party
@@ -48,6 +55,28 @@ async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
             yield api_client
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def person_headers() -> Callable[..., dict[str, str]]:
+    """Build the bearer header of a person's token for a party - minted directly, no account row needed.
+
+    Pass it per request to the ``client`` fixture, which verifies it with the same settings.
+    """
+
+    def _person_headers(party_id: UUID, *scopes: Scope) -> dict[str, str]:
+        principal = UserPrincipal(
+            principal_id=uuid4(),
+            client_id="portal",
+            scopes=frozenset(str(scope) for scope in scopes),
+            party_id=party_id,
+            session_id=uuid4(),
+            roles=frozenset(),
+            auth_methods=frozenset({AuthMethod.PASSWORD}),
+        )
+        return {"Authorization": f"Bearer {create_access_token(_AUTH_SETTINGS, principal).access_token}"}
+
+    return _person_headers
 
 
 LONG_AGO = datetime(2020, 1, 1, tzinfo=UTC)

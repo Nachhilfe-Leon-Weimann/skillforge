@@ -2,8 +2,9 @@
 
 P0-5 of `docs/specs/user-authentication.md` renamed the scheme key from the class name FastAPI derived
 (`OAuth2ClientCredentialsBearer`) to `OAuth2` - deliberately and once, while no consumer is live.
-`SCOPES_AT_THE_RENAME` and `PUBLIC_AT_THE_RENAME` pin what every operation demanded before: the rename moved the
-key and nothing else.
+`SCOPES_AT_THE_RENAME` and `PUBLIC_AT_THE_RENAME` pin what the operations demanded before: the rename moved the
+key and nothing else. A later slice that changes an operation's requirement on purpose drops it from the pins
+(P0-7 did so for the two party reads), so together they name every operation at the rename but those.
 """
 
 from typing import Any
@@ -18,6 +19,8 @@ SCHEME_NAME = "OAuth2"
 # Every operation that existed at the rename, with the scopes of its one security requirement.
 # A later slice that deliberately changes an operation's requirement removes that operation here in
 # the same PR, with a comment naming the slice. Operations added after the rename are not pinned.
+# P0-7 (own data) removed `GET /api/v1/crm/parties` and `GET /api/v1/crm/parties/{party_id}`: they accept
+# `crm:read` or `crm:read:own` as two alternative requirements.
 SCOPES_AT_THE_RENAME: dict[tuple[str, str], list[str]] = {
     ("GET", "/api/v1/auth/clients"): ["auth:clients:manage"],
     ("POST", "/api/v1/auth/clients"): ["auth:clients:manage"],
@@ -66,9 +69,7 @@ SCOPES_AT_THE_RENAME: dict[tuple[str, str], list[str]] = {
     ("PUT", "/api/v1/bot/users/{discord_id}/groups/{group_key}"): ["bot:write"],
     ("POST", "/api/v1/crm/companies"): ["crm:write"],
     ("PATCH", "/api/v1/crm/companies/{party_id}"): ["crm:write"],
-    ("GET", "/api/v1/crm/parties"): ["crm:read"],
     ("DELETE", "/api/v1/crm/parties/{party_id}"): ["crm:write"],
-    ("GET", "/api/v1/crm/parties/{party_id}"): ["crm:read"],
     ("POST", "/api/v1/crm/parties/{party_id}/contact-infos"): ["crm:write"],
     ("DELETE", "/api/v1/crm/parties/{party_id}/contact-infos/{contact_info_id}"): ["crm:write"],
     ("PATCH", "/api/v1/crm/parties/{party_id}/contact-infos/{contact_info_id}"): ["crm:write"],
@@ -89,7 +90,7 @@ SCOPES_AT_THE_RENAME: dict[tuple[str, str], list[str]] = {
 
 # Every operation that was public at the rename: FastAPI renders it without a `security` key. A later
 # slice that deliberately guards one removes it here in the same PR, with a comment naming the slice.
-# Together the two pins name every operation at the rename.
+# Together the two pins name every operation at the rename that no later slice changed on purpose.
 PUBLIC_AT_THE_RENAME: frozenset[tuple[str, str]] = frozenset({
     ("GET", "/"),
     ("POST", "/api/v1/auth/token"),

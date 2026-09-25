@@ -99,17 +99,23 @@ async def list_parties(
     subject_id: int | None = None,
     q: str | None = None,
     updated_since: datetime | None = None,
+    party_ids: frozenset[uuid.UUID] | None = None,
 ) -> tuple[list[Party], int]:
     """Return one page of parties matching all given filters, plus the size of the filtered set.
 
     Filters never fail: a combination nothing can match (a company holding a role, an unknown
-    subject) is an empty page.
+    subject) is an empty page. ``party_ids`` confines the list to those parties - a reader's reach;
+    ``None`` lists them all.
     """
     filtered = (
         select(Party)
         .outerjoin(Person, Person.party_id == Party.id)
         .outerjoin(Company, Company.party_id == Party.id)
-        .where(*_filters(type=type, role=role, subject_id=subject_id, q=q, updated_since=updated_since))
+        .where(
+            *_filters(
+                type=type, role=role, subject_id=subject_id, q=q, updated_since=updated_since, party_ids=party_ids
+            )
+        )
     )
     total = await session.scalar(select(func.count()).select_from(filtered.subquery()))
     result = await session.execute(
@@ -155,8 +161,12 @@ def _filters(
     subject_id: int | None,
     q: str | None,
     updated_since: datetime | None,
+    party_ids: frozenset[uuid.UUID] | None,
 ) -> list[ColumnElement[bool]]:
     filters: list[ColumnElement[bool]] = []
+    if party_ids is not None:
+        filters.append(Party.id.in_(party_ids))
+
     if type is not None:
         filters.append(Party.type == type)
 

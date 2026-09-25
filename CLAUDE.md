@@ -32,8 +32,8 @@ app/
   api/v1/            endpoints: auth/ (token, clients, me, users, password), bot/ (runtime, jobs, operations,
                      command_envs, students, tutors, users, authz), crm/ (parties, persons, companies,
                      roles, contact_infos, relations, subjects; params + schemas); common/ (shared API
-                     vocabulary: error envelope + handlers, error_responses, Page/PageParams, DBSession,
-                     OpenAPI hooks)
+                     vocabulary: error envelope + handlers, error_responses, Page/PageParams, OpenAPI hooks;
+                     re-exports DBSession)
   services/bot/      business logic: transitions, operations, jobs, principals, provisioning,
                      authz, command_envs, contexts, profile, reaper, views, errors
   services/crm/      system of record: parties (PARTY_GRAPH, load_party, saved), persons, companies,
@@ -41,8 +41,8 @@ app/
   services/system/   health aggregation + worker heartbeats (backs /health)
   workers/           reaper.py (lifecycle guardian: job reaper + operation sweeper)
   cli/               deadletters.py (dead-letter list/requeue operator commands)
-  core/              auth/ (OAuth2, JWT, scopes, accounts), db/ (engine, models/<schema>/), logging/, config.py,
-                     errors.py (HTTP-agnostic error taxonomy),
+  core/              auth/ (OAuth2, JWT, scopes, accounts, reach), db/ (engine, DBSession, models/<schema>/),
+                     logging/, config.py, errors.py (HTTP-agnostic error taxonomy),
                      unset.py (the services' UNSET sentinel)
 migrations/          Alembic (env.py creates schemas; baseline = explicit DDL)
 tests/               api/, auth/, db/ (db/crm/, db/auth/: the CRM and auth apps against Postgres), workers/
@@ -75,7 +75,9 @@ DB schemas: `core`, `geo`, `ext`, `bot`, `auth`, `system` - see
   decorator; services raise taxonomy errors (`app/core/errors.py`) and endpoints neither catch them
   nor raise `HTTPException` - declare them with `responses=error_responses(...)`; lists take a
   `PageParams` subclass and return `Page[T]`; new schemas derive from `ApiModel`. Never hand-write
-  401/403 docs or an `operation_id`.
+  401/403 docs or an `operation_id`. A route that serves people restricted to their own data takes an
+  `Access` from `require_access(...)` instead and filters by it - never by hand
+  ([ADR 0008](docs/decisions/0008-user-authentication-and-reach.md)).
 - **The CRM is the system of record** ([spec](docs/specs/crm-api.md),
   [ADR 0007](docs/decisions/0007-crm-system-of-record.md)): nothing under `app/services/crm` or
   `app/api/v1/crm` imports the bot domain, and no CRM write looks at Discord state. Every write
