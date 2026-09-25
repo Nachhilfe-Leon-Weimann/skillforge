@@ -8,9 +8,13 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from app.core.auth import (
+    ApplicationPrincipal,
+    AuthMethod,
     AuthSettings,
     Principal,
     Scope,
+    UserPrincipal,
+    create_access_token,
     create_application_access_token,
     require_application,
     require_scopes,
@@ -21,7 +25,7 @@ BotWritePrincipal = Annotated[Principal, require_scopes("bot:write")]
 # require_scopes refuses a reach-qualified scope, so this requirement is declared with the bare marker.
 CrmReadOwnPrincipal = Annotated[Principal, Security(get_current_principal, scopes=["crm:read:own"])]
 CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
-ApplicationPrincipal = Annotated[Principal, Depends(require_application)]
+ApplicationOnlyPrincipal = Annotated[ApplicationPrincipal, Depends(require_application)]
 
 
 async def test_get_current_principal_returns_principal_for_valid_token():
@@ -120,8 +124,8 @@ async def test_require_scopes_guards_a_route_from_the_decorator():
 def test_require_scopes_declares_the_scopes_in_openapi_for_both_positions():
     paths = _app(_settings()).openapi()["paths"]
 
-    assert paths["/write"]["post"]["security"] == [{"OAuth2ClientCredentialsBearer": ["bot:write"]}]
-    assert paths["/guarded"]["post"]["security"] == [{"OAuth2ClientCredentialsBearer": ["bot:write"]}]
+    assert paths["/write"]["post"]["security"] == [{"OAuth2": ["bot:write"]}]
+    assert paths["/guarded"]["post"]["security"] == [{"OAuth2": ["bot:write"]}]
 
 
 async def test_a_crm_read_own_token_is_forbidden_on_a_route_that_requires_crm_read():
@@ -151,20 +155,33 @@ async def test_require_application_rejects_non_application_principal():
     app = FastAPI()
 
     async def fake_principal() -> Principal:
-        return Principal(
-            principal_type="user",
-            principal_id=uuid4(),
-            subject="user:123",
-            scopes=frozenset({"bot:read"}),
-        )
+        return _person(scopes={"bot:read"})
 
     app.dependency_overrides[get_current_principal] = fake_principal
 
     @app.get("/application-only")
-    async def application_only(principal: ApplicationPrincipal):
+    async def application_only(principal: ApplicationOnlyPrincipal):
         return {"principal_type": principal.principal_type}
 
     response = await _request(app, "GET", "/application-only")
+
+    assert response.status_code == 403
+
+
+async def test_require_application_rejects_a_person_token_whatever_it_carries():
+    """A person is not an application client, whatever scopes their token carries."""
+    settings = _settings()
+    app = FastAPI()
+    app.dependency_overrides[get_auth_settings] = lambda: settings
+
+    @app.get("/application-only")
+    async def application_only(principal: ApplicationOnlyPrincipal):
+        return {"principal_type": principal.principal_type}
+
+    token = create_access_token(settings, _person(scopes={"account:self", "bot:read", "crm:write"}))
+    response = await _request(
+        app, "GET", "/application-only", headers={"Authorization": f"Bearer {token.access_token}"}
+    )
 
     assert response.status_code == 403
 
@@ -206,6 +223,18 @@ def _app(settings: AuthSettings) -> FastAPI:
         return {"scopes": sorted(principal.scopes)}
 
     return app
+
+
+def _person(*, scopes: set[str]) -> UserPrincipal:
+    return UserPrincipal(
+        principal_id=uuid4(),
+        client_id="portal",
+        scopes=frozenset(scopes),
+        party_id=uuid4(),
+        session_id=uuid4(),
+        roles=frozenset(),
+        auth_methods=frozenset({AuthMethod.PASSWORD}),
+    )
 
 
 def _bearer(settings: AuthSettings, *, scopes: list[str]) -> dict[str, str]:

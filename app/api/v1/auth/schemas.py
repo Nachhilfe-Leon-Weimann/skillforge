@@ -4,8 +4,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.v1.common import ApiModel
-from app.core.auth.principal import Principal
+from app.core.auth.principal import Principal, UserPrincipal
 from app.core.auth.results import CreatedClientSecret
+from app.core.auth.roles import Role
 from app.core.auth.tokens import CreatedAccessToken
 from app.core.db.models import ApplicationClient, ApplicationClientStatus, GrantMode
 
@@ -30,18 +31,28 @@ class MeResponse(ApiModel):
     """What the calling token says about its bearer."""
 
     principal_type: str
-    """Kind of principal the token was issued to; `application` for an application client."""
+    """Kind of principal the token was issued to: `application` for an application client, `user` for a person."""
     client_id: str | None
-    """Client ID of the application client; `null` for a principal that is not a client."""
+    """Client ID of the application client, or for a person the client that logged them in."""
     scopes: list[str]
-    """Scopes the token grants, sorted."""
+    """Scopes the token grants, sorted and canonical: an unqualified scope implies its `:own` form."""
+    user_id: UUID | None
+    """User account of the person the token speaks for; `null` for an application principal."""
+    party_id: UUID | None
+    """CRM party of that person; `null` for an application principal."""
+    roles: list[Role]
+    """Roles the person holds, sorted - informational, which views to offer; empty for an application principal."""
 
     @classmethod
     def from_principal(cls, principal: Principal) -> MeResponse:
+        person = principal if isinstance(principal, UserPrincipal) else None
         return cls(
             principal_type=principal.principal_type,
             client_id=principal.client_id,
             scopes=sorted(principal.scopes),
+            user_id=person.principal_id if person else None,
+            party_id=person.party_id if person else None,
+            roles=sorted(person.roles) if person else [],
         )
 
 

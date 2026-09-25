@@ -1,6 +1,6 @@
 from .config import AuthSettings
 from .dependencies import get_current_principal, require_application, require_scopes
-from .principal import Principal
+from .principal import ApplicationPrincipal, AuthMethod, Principal, PrincipalType, UserPrincipal
 from .results import BootstrappedApplicationClient, CreatedClientSecret
 from .scopes import Scope
 from .secrets import (
@@ -30,7 +30,13 @@ from .services import (
     seed_default_scopes,
     update_application_client,
 )
-from .tokens import CreatedAccessToken, TokenValidationError, create_application_access_token, validate_access_token
+from .tokens import (
+    CreatedAccessToken,
+    TokenValidationError,
+    create_access_token,
+    create_application_access_token,
+    validate_access_token,
+)
 
 __all__ = [
     "ApplicationClientAlreadyExistsError",
@@ -38,6 +44,8 @@ __all__ = [
     "ApplicationClientNotFoundError",
     "ApplicationClientScopeGrantNotFoundError",
     "ApplicationClientSecretNotFoundError",
+    "ApplicationPrincipal",
+    "AuthMethod",
     "AuthSettings",
     "BootstrappedApplicationClient",
     "ClientCredentialsError",
@@ -46,9 +54,12 @@ __all__ = [
     "InvalidClientCredentialsError",
     "InvalidClientScopeError",
     "Principal",
+    "PrincipalType",
     "Scope",
     "TokenValidationError",
+    "UserPrincipal",
     "bootstrap_application_client",
+    "create_access_token",
     "create_application_client",
     "create_application_client_secret",
     "create_application_access_token",

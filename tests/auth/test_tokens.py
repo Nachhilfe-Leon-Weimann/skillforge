@@ -5,8 +5,13 @@ import jwt
 import pytest
 from pydantic import SecretStr
 
-from app.core.auth import AuthSettings, TokenValidationError, create_application_access_token, validate_access_token
-from app.core.auth.tokens import PRINCIPAL_TYPE_APPLICATION
+from app.core.auth import (
+    AuthSettings,
+    PrincipalType,
+    TokenValidationError,
+    create_application_access_token,
+    validate_access_token,
+)
 
 
 def test_create_and_validate_application_access_token():
@@ -25,7 +30,7 @@ def test_create_and_validate_application_access_token():
     assert created.token_type == "bearer"
     assert created.expires_in == 900
     assert created.scope == "data:read data:write"
-    assert principal.principal_type == PRINCIPAL_TYPE_APPLICATION
+    assert principal.principal_type == PrincipalType.APPLICATION
     assert principal.principal_id == principal_id
     assert principal.subject == "app:some-client"
     assert principal.client_id == "some-client"
@@ -76,9 +81,7 @@ def test_validate_access_token_rejects_unsupported_principal_type():
     settings = _settings()
     token = _encode_claims(
         settings,
-        principal_type="user",
-        subject="user:123",
-        client_id="some-client",
+        principal_type="service",
         scopes="data:read",
     )
 
@@ -128,7 +131,7 @@ def _settings(
 def _encode_claims(
     settings: AuthSettings,
     *,
-    principal_type: str = PRINCIPAL_TYPE_APPLICATION,
+    principal_type: str = PrincipalType.APPLICATION,
     principal_id: str | None = None,
     subject: str = "app:some-client",
     client_id: str = "some-client",
