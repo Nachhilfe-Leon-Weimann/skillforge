@@ -2,14 +2,24 @@ from typing import Annotated, Any
 from uuid import uuid4
 
 import httpx
-from fastapi import Depends, FastAPI
+import pytest
+from fastapi import Depends, FastAPI, Security
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
-from app.core.auth import AuthSettings, Principal, create_application_access_token, require_application, require_scopes
+from app.core.auth import (
+    AuthSettings,
+    Principal,
+    Scope,
+    create_application_access_token,
+    require_application,
+    require_scopes,
+)
 from app.core.auth.dependencies import get_auth_settings, get_current_principal
 
 BotWritePrincipal = Annotated[Principal, require_scopes("bot:write")]
+# require_scopes refuses a reach-qualified scope, so this requirement is declared with the bare marker.
+CrmReadOwnPrincipal = Annotated[Principal, Security(get_current_principal, scopes=["crm:read:own"])]
 CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
 ApplicationPrincipal = Annotated[Principal, Depends(require_application)]
 
@@ -114,6 +124,29 @@ def test_require_scopes_declares_the_scopes_in_openapi_for_both_positions():
     assert paths["/guarded"]["post"]["security"] == [{"OAuth2ClientCredentialsBearer": ["bot:write"]}]
 
 
+async def test_a_crm_read_own_token_is_forbidden_on_a_route_that_requires_crm_read():
+    settings = _settings()
+
+    response = await _request(_app(settings), "GET", "/crm", headers=_bearer(settings, scopes=["crm:read:own"]))
+
+    assert response.status_code == 403
+
+
+async def test_a_crm_read_token_satisfies_a_requirement_of_crm_read_own():
+    settings = _settings()
+
+    response = await _request(_app(settings), "GET", "/crm/own", headers=_bearer(settings, scopes=["crm:read"]))
+
+    assert response.status_code == 200
+    assert response.json() == {"scopes": ["crm:read"]}
+
+
+@pytest.mark.parametrize("scope", [Scope.CRM_READ_OWN, "crm:read:own"])
+def test_require_scopes_refuses_a_reach_qualified_scope(scope: Scope | str):
+    with pytest.raises(ValueError, match="reach-qualified scope crm:read:own"):
+        require_scopes(Scope.CRM_READ, scope)
+
+
 async def test_require_application_rejects_non_application_principal():
     app = FastAPI()
 
@@ -163,6 +196,14 @@ def _app(settings: AuthSettings) -> FastAPI:
     @app.post("/guarded", dependencies=[require_scopes("bot:write")])
     async def guarded():
         return {"ok": True}
+
+    @app.get("/crm", dependencies=[require_scopes(Scope.CRM_READ)])
+    async def crm():
+        return {"ok": True}
+
+    @app.get("/crm/own")
+    async def crm_own(principal: CrmReadOwnPrincipal):
+        return {"scopes": sorted(principal.scopes)}
 
     return app
 

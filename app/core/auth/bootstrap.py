@@ -1,6 +1,6 @@
 import asyncio
 
-from app.core.auth.scopes import Scope
+from app.core.auth.scopes import Scope, format_scopes
 from app.core.auth.services import bootstrap_application_client
 from app.core.config import get_settings
 from app.core.db import Database
@@ -23,7 +23,7 @@ async def bootstrap_skillbot() -> None:
         await db.dispose()
 
     print(f"client_id={result.client.client_id}")
-    print(f"scopes={' '.join(sorted(result.granted_scopes))}")
+    print(f"scopes={format_scopes(result.granted_scopes)}")
     if result.created_secret is None:
         print("client_secret=<existing usable secret retained>")
     else:
