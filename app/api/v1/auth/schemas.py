@@ -8,7 +8,7 @@ from pydantic.experimental.missing_sentinel import MISSING
 from app.api.v1.common import ApiModel
 from app.core.auth.inputs import LoginEmail
 from app.core.auth.principal import Principal, UserPrincipal
-from app.core.auth.results import CreatedClientSecret, IssuedActionToken, UserAccountWithRoles
+from app.core.auth.results import CreatedClientSecret, IssuedActionToken, IssuedUserToken, UserAccountWithRoles
 from app.core.auth.roles import Role
 from app.core.auth.tokens import CreatedAccessToken
 from app.core.db.models import (
@@ -20,11 +20,23 @@ from app.core.db.models import (
 )
 
 
-class AccessTokenResponse(BaseModel):
+class AccessTokenResponse(ApiModel):
+    """A successful token response (RFC 6749, section 5.1). A person's grants add the session's refresh token."""
+
     access_token: str
+    """The access token: a signed JWT to send as `Authorization: Bearer <token>`."""
     token_type: str
+    """Always `bearer`."""
     expires_in: int
+    """Seconds until the access token expires."""
     scope: str
+    """Scopes the token grants, space-separated and canonical: an unqualified scope implies its `:own` form."""
+    refresh_token: str | None = None
+    """Only for the `password` and `refresh_token` grants: the session's new refresh token. It replaces the one
+    presented, which stops working; SkillForge stores only its hash, so this is the one time it can be read."""
+    refresh_expires_in: int | None = None
+    """Only with `refresh_token`: seconds until the session ends for good - it expires absolutely, refreshing
+    does not extend it."""
 
     @classmethod
     def from_created_token(cls, token: CreatedAccessToken) -> AccessTokenResponse:
@@ -33,6 +45,18 @@ class AccessTokenResponse(BaseModel):
             token_type=token.token_type,
             expires_in=token.expires_in,
             scope=token.scope,
+        )
+
+    @classmethod
+    def from_issued_user_token(cls, issued: IssuedUserToken) -> AccessTokenResponse:
+        token = issued.token
+        return cls(
+            access_token=token.access_token,
+            token_type=token.token_type,
+            expires_in=token.expires_in,
+            scope=token.scope,
+            refresh_token=issued.refresh_token,
+            refresh_expires_in=issued.refresh_expires_in,
         )
 
 
@@ -259,3 +283,11 @@ class PasswordRedeemRequest(ApiModel):
     """The invitation or password-reset token the person was given."""
     new_password: str = Field(examples=["correct horse battery staple"])
     """The password to set: 8 to 128 characters, no further rules."""
+
+
+class RefreshTokenRevokeRequest(ApiModel):
+    """Body of `POST /revoke`: the refresh token of the session to end."""
+
+    refresh_token: str = Field(examples=["sf_rt_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"])
+    """A refresh token of the session - the current one or the one it replaced. A token of another client's
+    session, or one SkillForge does not know, ends nothing and is answered the same."""

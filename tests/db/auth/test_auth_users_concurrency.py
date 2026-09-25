@@ -13,16 +13,33 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthSettings
+from app.core.auth import (
+    AuthSettings,
+    IssuedUserToken,
+    Scope,
+    TokenDenial,
+    UserTokenResult,
+    issue_user_token,
+    refresh_user_token,
+)
 from app.core.auth.audit import Operator
 from app.core.auth.results import IssuedActionToken, UserAccountWithRoles
-from app.core.auth.secrets import verify_secret
+from app.core.auth.secrets import digest, hash_secret, verify_secret
 from app.core.auth.services.action_tokens import issue_action_token, redeem_action_token
 from app.core.auth.services.errors import InvalidActionTokenError, UnknownAccountPartyError
 from app.core.auth.services.users import create_user_account
 from app.core.db import Database
-from app.core.db.models import AuthAuditLog, Party, UserAccount, UserActionTokenPurpose
+from app.core.db.models import (
+    ApplicationClient,
+    AuthAuditLog,
+    Party,
+    PermissionScope,
+    UserAccount,
+    UserActionTokenPurpose,
+    UserSession,
+)
 from app.services.crm import parties, persons
+from tests.db.auth.logins import LoginClientCredentials, bootstrap_login_client
 
 pytestmark = pytest.mark.db
 
@@ -152,3 +169,88 @@ async def _invitation(db: Database, user_id: uuid.UUID, settings: AuthSettings) 
             setup, settings, user_id=user_id, purpose=UserActionTokenPurpose.INVITATION, actor=Operator.CLI
         )
     return issued.plaintext
+
+
+@pytest.fixture
+async def login_client_credentials(db: Database) -> AsyncIterator[LoginClientCredentials]:
+    """A committed login client, removed afterwards with its audit entries and the scope rows its grants seeded."""
+    async with db.session() as setup:
+        known_scopes = set(await setup.scalars(select(PermissionScope.key)))
+        credentials = await bootstrap_login_client(setup, client_id="race-portal", delegated=[Scope.ACCOUNT_SELF])
+    try:
+        yield credentials
+    finally:
+        async with db.session() as cleanup:
+            await cleanup.execute(delete(ApplicationClient).where(ApplicationClient.id == credentials.id))
+            await cleanup.execute(delete(AuthAuditLog).where(AuthAuditLog.principal_id == str(credentials.id)))
+            await cleanup.execute(delete(PermissionScope).where(PermissionScope.key.not_in(known_scopes)))
+
+
+async def test_two_overlapping_refreshes_of_one_token_yield_one_rotation_and_leave_the_session_live(
+    db: Database, user_id: uuid.UUID, login_client_credentials: LoginClientCredentials, auth_settings: AuthSettings
+):
+    client_id, client_secret = login_client_credentials.basic
+    async with db.session() as setup:
+        account = await setup.get_one(UserAccount, user_id)
+        account.password_hash = hash_secret(FIRST_PASSWORD)
+        await setup.flush()
+        login = await issue_user_token(
+            setup,
+            auth_settings,
+            client_id=client_id,
+            client_secret=client_secret,
+            username="race@example.org",
+            password=FIRST_PASSWORD,
+        )
+    assert isinstance(login, IssuedUserToken)
+
+    first_result: list[UserTokenResult] = []
+
+    async def refresh(session: AsyncSession) -> UserTokenResult:
+        return await refresh_user_token(
+            session, auth_settings, client_id=client_id, client_secret=client_secret, refresh_token=login.refresh_token
+        )
+
+    async def first(session: AsyncSession) -> None:
+        first_result.append(await refresh(session))
+
+    second = await _overlapping(db, first, refresh)
+
+    [rotated] = first_result
+    assert isinstance(rotated, IssuedUserToken)
+    assert second.result() is TokenDenial.INVALID_GRANT
+    async with db.session() as check:
+        user_session = await check.scalar(select(UserSession).where(UserSession.user_account_id == user_id))
+    assert user_session is not None
+    assert user_session.revoked_at is None
+    assert user_session.refresh_token_hash == digest(rotated.refresh_token)
+    assert user_session.previous_refresh_token_hash == digest(login.refresh_token)
+
+
+async def test_two_overlapping_wrong_passwords_on_one_account_both_count(
+    db: Database,
+    user_id: uuid.UUID,
+    login_client_credentials: LoginClientCredentials,
+    auth_settings: AuthSettings,
+    session: AsyncSession,
+):
+    client_id, client_secret = login_client_credentials.basic
+    async with db.session() as setup:
+        (await setup.get_one(UserAccount, user_id)).password_hash = hash_secret(FIRST_PASSWORD)
+
+    async def wrong_password(session: AsyncSession) -> UserTokenResult:
+        return await issue_user_token(
+            session,
+            auth_settings,
+            client_id=client_id,
+            client_secret=client_secret,
+            username="race@example.org",
+            password=SECOND_PASSWORD,
+        )
+
+    # The first holds the row lock it took to count; the second verifies meanwhile, then waits for it.
+    second = await _overlapping(db, wrong_password, wrong_password)
+
+    assert second.result() is TokenDenial.INVALID_GRANT
+    count = await session.scalar(select(UserAccount.failed_login_count).where(UserAccount.id == user_id))
+    assert count == 2

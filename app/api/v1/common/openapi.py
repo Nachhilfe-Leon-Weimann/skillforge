@@ -16,7 +16,10 @@ SCHEMA_REF_TEMPLATE = "#/components/schemas/{model}"
 OPENAPI_TAGS: list[dict[str, Any]] = [
     {
         "name": "auth",
-        "description": "OAuth2 client-credentials token issuance and application client management.",
+        "description": (
+            "OAuth2 token issuance - client credentials for applications, password and refresh-token logins for "
+            "people through a client - plus logout, user accounts and application client management."
+        ),
     },
     {
         "name": "bot",

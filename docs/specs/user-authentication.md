@@ -1,6 +1,6 @@
 # Spec: User authentication (accounts, grant modes, reach-qualified scopes)
 
-> Status: In progress - P0-1 on `main` (2026-09) | Domain arc `auth`
+> Status: Implemented (2026-09) | Domain arc `auth`
 > Tracking: [#85](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/85)
 > Builds on the [project sketch](../PROJECT.md), [`api-conventions.md`](api-conventions.md), goal 4 of
 > [`crm-api.md`](crm-api.md) ("exactly one target party per route") and
@@ -548,16 +548,16 @@ Not built here; recorded so that this arc's shapes take it with no change but th
 
 **Standing criteria - they hold for every slice and are ticked with P0-8.**
 
-- [ ] Nothing under `app/core/auth` imports `app.services` or `app.api` (it may read CRM _models_); nothing under
+- [x] Nothing under `app/core/auth` imports `app.services` or `app.api` (it may read CRM _models_); nothing under
       `app/services/crm` or `app/api/v1/crm` imports the bot domain (ADR 0007).
-- [ ] No plaintext password, refresh token or action token is written to a log, an audit `detail` or an error
+- [x] No plaintext password, refresh token or action token is written to a log, an audit `detail` or an error
       `detail`, and no e-mail address to a log or an audit row (the lifecycle tests grep their captured JSON log
       output, as the archived `test_auth_users_logging.py` does).
-- [ ] Every property of every new schema, every new property of a changed schema and every new path and query
+- [x] Every property of every new schema, every new property of a changed schema and every new path and query
       parameter has a description in `openapi.json`; an auth schema a slice changes derives from `ApiModel`; the
       operation IDs of the auth routes match `^auth_[a-z_]+$`.
-- [ ] `just check-all` is green; `openapi.json` is regenerated with `just openapi`, never edited.
-- [ ] **SkillBot keeps working.** `client_credentials`, the claims of an application token and every `/bot` route
+- [x] `just check-all` is green; `openapi.json` is regenerated with `just openapi`, never edited.
+- [x] **SkillBot keeps working.** `client_credentials`, the claims of an application token and every `/bot` route
       behave exactly as before for an application principal: the `client_credentials` response body keeps exactly
       its four keys, the bot-domain tests pass **unmodified**, and `issue_client_token` keeps its signature and its
       `CreatedAccessToken` result. The only contract changes SkillBot can see are additive - two optional
@@ -770,30 +770,30 @@ Not built here; recorded so that this arc's shapes take it with no change but th
   constant; the documented 400 examples grow by `invalid_grant` and `unauthorized_client`.
   `test_auth_token_endpoint_returns_access_token` stays unmodified.
 - _Acceptance criteria:_
-  - [ ] The lifecycle test (database): create -> invite -> redeem -> `password` -> `/auth/me` -> `refresh_token` ->
+  - [x] The lifecycle test (database): create -> invite -> redeem -> `password` -> `/auth/me` -> `refresh_token` ->
         `revoke` -> the revoked refresh token is `invalid_grant`.
-  - [ ] Unknown e-mail, wrong password, a `disabled` account, an account without a password and a locked account
+  - [x] Unknown e-mail, wrong password, a `disabled` account, an account without a password and a locked account
         answer the identical `invalid_grant` body; a client without `auth:users:login` is `unauthorized_client`.
-  - [ ] A denied `password` login writes `token.denied` with the account's id as `principal_id` when the e-mail
+  - [x] A denied `password` login writes `token.denied` with the account's id as `principal_id` when the e-mail
         matched an account and `None` when it did not; the lifecycle test finds the e-mail address in no audit row
         and no log line.
-  - [ ] After five wrong passwords the correct one is refused until `locked_until`; **the counter is persisted
+  - [x] After five wrong passwords the correct one is refused until `locked_until`; **the counter is persisted
         although the request was denied**.
-  - [ ] Presenting a rotated-out refresh token after the grace revokes the session and writes
+  - [x] Presenting a rotated-out refresh token after the grace revokes the session and writes
         `session.reuse_detected`; within the grace it only fails and writes `token.denied` with the fixed detail.
-  - [ ] Two overlapping refreshes of one token yield one rotation; the other gets `invalid_grant` and the session
+  - [x] Two overlapping refreshes of one token yield one rotation; the other gets `invalid_grant` and the session
         stays live.
-  - [ ] A refresh token is refused for another client than the one that opened the session.
-  - [ ] A person's scopes come from the client's `delegated` grants: an admin logging in through a client whose
+  - [x] A refresh token is refused for another client than the one that opened the session.
+  - [x] A person's scopes come from the client's `delegated` grants: an admin logging in through a client whose
         only `delegated` grant is `account:self` gets exactly `account:self`.
-  - [ ] Removing the `admin` role and refreshing yields a token without the admin scopes; refreshing with
+  - [x] Removing the `admin` role and refreshing yields a token without the admin scopes; refreshing with
         `scope=account:self crm:read:own` as an admin yields exactly that, and a later refresh without `scope` the
         full session scope again; requesting more than the session's `scope` is `invalid_scope`.
-  - [ ] Both the login's and the refresh's token carry `amr: ["pwd"]`.
-  - [ ] `client_credentials` answers with exactly today's four keys; `password` succeeds with HTTP Basic client
+  - [x] Both the login's and the refresh's token carry `amr: ["pwd"]`.
+  - [x] `client_credentials` answers with exactly today's four keys; `password` succeeds with HTTP Basic client
         authentication and with `client_id` / `client_secret` in the form, Basic taking precedence as today.
-  - [ ] Swagger UI's "Authorize" dialog offers the `password` flow (asserted over `app.openapi()`).
-  - [ ] [`ARCHITECTURE.md`](../ARCHITECTURE.md) (Auth section) and the "Where we are" table of the
+  - [x] Swagger UI's "Authorize" dialog offers the `password` flow (asserted over `app.openapi()`).
+  - [x] [`ARCHITECTURE.md`](../ARCHITECTURE.md) (Auth section) and the "Where we are" table of the
         [project sketch](../PROJECT.md) describe the result; the standing criteria are ticked; the status line
         reads Implemented; the PR carries `Closes #85`.
 

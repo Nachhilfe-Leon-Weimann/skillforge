@@ -1,7 +1,7 @@
 """Fixtures for auth tests that run the real app, or the auth services, against the test database."""
 
 from collections import Counter
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -12,9 +12,17 @@ from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthSettings, PrincipalType, Scope, bootstrap, create_application_access_token
-from app.core.auth.audit import AuditEventType
+from app.core.auth import (
+    AuthSettings,
+    PrincipalType,
+    Scope,
+    bootstrap,
+    create_application_access_token,
+)
+from app.core.auth.audit import AuditEventType, Operator
 from app.core.auth.dependencies import get_auth_settings
+from app.core.auth.secrets import hash_secret
+from app.core.auth.services.users import create_user_account
 from app.core.db.dependencies import get_db_session
 from app.core.db.models import (
     ApplicationClient,
@@ -26,10 +34,13 @@ from app.core.db.models import (
     Party,
     PartyType,
     Person,
+    UserAccount,
+    UserAccountRoleName,
     UserActionToken,
     UserSession,
 )
 from app.main import app
+from tests.db.auth.logins import PORTAL_DELEGATED_SCOPES, LoginClientCredentials, bootstrap_login_client
 
 AUTH_SETTINGS = AuthSettings(secret_key=SecretStr("test-signing-secret-with-at-least-32-bytes"))
 OPERATOR_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -78,6 +89,14 @@ async def _api_client(session: AsyncSession, *scopes: Scope) -> AsyncIterator[As
     mirrors the request-scoped transaction of ``get_db_session``: a failed request writes nothing.
     """
 
+    async with _app_client(session, headers=auth_headers(*scopes)) as api_client:
+        yield api_client
+
+
+@asynccontextmanager
+async def _app_client(session: AsyncSession, *, headers: dict[str, str] | None = None) -> AsyncIterator[AsyncClient]:
+    """An API client of the auth routes whose requests run on ``session``, each in a SAVEPOINT (see ``_api_client``)."""
+
     async def request_session() -> AsyncIterator[AsyncSession]:
         async with session.begin_nested():
             yield session
@@ -88,11 +107,54 @@ async def _api_client(session: AsyncSession, *scopes: Scope) -> AsyncIterator[As
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://testserver/api/v1/auth",
-            headers=auth_headers(*scopes),
+            headers=headers,
         ) as api_client:
             yield api_client
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def token_api(session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """An API client without a token of its own, for `POST /token`: every grant authenticates the client itself."""
+    async with _app_client(session) as api_client:
+        yield api_client
+
+
+@pytest.fixture
+def make_login_client(session: AsyncSession) -> Callable[..., Awaitable[LoginClientCredentials]]:
+    """Create a client with a secret on the test's ``session`` (see ``bootstrap_login_client``)."""
+
+    async def _make_login_client(
+        *,
+        application: Iterable[Scope] = (Scope.AUTH_USERS_LOGIN,),
+        delegated: Iterable[Scope] = PORTAL_DELEGATED_SCOPES,
+    ) -> LoginClientCredentials:
+        return await bootstrap_login_client(session, application=application, delegated=delegated)
+
+    return _make_login_client
+
+
+@pytest.fixture
+async def login_client(make_login_client) -> LoginClientCredentials:
+    """A login client with the portal's ceiling."""
+    return await make_login_client()
+
+
+@pytest.fixture
+def make_login_account(session: AsyncSession, make_person, password: str) -> Callable[..., Awaitable[UserAccount]]:
+    """Create an account of a new person party that logs in with ``email`` and the ``password`` fixture."""
+
+    async def _make_login_account(
+        email: str = "anna.schmidt@example.org", *, roles: Iterable[UserAccountRoleName] = ()
+    ) -> UserAccount:
+        party = await make_person()
+        view = await create_user_account(session, party_id=party.id, email=email, roles=roles, actor=Operator.CLI)
+        view.account.password_hash = hash_secret(password)
+        await session.flush()
+        return view.account
+
+    return _make_login_account
 
 
 @pytest.fixture
@@ -161,7 +223,7 @@ async def application_client(session: AsyncSession) -> ApplicationClient:
 def add_user_session(
     session: AsyncSession, application_client: ApplicationClient
 ) -> Callable[[UUID], Awaitable[UserSession]]:
-    """Insert a live session for an account through the model: nothing opens sessions before P0-8.
+    """Insert a live session for an account straight through the model, without a login.
 
     The hash is an arbitrary unique string, never anything that looks like a real refresh token.
     """
@@ -194,6 +256,21 @@ def audit_events(session: AsyncSession) -> Callable[[UUID], Awaitable[Counter[st
         return Counter(event_type for _, event_type in rows)
 
     return _audit_events
+
+
+@pytest.fixture
+def audit_rows(session: AsyncSession) -> Callable[..., Awaitable[list[AuthAuditLog]]]:
+    """Read the audit entries of one event type, optionally only those naming one principal type."""
+
+    async def _audit_rows(
+        event_type: AuditEventType, principal_type: PrincipalType | None = None
+    ) -> list[AuthAuditLog]:
+        statement = select(AuthAuditLog).where(AuthAuditLog.event_type == event_type)
+        if principal_type is not None:
+            statement = statement.where(AuthAuditLog.principal_type == principal_type)
+        return list(await session.scalars(statement))
+
+    return _audit_rows
 
 
 @pytest.fixture

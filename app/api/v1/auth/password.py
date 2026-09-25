@@ -4,21 +4,16 @@ A client's route: `auth:users:login` in `application` mode, and a person's token
 carries.
 """
 
-from typing import Annotated
-
 from fastapi import APIRouter, status
 
 from app.api.v1.common import DBSession, error_responses
-from app.core.auth import ApplicationPrincipal, Scope
-from app.core.auth.dependencies import require_application_scopes
 from app.core.auth.services import action_tokens as action_tokens_service
 from app.core.auth.services.errors import InvalidActionTokenError, WeakPasswordError
 
+from .params import LoginClient
 from .schemas import PasswordRedeemRequest
 
 router = APIRouter(prefix="/password")
-
-LoginClient = Annotated[ApplicationPrincipal, require_application_scopes(Scope.AUTH_USERS_LOGIN)]
 
 
 @router.post(

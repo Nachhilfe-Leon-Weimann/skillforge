@@ -36,7 +36,9 @@ HTTP -> app/api/system    liveness + health probes (dependencies, workers)
   `/health/dependencies[/{name}]`, and `/health/workers[/{name}]`.
 - **`app/api/v1/`** - `router.py` with prefix `/api/v1` aggregates three areas, which share the
   vocabulary in `common/` (see [API conventions](#api-conventions)):
-  - `auth/` - `token.py` (OAuth2 token endpoint), `clients.py` (client management).
+  - `auth/` - `token.py` (OAuth2 token endpoint, three grants), `revoke.py` (logout), `password.py`
+    (redeem a one-time token), `users.py` (accounts), `clients.py` (client management), `me.py`, `params.py`
+    (shared parameter aliases).
   - `bot/` - `runtime.py` (read: principals, contexts, command envs), `operations.py` (operation
     reads: by id + filtered list), `jobs.py` (queue reads - by id, filtered list, queue summary -
     plus claim/complete/fail), `students.py` & `tutors.py` (state transitions), `command_envs.py`,
@@ -58,9 +60,9 @@ HTTP -> app/api/system    liveness + health probes (dependencies, workers)
   API), `errors.py` (the error catalog). Never imports the bot domain.
 - **`app/services/system/`** - health aggregation (`health_service.py`) and worker liveness
   (`heartbeat_service.py`), backing the `/health` tree.
-- **`app/core/`** - `auth/` (OAuth2, JWT, scopes, bootstrap), `db/` (async engine, sessions,
-  models), `logging/` (structured logging via `skillcore`), `errors.py` (HTTP-agnostic error
-  taxonomy), `config.py` (settings).
+- **`app/core/`** - `auth/` (OAuth2, JWT, scopes, roles, reach, accounts and sessions, bootstrap),
+  `db/` (async engine, sessions, models), `logging/` (structured logging via `skillcore`), `errors.py`
+  (HTTP-agnostic error taxonomy), `config.py` (settings).
 
 ## Two core concepts
 
@@ -174,7 +176,7 @@ One Postgres DB, six schemas by domain - details in
 | `geo`  | Geographic reference data (PLZ/Ort) |
 | `ext`  | Links from external system ids (Discord, sevDesk, Clockodo, Microsoft) to a `core.party` |
 | `bot`  | SkillBot operational state: Discord topology, workspaces, permissions, job queue, operations |
-| `auth` | OAuth2 clients, secrets, scopes, audit |
+| `auth` | OAuth2 clients, secrets, scope grants, user accounts, roles, sessions, one-time tokens, audit |
 | `system` | Runtime/operational state: background-worker liveness heartbeats |
 
 - **Async SQLAlchemy 2** over `asyncpg`; models under `app/core/db/models/<schema>/`, one
@@ -185,18 +187,38 @@ One Postgres DB, six schemas by domain - details in
 
 ## Auth
 
-OAuth2 **client credentials** (`app/core/auth/`): clients authenticate with `client_id` + an
-Argon2-hashed secret at the token endpoint and receive a JWT. Endpoints are gated by **scopes**:
+SkillForge is its own identity provider ([ADR 0008](decisions/0008-user-authentication-and-reach.md),
+[spec](specs/user-authentication.md)); the code is in `app/core/auth/`, the data in the `auth` schema.
+Every grant at `POST /api/v1/auth/token` authenticates the client (`client_id` + Argon2-hashed secret):
 
-| Scope | Purpose |
-|---|---|
-| `bot:read` | Read bot API |
-| `bot:write` | Write bot API |
-| `auth:clients:manage` | Manage application clients |
+| Grant | For | Result |
+|---|---|---|
+| `client_credentials` | the client itself | access token from its `application` grants |
+| `password` | a person, through a login client | access + refresh token; opens a `user_session` |
+| `refresh_token` | the same person, same client | new access token; the refresh token rotates |
 
-`require_scopes()` (`app/core/auth/dependencies.py`) returns the `Security` marker that guards a
-route: `401` without a valid token, `403` on a missing scope. Each scope carries its description
-on the `Scope` enum. `just bootstrap-skillbot` seeds the initial auth state.
+The person grants need `auth:users:login` in `application` mode. Their services (`issue_user_token`,
+`refresh_user_token` in `services/tokens.py`) *return* a `TokenDenial` instead of raising, so the
+failed-login counter, a revoked session and the audit entry commit; `create_token` turns it into the
+OAuth2 error. `POST /auth/revoke` logs out.
+
+- **Tokens:** a stateless JWT for an `ApplicationPrincipal` or a `UserPrincipal` (`principal.py`), claims
+  declared once in `tokens.py`; a person's token names the client (`azp`), party, session and `amr`.
+- **Scopes** are computed at issuance (`resolve_token_scopes`): a grant is `application` (for the client)
+  or `delegated` (the ceiling for people); a person gets `delegated ∩ role scopes` (on refresh also
+  `∩` the session's scope). Purposes live on `Scope`; `CLIENT_ONLY_SCOPES` are application-only.
+- **Roles** (`roles.py`) only produce scopes: `BASE_USER_SCOPES` for everyone, `ROLE_SCOPES` per role;
+  `admin` is stored, the others are derived from the CRM.
+- **Reach:** `x:own` limits `x` to the caller's reach (`reach.py`); `require_access(...)` hands a route
+  an `Access`, `require_scopes(...)` demands the unqualified scope.
+- **Sessions** (`services/sessions.py`): the opaque refresh token is stored as a digest, rotates on every
+  refresh and expires after `refresh_token_expire_days`; a rotated-out token ends the session unless it
+  arrives within `REFRESH_REUSE_GRACE`. Wrong passwords lock the login per account
+  (`login_lockout_threshold`, `login_lockout_max_minutes`). Argon2 runs off the event loop.
+- **Never** in a log or an audit row: a password, a refresh or action token, an e-mail address.
+
+`just bootstrap-skillbot`, `just bootstrap-client` and `just bootstrap-admin` seed the first clients and
+the first admin.
 
 ## API contract
 

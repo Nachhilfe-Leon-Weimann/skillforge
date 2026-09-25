@@ -2,20 +2,49 @@
   "components": {
     "schemas": {
       "AccessTokenResponse": {
+        "description": "A successful token response (RFC 6749, section 5.1). A person's grants add the session's refresh token.",
         "properties": {
           "access_token": {
+            "description": "The access token: a signed JWT to send as `Authorization: Bearer <token>`.",
             "title": "Access Token",
             "type": "string"
           },
           "expires_in": {
+            "description": "Seconds until the access token expires.",
             "title": "Expires In",
             "type": "integer"
           },
+          "refresh_expires_in": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only with `refresh_token`: seconds until the session ends for good - it expires absolutely, refreshing\ndoes not extend it.",
+            "title": "Refresh Expires In"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only for the `password` and `refresh_token` grants: the session's new refresh token. It replaces the one\npresented, which stops working; SkillForge stores only its hash, so this is the one time it can be read.",
+            "title": "Refresh Token"
+          },
           "scope": {
+            "description": "Scopes the token grants, space-separated and canonical: an unqualified scope implies its `:own` form.",
             "title": "Scope",
             "type": "string"
           },
           "token_type": {
+            "description": "Always `bearer`.",
             "title": "Token Type",
             "type": "string"
           }
@@ -389,6 +418,7 @@
                 "type": "null"
               }
             ],
+            "description": "The client's ID, unless it authenticates with HTTP Basic, which wins.",
             "title": "Client Id"
           },
           "client_secret": {
@@ -400,11 +430,37 @@
                 "type": "null"
               }
             ],
+            "description": "The client's secret, unless it authenticates with HTTP Basic.",
             "title": "Client Secret"
           },
           "grant_type": {
+            "description": "`client_credentials`, `password` (a person's login) or `refresh_token`.",
             "title": "Grant Type",
             "type": "string"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`password` grant only, required there: the person's password, at most 128 characters.",
+            "title": "Password"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`refresh_token` grant only, required there: the session's current refresh token.",
+            "title": "Refresh Token"
           },
           "scope": {
             "anyOf": [
@@ -415,7 +471,20 @@
                 "type": "null"
               }
             ],
+            "description": "Space-separated scopes to narrow the token to; without it the token gets all it may hold.",
             "title": "Scope"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`password` grant only, required there: the person's login e-mail address, at most 254 characters.",
+            "title": "Username"
           }
         },
         "required": [
@@ -2738,6 +2807,24 @@
         "title": "PrincipalBatch",
         "type": "object"
       },
+      "RefreshTokenRevokeRequest": {
+        "description": "Body of `POST /revoke`: the refresh token of the session to end.",
+        "properties": {
+          "refresh_token": {
+            "description": "A refresh token of the session - the current one or the one it replaced. A token of another client's\nsession, or one SkillForge does not know, ends nothing and is answered the same.",
+            "examples": [
+              "sf_rt_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            ],
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshTokenRevokeRequest",
+        "type": "object"
+      },
       "RelationDirection": {
         "description": "A relation seen from one of its two parties: that party is the ``from`` side, or the ``to`` side.",
         "enum": [
@@ -3600,6 +3687,20 @@
               "account:self": "Manage the caller's own account.",
               "auth:clients:manage": "Manage application clients.",
               "auth:users:login": "Log people in on their behalf (password / refresh_token grants, redeem, revoke). Client-only: never part of a person's token.",
+              "auth:users:manage": "Create, disable and reset user accounts; assign stored roles.",
+              "bot:read": "Read bot API surface.",
+              "bot:write": "Write bot API surface.",
+              "crm:read": "Read parties, relations and subjects.",
+              "crm:read:own": "Read parties within the caller's reach.",
+              "crm:write": "Create, change and delete parties, relations and subjects."
+            },
+            "tokenUrl": "/api/v1/auth/token"
+          },
+          "password": {
+            "refreshUrl": "/api/v1/auth/token",
+            "scopes": {
+              "account:self": "Manage the caller's own account.",
+              "auth:clients:manage": "Manage application clients.",
               "auth:users:manage": "Create, disable and reset user accounts; assign stored roles.",
               "bot:read": "Read bot API surface.",
               "bot:write": "Write bot API surface.",
@@ -4869,8 +4970,107 @@
         ]
       }
     },
+    "/api/v1/auth/revoke": {
+      "post": {
+        "description": "Log a person out: end the session a refresh token belongs to.\n\nOnly a session this client opened is ended. The answer is the same whether a session was found or not, so\nthe route tells nothing about a token. Access tokens already issued stay valid until they expire.",
+        "operationId": "auth_revoke_refresh_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRevokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Invalid authentication credentials"
+                    }
+                  },
+                  "missing_token": {
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "Not authenticated"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "Not enough permissions"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing required scope: auth:users:login"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "validation_error",
+                  "detail": "Request validation failed",
+                  "errors": [
+                    {
+                      "loc": [
+                        "query",
+                        "limit"
+                      ],
+                      "message": "Input should be less than or equal to 100",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "auth:users:login"
+            ]
+          }
+        ],
+        "summary": "Revoke Refresh Token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/token": {
       "post": {
+        "description": "Issue an access token.\n\nThe client authenticates for every grant, with HTTP Basic or `client_id` / `client_secret` in the form.\n`client_credentials` issues a token of the client's own. `password` logs a person in and opens a session;\n`refresh_token` renews it and replaces its refresh token. Both need `auth:users:login` granted to the client\nin `application` mode. Every failure of the person's credentials or refresh token is the same\n`invalid_grant`.",
         "operationId": "auth_create_token",
         "requestBody": {
           "content": {
@@ -4897,10 +5097,22 @@
             "content": {
               "application/json": {
                 "examples": {
+                  "invalid_grant": {
+                    "value": {
+                      "code": "invalid_grant",
+                      "detail": "Invalid credentials or refresh token"
+                    }
+                  },
                   "invalid_scope": {
                     "value": {
                       "code": "invalid_scope",
                       "detail": "Invalid requested scope"
+                    }
+                  },
+                  "unauthorized_client": {
+                    "value": {
+                      "code": "unauthorized_client",
+                      "detail": "Client may not use this grant"
                     }
                   },
                   "unsupported_grant_type": {
@@ -4915,7 +5127,7 @@
                 }
               }
             },
-            "description": "Unsupported grant_type / Invalid requested scope"
+            "description": "Unsupported grant_type / Invalid requested scope / Invalid credentials or refresh token / Client may not use this grant"
           },
           "401": {
             "content": {
@@ -4942,7 +5154,7 @@
                   "invalid_request": {
                     "value": {
                       "code": "invalid_request",
-                      "detail": "client_id and client_secret are required"
+                      "detail": "A required parameter is missing"
                     }
                   },
                   "validation_error": {
@@ -4967,7 +5179,7 @@
                 }
               }
             },
-            "description": "client_id and client_secret are required"
+            "description": "A required parameter is missing"
           }
         },
         "summary": "Create Token",
@@ -14652,7 +14864,7 @@
   },
   "tags": [
     {
-      "description": "OAuth2 client-credentials token issuance and application client management.",
+      "description": "OAuth2 token issuance - client credentials for applications, password and refresh-token logins for people through a client - plus logout, user accounts and application client management.",
       "name": "auth"
     },
     {
