@@ -1,6 +1,5 @@
+from app.core.auth.passwords import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
 from app.core.errors import ConflictError, DomainValidationError, NotFoundError
-
-from ..passwords import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
 
 
 class ClientCredentialsError(ValueError):

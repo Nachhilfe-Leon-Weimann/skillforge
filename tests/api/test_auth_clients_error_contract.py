@@ -16,19 +16,17 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
-from app.core.auth import (
+from app.core.auth import AuthSettings, Scope, create_application_access_token
+from app.core.auth.dependencies import get_auth_settings
+from app.core.db.dependencies import get_db_session
+from app.main import app
+from app.services.auth import (
     ApplicationClientAlreadyExistsError,
     ApplicationClientNotFoundError,
     ApplicationClientScopeGrantNotFoundError,
     ApplicationClientSecretNotFoundError,
-    AuthSettings,
     InvalidClientScopeError,
-    Scope,
-    create_application_access_token,
 )
-from app.core.auth.dependencies import get_auth_settings
-from app.core.db.dependencies import get_db_session
-from app.main import app
 
 ID = "00000000-0000-0000-0000-0000000000aa"
 INTERNAL = "internal: row 7f3a"

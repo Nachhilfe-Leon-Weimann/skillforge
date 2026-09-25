@@ -49,6 +49,11 @@ HTTP -> app/api/system    liveness + health probes (dependencies, workers)
     `companies.py` (typed create and update), `roles.py`, `contact_infos.py`, `relations.py`,
     `subjects.py`. `params.py` holds the path and query vocabulary, `schemas.py` the read and write
     models with their `from_model` mappers (see [CRM](#crm)).
+- **`app/services/auth/`** - the auth services, same shape as the CRM's: `clients.py`, `scopes.py` (grants
+  per mode, `resolve_token_scopes`), `secrets.py` (client secrets), `tokens.py` (the three grants),
+  `sessions.py`, `accounts.py`, `users.py`, `action_tokens.py` (invitations and resets), `roles.py`
+  (`derive_roles`), `bootstrap.py`, `audit.py`, `results.py`, `errors.py`. Never imports the API or another
+  domain.
 - **`app/services/bot/`** - the actual logic, free of HTTP concerns: `transitions.py`,
   `operations.py` (operation reads), `jobs.py`, `principals.py`, `provisioning.py`, `authz.py`,
   `command_envs.py`, `contexts.py`, `profile.py`, `reaper.py`, `views.py` (immutable view models for
@@ -60,7 +65,8 @@ HTTP -> app/api/system    liveness + health probes (dependencies, workers)
   API), `errors.py` (the error catalog). Never imports the bot domain.
 - **`app/services/system/`** - health aggregation (`health_service.py`) and worker liveness
   (`heartbeat_service.py`), backing the `/health` tree.
-- **`app/core/`** - `auth/` (OAuth2, JWT, scopes, roles, reach, accounts and sessions, bootstrap),
+- **`app/core/`** - `auth/` (what validates a request: OAuth2 scheme, JWT, principals, scopes, roles, reach,
+  guards; plus the secret, password and e-mail primitives),
   `db/` (async engine, sessions, models), `logging/` (structured logging via `skillcore`), `errors.py`
   (HTTP-agnostic error taxonomy), `config.py` (settings).
 
@@ -188,7 +194,8 @@ One Postgres DB, six schemas by domain - details in
 ## Auth
 
 SkillForge is its own identity provider ([ADR 0008](decisions/0008-user-authentication-and-reach.md),
-[spec](specs/user-authentication.md)); the code is in `app/core/auth/`, the data in the `auth` schema.
+[spec](specs/user-authentication.md)). What validates a request is in `app/core/auth/`, the services are in
+`app/services/auth/`, the data is in the `auth` schema.
 Every grant at `POST /api/v1/auth/token` authenticates the client (`client_id` + Argon2-hashed secret):
 
 | Grant | For | Result |
@@ -198,7 +205,7 @@ Every grant at `POST /api/v1/auth/token` authenticates the client (`client_id` +
 | `refresh_token` | the same person, same client | new access token; the refresh token rotates |
 
 The person grants need `auth:users:login` in `application` mode. Their services (`issue_user_token`,
-`refresh_user_token` in `services/tokens.py`) *return* a `TokenDenial` instead of raising, so the
+`refresh_user_token` in `app/services/auth/tokens.py`) *return* a `TokenDenial` instead of raising, so the
 failed-login counter, a revoked session and the audit entry commit; `create_token` turns it into the
 OAuth2 error. `POST /auth/revoke` logs out.
 
@@ -211,14 +218,14 @@ OAuth2 error. `POST /auth/revoke` logs out.
   `admin` is stored, the others are derived from the CRM.
 - **Reach:** `x:own` limits `x` to the caller's reach (`reach.py`); `require_access(...)` hands a route
   an `Access`, `require_scopes(...)` demands the unqualified scope.
-- **Sessions** (`services/sessions.py`): the opaque refresh token is stored as a digest, rotates on every
+- **Sessions** (`app/services/auth/sessions.py`): the opaque refresh token is stored as a digest, rotates on every
   refresh and expires after `refresh_token_expire_days`; a rotated-out token ends the session unless it
   arrives within `REFRESH_REUSE_GRACE`. Wrong passwords lock the login per account
   (`login_lockout_threshold`, `login_lockout_max_minutes`). Argon2 runs off the event loop.
 - **Never** in a log or an audit row: a password, a refresh or action token, an e-mail address.
 
-`just bootstrap-skillbot`, `just bootstrap-client` and `just bootstrap-admin` seed the first clients and
-the first admin.
+`just bootstrap-skillbot`, `just bootstrap-client` and `just bootstrap-admin`
+([`app/cli/bootstrap.py`](../app/cli/bootstrap.py)) seed the first clients and the first admin.
 
 ## API contract
 

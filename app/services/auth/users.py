@@ -14,14 +14,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.auth.inputs import normalize_email
 from app.core.db.models import Party, PartyType, UserAccount, UserAccountRole, UserAccountRoleName, UserAccountStatus
 from app.core.unset import UNSET, Unset
 
-from ..audit import Actor, AuditEventType, write_user_account_audit_log
-from ..inputs import normalize_email
-from ..results import UserAccountWithRoles
 from .accounts import find_user_account_by_party, get_user_account, lock_user_account
 from .action_tokens import invalidate_action_tokens
+from .audit import Actor, AuditEventType, write_user_account_audit_log
 from .errors import (
     AccountPartyNotAPersonError,
     UnknownAccountPartyError,
@@ -30,6 +29,7 @@ from .errors import (
     UserEmailAlreadyInUseError,
     UserRoleNotFoundError,
 )
+from .results import UserAccountWithRoles
 from .roles import account_roles, derive_roles_for, stored_roles
 from .sessions import SessionRevokedReason, revoke_sessions
 

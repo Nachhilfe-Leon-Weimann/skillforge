@@ -10,10 +10,11 @@ from app.api.v1.common import DBSession, Page, PageParams, error_responses
 from app.core.auth import Principal, Scope
 from app.core.auth.dependencies import AuthConfig, require_scopes
 from app.core.auth.inputs import LoginEmail
-from app.core.auth.services import action_tokens as action_tokens_service
-from app.core.auth.services import sessions as sessions_service
-from app.core.auth.services import users as users_service
-from app.core.auth.services.errors import (
+from app.core.db.models import UserAccountRoleName, UserAccountStatus, UserActionTokenPurpose
+from app.services.auth import action_tokens as action_tokens_service
+from app.services.auth import sessions as sessions_service
+from app.services.auth import users as users_service
+from app.services.auth.errors import (
     AccountPartyNotAPersonError,
     UnknownAccountPartyError,
     UserAccountAlreadyExistsError,
@@ -22,7 +23,6 @@ from app.core.auth.services.errors import (
     UserEmailAlreadyInUseError,
     UserRoleNotFoundError,
 )
-from app.core.db.models import UserAccountRoleName, UserAccountStatus, UserActionTokenPurpose
 
 from .schemas import (
     ActionTokenResponse,

@@ -10,9 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth.audit import AuditEventType, Operator
 from app.core.auth.secrets import digest, verify_secret
-from app.core.auth.services import users as users_service
 from app.core.db.models import (
     AuthAuditLog,
     Party,
@@ -25,6 +23,8 @@ from app.core.db.models import (
     UserAccountStatus,
     UserSession,
 )
+from app.services.auth import users as users_service
+from app.services.auth.audit import AuditEventType, Operator
 
 pytestmark = pytest.mark.db
 

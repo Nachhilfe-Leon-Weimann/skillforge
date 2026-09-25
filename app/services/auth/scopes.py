@@ -3,10 +3,10 @@ from collections.abc import Iterable, Set
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth.scopes import CLIENT_ONLY_SCOPES, Scope, canonical, expand, parse_scopes
 from app.core.db.models import ApplicationClient, ApplicationClientScopeGrant, GrantMode, PermissionScope
 
-from ..audit import AuditEventType, write_auth_audit_log
-from ..scopes import CLIENT_ONLY_SCOPES, Scope, canonical, expand, parse_scopes
+from .audit import AuditEventType, write_auth_audit_log
 from .clients import get_application_client
 from .errors import ApplicationClientScopeGrantNotFoundError, InvalidClientScopeError
 

@@ -10,10 +10,9 @@ from collections.abc import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth.reach import DELEGATION_RELATION_TYPES
+from app.core.auth.roles import Role
 from app.core.db.models import PartyRelation, Student, Tutor, UserAccount
-
-from ..reach import DELEGATION_RELATION_TYPES
-from ..roles import Role
 
 
 async def account_roles(session: AsyncSession, account: UserAccount) -> frozenset[Role]:

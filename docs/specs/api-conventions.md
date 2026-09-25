@@ -63,7 +63,7 @@ Today each endpoint re-declares that behavior by hand, so it drifts:
 | **H - Query models** | At most one query-parameter model per endpoint; filters are added by subclassing `PageParams`. `extra="forbid"`. | Mixing a query model with standalone query params breaks silently (see verified behavior). |
 | **I - Field docs** | New schemas derive from `ApiModel` (`use_attribute_docstrings=True`); a docstring under a field becomes its description. | Docs feed from code; bot schemas (class docstrings only) are unaffected. |
 | **J - Scope descriptions** | Stored on the `Scope` enum members; `DEFAULT_SCOPES` is removed. | A scope without a description becomes unrepresentable. |
-| **K - Location** | API vocabulary in `app/api/v1/common/`; the HTTP-agnostic error taxonomy in `app/core/errors.py`. | `app/core/auth` raises domain errors too and must not import from `app/services`. |
+| **K - Location** | API vocabulary in `app/api/v1/common/`; the HTTP-agnostic error taxonomy in `app/core/errors.py`. | The auth services in `app/services/auth` raise domain errors too; `app/core/auth` must not import from `app/services`. |
 | **L - Pre-launch window** | Contract *renames* are free as of 2026-09 (nothing is live) and are done in this arc; *semantics* (paths, status codes, parameter names) do not change. | Renames only get more expensive; semantic changes have no upside here. |
 
 ## Verified framework behavior

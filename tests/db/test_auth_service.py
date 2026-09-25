@@ -5,15 +5,22 @@ import pytest
 from pydantic import SecretStr
 from sqlalchemy import select
 
-from app.core.auth import (
+from app.core.auth import AuthSettings, Scope, validate_access_token
+from app.core.db.models import (
+    ApplicationClient,
+    ApplicationClientScopeGrant,
+    ApplicationClientSecret,
+    ApplicationClientStatus,
+    AuthAuditLog,
+    PermissionScope,
+)
+from app.services.auth import (
     ApplicationClientAlreadyExistsError,
     ApplicationClientScopeGrantNotFoundError,
     ApplicationClientSecretNotFoundError,
-    AuthSettings,
     BootstrappedApplicationClient,
     InvalidClientCredentialsError,
     InvalidClientScopeError,
-    Scope,
     bootstrap_application_client,
     create_application_client,
     create_application_client_secret,
@@ -25,15 +32,6 @@ from app.core.auth import (
     revoke_application_client_secret,
     seed_default_scopes,
     update_application_client,
-    validate_access_token,
-)
-from app.core.db.models import (
-    ApplicationClient,
-    ApplicationClientScopeGrant,
-    ApplicationClientSecret,
-    ApplicationClientStatus,
-    AuthAuditLog,
-    PermissionScope,
 )
 
 

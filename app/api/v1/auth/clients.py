@@ -5,14 +5,16 @@ from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.common import Page, PageQuery, error_responses
-from app.core.auth import (
+from app.core.auth import Principal, Scope
+from app.core.auth.dependencies import require_scopes
+from app.core.db.dependencies import get_db_session
+from app.core.db.models import GrantMode
+from app.services.auth import (
     ApplicationClientAlreadyExistsError,
     ApplicationClientNotFoundError,
     ApplicationClientScopeGrantNotFoundError,
     ApplicationClientSecretNotFoundError,
     InvalidClientScopeError,
-    Principal,
-    Scope,
     create_application_client,
     create_application_client_secret,
     get_application_client,
@@ -22,9 +24,6 @@ from app.core.auth import (
     revoke_application_client_secret,
     update_application_client,
 )
-from app.core.auth.dependencies import require_scopes
-from app.core.db.dependencies import get_db_session
-from app.core.db.models import GrantMode
 
 from .errors import INVALID_SCOPE
 from .schemas import (

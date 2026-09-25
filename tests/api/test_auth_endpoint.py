@@ -7,10 +7,11 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from app.api.v1.auth.token import get_issue_client_token
-from app.core.auth import AuthSettings, CreatedAccessToken, InvalidClientCredentialsError, InvalidClientScopeError
+from app.core.auth import AuthSettings, CreatedAccessToken
 from app.core.auth.dependencies import get_auth_settings
 from app.core.db.dependencies import get_db_session
 from app.main import app
+from app.services.auth import InvalidClientCredentialsError, InvalidClientScopeError
 
 
 async def test_auth_token_endpoint_returns_access_token():

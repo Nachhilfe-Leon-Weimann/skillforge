@@ -5,8 +5,8 @@ from uuid import UUID
 
 import pytest
 
-from app.core.auth import bootstrap
-from app.core.auth.bootstrap import build_parser
+from app.cli import bootstrap
+from app.cli.bootstrap import build_parser
 
 JUSTFILE = Path(__file__).resolve().parents[2] / "justfile"
 
@@ -98,9 +98,9 @@ def test_the_just_recipes_run_the_subcommands():
     """`bootstrap-client` hands its arguments on as they were quoted: `{{ args }}` would split a scope list."""
     justfile = JUSTFILE.read_text()
 
-    assert "bootstrap-skillbot:\n    uv run python -m app.core.auth.bootstrap skillbot\n" in justfile
+    assert "bootstrap-skillbot:\n    uv run python -m app.cli.bootstrap skillbot\n" in justfile
     assert (
-        '[positional-arguments]\nbootstrap-client *args:\n    uv run python -m app.core.auth.bootstrap client "$@"\n'
+        '[positional-arguments]\nbootstrap-client *args:\n    uv run python -m app.cli.bootstrap client "$@"\n'
         in justfile
     )
 
@@ -162,6 +162,6 @@ def test_main_runs_the_admin_command(monkeypatch):
 
 def test_the_just_recipe_runs_the_admin_subcommand():
     assert (
-        '[positional-arguments]\nbootstrap-admin *args:\n    uv run python -m app.core.auth.bootstrap admin "$@"\n'
+        '[positional-arguments]\nbootstrap-admin *args:\n    uv run python -m app.cli.bootstrap admin "$@"\n'
         in JUSTFILE.read_text()
     )

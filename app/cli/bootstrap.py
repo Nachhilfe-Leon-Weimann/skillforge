@@ -15,14 +15,14 @@ from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.inputs import LoginEmail
-from app.core.auth.results import BootstrappedApplicationClient, CreatedClientSecret
 from app.core.auth.scopes import Scope, format_scopes, parse_scopes
-from app.core.auth.services import InvalidClientScopeError
-from app.core.auth.services.bootstrap import bootstrap_admin_account, bootstrap_application_client
 from app.core.config import get_settings
 from app.core.db import Database
 from app.core.db.models import GrantMode
 from app.core.errors import DomainError
+from app.services.auth import InvalidClientScopeError
+from app.services.auth.bootstrap import bootstrap_admin_account, bootstrap_application_client
+from app.services.auth.results import BootstrappedApplicationClient, CreatedClientSecret
 
 _LOGIN_EMAIL: TypeAdapter[str] = TypeAdapter(LoginEmail)
 
@@ -88,7 +88,7 @@ async def bootstrap_admin(*, party_id: uuid.UUID, email: str) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m app.core.auth.bootstrap", description=__doc__)
+    parser = argparse.ArgumentParser(prog="python -m app.cli.bootstrap", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("skillbot", help="Seed the SkillBot application client and print its secret.")
     client = commands.add_parser("client", help="Seed an application client with grants in both modes.")

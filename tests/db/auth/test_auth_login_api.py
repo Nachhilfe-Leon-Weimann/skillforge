@@ -10,13 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthSettings, UserPrincipal, validate_access_token
-from app.core.auth.audit import AuditEventType, Operator
 from app.core.auth.principal import AuthMethod, PrincipalType
 from app.core.auth.scopes import Scope, canonical, format_scopes
 from app.core.auth.secrets import digest
-from app.core.auth.services import users as users_service
 from app.core.db.models import AuthAuditLog, UserAccount, UserAccountRoleName, UserAccountStatus, UserSession
 from app.core.logging import LogFormat, LoggingSettings, LogLevel, configure_logging
+from app.services.auth import users as users_service
+from app.services.auth.audit import AuditEventType, Operator
 from tests.db.auth.logins import PORTAL_DELEGATED_SCOPES, LoginClientCredentials
 
 pytestmark = pytest.mark.db

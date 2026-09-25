@@ -12,8 +12,8 @@ from pydantic import ValidationError
 
 from app.core.auth import AuthSettings, passwords, secrets
 from app.core.auth.secrets import digest, hash_secret, verify_and_update, verify_secret
-from app.core.auth.services.sessions import REFRESH_REUSE_GRACE, RefreshTokenState, refresh_token_state
 from app.core.db.models import UserSession
+from app.services.auth.sessions import REFRESH_REUSE_GRACE, RefreshTokenState, refresh_token_state
 
 NOW = datetime(2026, 9, 24, 12, 0, tzinfo=UTC)
 

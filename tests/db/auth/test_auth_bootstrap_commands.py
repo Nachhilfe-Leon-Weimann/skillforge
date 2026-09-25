@@ -8,8 +8,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthSettings, bootstrap, issue_client_token
-from app.core.auth.audit import AuditEventType
+from app.cli import bootstrap
+from app.core.auth import AuthSettings
 from app.core.db.models import (
     ApplicationClient,
     ApplicationClientSecret,
@@ -17,6 +17,8 @@ from app.core.db.models import (
     AuthAuditLog,
     GrantMode,
 )
+from app.services.auth import issue_client_token
+from app.services.auth.audit import AuditEventType
 
 NEW_SECRET = re.compile(r"client_secret=(?P<plaintext>sf_live_\S+)")
 RETAINED_SECRET = "client_secret=<existing usable secret retained>"

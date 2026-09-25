@@ -13,21 +13,8 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import (
-    AuthSettings,
-    IssuedUserToken,
-    Scope,
-    TokenDenial,
-    UserTokenResult,
-    issue_user_token,
-    refresh_user_token,
-)
-from app.core.auth.audit import Operator
-from app.core.auth.results import IssuedActionToken, UserAccountWithRoles
+from app.core.auth import AuthSettings, Scope
 from app.core.auth.secrets import digest, hash_secret, verify_secret
-from app.core.auth.services.action_tokens import issue_action_token, redeem_action_token
-from app.core.auth.services.errors import InvalidActionTokenError, UnknownAccountPartyError
-from app.core.auth.services.users import create_user_account
 from app.core.db import Database
 from app.core.db.models import (
     ApplicationClient,
@@ -38,6 +25,12 @@ from app.core.db.models import (
     UserActionTokenPurpose,
     UserSession,
 )
+from app.services.auth import IssuedUserToken, TokenDenial, UserTokenResult, issue_user_token, refresh_user_token
+from app.services.auth.action_tokens import issue_action_token, redeem_action_token
+from app.services.auth.audit import Operator
+from app.services.auth.errors import InvalidActionTokenError, UnknownAccountPartyError
+from app.services.auth.results import IssuedActionToken, UserAccountWithRoles
+from app.services.auth.users import create_user_account
 from app.services.crm import parties, persons
 from tests.db.auth.logins import LoginClientCredentials, bootstrap_login_client
 

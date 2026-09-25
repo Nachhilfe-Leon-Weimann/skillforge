@@ -3,9 +3,8 @@ from enum import StrEnum
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth.principal import Principal, PrincipalType
 from app.core.db.models import AuthAuditLog
-
-from .principal import Principal, PrincipalType
 
 
 class Operator(StrEnum):

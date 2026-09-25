@@ -25,9 +25,9 @@ from app.core.auth import dependencies as auth_dependencies
 from app.core.auth.dependencies import get_auth_settings
 from app.core.auth.roles import Role
 from app.core.auth.scopes import CLIENT_ONLY_SCOPES
-from app.core.auth.services import action_tokens as action_tokens_service
 from app.core.db.dependencies import get_db_session
 from app.main import app
+from app.services.auth import action_tokens as action_tokens_service
 
 SETTINGS = AuthSettings(secret_key=SecretStr("test-signing-secret-with-at-least-32-bytes"))
 HTTP_METHODS = {"get", "put", "post", "delete", "patch"}

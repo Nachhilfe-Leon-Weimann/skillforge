@@ -1,10 +1,9 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.core.auth.roles import Role
+from app.core.auth.tokens import CreatedAccessToken
 from app.core.db.models import ApplicationClient, ApplicationClientSecret, UserAccount, UserActionToken, UserSession
-
-from .roles import Role
-from .tokens import CreatedAccessToken
 
 
 @dataclass(frozen=True)

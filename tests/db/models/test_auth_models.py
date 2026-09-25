@@ -111,9 +111,9 @@ async def test_auth_audit_log(session):
 async def test_create_client_secret_persists_hash_only(session):
     from sqlalchemy import select
 
-    from app.core.auth import create_client_secret
     from app.core.auth.secrets import verify_secret
     from app.core.db.models import ApplicationClient, AuthAuditLog
+    from app.services.auth import create_client_secret
 
     client = ApplicationClient(client_id="some-client", name="SomeClient")
     session.add(client)

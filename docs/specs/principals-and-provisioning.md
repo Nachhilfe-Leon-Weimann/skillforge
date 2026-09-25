@@ -14,7 +14,7 @@ The bot API can read *who* a principal is but cannot establish or change it.
   never created in `app/services` or `app/api` - only read. A grep for inserts of `DiscordUser`,
   `DiscordAccount`, `PermissionGrant`, `DiscordUserPermissionGroup` outside migrations returns nothing.
   Today these rows exist only via the migration baseline or manual DB edits;
-  [`bootstrap`](../../app/core/auth/bootstrap.py) only seeds the *OAuth application client* (`skillbot`),
+  [`bootstrap`](../../app/cli/bootstrap.py) only seeds the *OAuth application client* (`skillbot`),
   not Discord users.
 - **The transitions depend on a precondition the API can't set.** `prepare_*` calls
   `_require_active_user` ([`transitions.py`](../../app/services/bot/transitions.py)); an inactive or

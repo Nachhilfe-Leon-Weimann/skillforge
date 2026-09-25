@@ -4,13 +4,13 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth.secrets import SECRET_PREFIX, generate_secret, hash_secret_async
 from app.core.db.models import ApplicationClientSecret
 
-from ..audit import AuditEventType, write_auth_audit_log
-from ..results import CreatedClientSecret
-from ..secrets import SECRET_PREFIX, generate_secret, hash_secret_async
+from .audit import AuditEventType, write_auth_audit_log
 from .clients import get_application_client
 from .errors import ApplicationClientSecretNotFoundError
+from .results import CreatedClientSecret
 
 
 async def create_client_secret(

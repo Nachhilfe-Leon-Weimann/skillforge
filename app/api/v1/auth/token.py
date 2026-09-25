@@ -17,8 +17,12 @@ from fastapi.responses import JSONResponse
 from fastapi.security.utils import get_authorization_scheme_param
 
 from app.api.v1.common import ApiError, DBSession, error_responses
-from app.core.auth import (
-    CreatedAccessToken,
+from app.core.auth import CreatedAccessToken
+from app.core.auth.dependencies import AuthConfig
+from app.core.auth.inputs import MAX_EMAIL_LENGTH
+from app.core.auth.passwords import MAX_PASSWORD_LENGTH
+from app.core.logging import bind_request_log_context
+from app.services.auth import (
     InvalidClientCredentialsError,
     InvalidClientScopeError,
     TokenDenial,
@@ -27,11 +31,7 @@ from app.core.auth import (
     issue_user_token,
     refresh_user_token,
 )
-from app.core.auth.dependencies import AuthConfig
-from app.core.auth.inputs import MAX_EMAIL_LENGTH
-from app.core.auth.passwords import MAX_PASSWORD_LENGTH
-from app.core.auth.services.tokens import MAX_CLIENT_CREDENTIAL_LENGTH
-from app.core.logging import bind_request_log_context
+from app.services.auth.tokens import MAX_CLIENT_CREDENTIAL_LENGTH
 
 from .errors import (
     INVALID_CLIENT,
