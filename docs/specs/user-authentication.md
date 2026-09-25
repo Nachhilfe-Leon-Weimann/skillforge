@@ -638,11 +638,11 @@ Not built here; recorded so that this arc's shapes take it with no change but th
 - _Tests that change:_ `tests/api/test_auth_clients_error_contract.py` (the grant body gains `mode`, the revoke path
   `/{mode}`).
 - _Acceptance criteria:_
-  - [ ] Granting with `mode` in the body, revoking by `/{mode}/{scope_key}`, and the client detail listing
+  - [x] Granting with `mode` in the body, revoking by `/{mode}/{scope_key}`, and the client detail listing
         `application_scopes` and `delegated_scopes` work as specified; the audit entries name the mode.
-  - [ ] Granting `auth:users:login` as `delegated` answers `invalid_scope` and grants nothing of the request.
-  - [ ] A client holding a scope only as `delegated` does not get it through `client_credentials`.
-  - [ ] `just bootstrap-client` is idempotent like `bootstrap-skillbot`, grants in both modes, refuses a client-only
+  - [x] Granting `auth:users:login` as `delegated` answers `invalid_scope` and grants nothing of the request.
+  - [x] A client holding a scope only as `delegated` does not get it through `client_credentials`.
+  - [x] `just bootstrap-client` is idempotent like `bootstrap-skillbot`, grants in both modes, refuses a client-only
         scope in `--delegated` with `invalid_scope`, and prints the secret only when it created one;
         `just bootstrap-skillbot` prints exactly what it prints today, and every existing caller of the grant
         services behaves as before.

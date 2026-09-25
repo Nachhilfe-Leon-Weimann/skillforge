@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.common import Page, PageQuery, error_responses
@@ -24,6 +24,7 @@ from app.core.auth import (
 )
 from app.core.auth.dependencies import require_scopes
 from app.core.db.dependencies import get_db_session
+from app.core.db.models import GrantMode
 
 from .errors import INVALID_SCOPE
 from .schemas import (
@@ -38,6 +39,15 @@ from .schemas import (
 router = APIRouter(prefix="/clients")
 
 ManageAuthClients = Annotated[Principal, require_scopes(Scope.AUTH_CLIENTS_MANAGE)]
+
+ScopeGrantMode = Annotated[
+    GrantMode,
+    Path(
+        description="Mode of the grant: `application` (for the client itself) or `delegated` (the ceiling for people).",
+        examples=[GrantMode.DELEGATED],
+    ),
+]
+ScopeKey = Annotated[str, Path(description="Scope of the grant.", examples=["crm:read"])]
 
 
 @router.get("")
@@ -154,24 +164,27 @@ async def grant_application_client_scopes_endpoint(
     _: ManageAuthClients,
 ) -> ApplicationClientResponse:
     try:
-        client = await grant_application_client_scopes(session, client_id=client_id, scopes=request.scopes)
+        client = await grant_application_client_scopes(
+            session, client_id=client_id, scopes=request.scopes, mode=request.mode
+        )
     except InvalidClientScopeError as exc:
-        # Local mapping: 400 is outside STATUS_BY_ERROR. Raised (not returned), so scopes granted
-        # before the invalid one are rolled back.
+        # Local mapping: 400 is outside STATUS_BY_ERROR. Raised, not returned: a refused grant writes
+        # nothing that has to survive the rollback.
         raise INVALID_SCOPE.exception() from exc
 
     return ApplicationClientResponse.from_model(client)
 
 
 @router.delete(
-    "/{client_id}/scopes/{scope_key}",
+    "/{client_id}/scopes/{mode}/{scope_key}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses=error_responses(ApplicationClientNotFoundError, ApplicationClientScopeGrantNotFoundError),
 )
 async def revoke_application_client_scope_endpoint(
     client_id: str,
-    scope_key: str,
+    mode: ScopeGrantMode,
+    scope_key: ScopeKey,
     session: Annotated[AsyncSession, Depends(get_db_session)],
     _: ManageAuthClients,
 ) -> None:
-    await revoke_application_client_scope(session, client_id=client_id, scope_key=scope_key)
+    await revoke_application_client_scope(session, client_id=client_id, scope_key=scope_key, mode=mode)

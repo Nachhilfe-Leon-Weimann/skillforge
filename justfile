@@ -124,7 +124,12 @@ requeue job_id:
 # --- Auth ---
 
 bootstrap-skillbot:
-    uv run python -m app.core.auth.bootstrap
+    uv run python -m app.core.auth.bootstrap skillbot
+
+# Seed a client with grants in both modes: <client_id> --application "<scopes>" --delegated "<scopes>"
+[positional-arguments]
+bootstrap-client *args:
+    uv run python -m app.core.auth.bootstrap client "$@"
 
 # --- Docker ---
 
