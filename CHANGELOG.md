@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/Nachhilfe-Leon-Weimann/skillforge/compare/v0.4.0...v0.5.0) (2026-09-25)
+
+
+### Features
+
+* **auth:** add grant modes and the account tables ([#150](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/150)) ([e32a541](https://github.com/Nachhilfe-Leon-Weimann/skillforge/commit/e32a5410b1222e290b26511384d56ca243714057))
+* **auth:** add the reach-qualified scope model ([#149](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/149)) ([f83c47f](https://github.com/Nachhilfe-Leon-Weimann/skillforge/commit/f83c47f8cb59193a76b13d2865f339e636422550))
+* **auth:** grant client scopes per mode ([#152](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/152)) ([8e1f932](https://github.com/Nachhilfe-Leon-Weimann/skillforge/commit/8e1f93268f820052660efce5428d3c3f6be4cc14))
+* **auth:** issue and validate person tokens ([#153](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/153)) ([27c2fa3](https://github.com/Nachhilfe-Leon-Weimann/skillforge/commit/27c2fa3ece6052fe7bc7cd7505917a94b941dc94))
+* **auth:** log people in with password and refresh tokens ([#156](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/156)) ([b0203a7](https://github.com/Nachhilfe-Leon-Weimann/skillforge/commit/b0203a71fa5128875dd4604915d8ab9e0f6853b3))
+* **auth:** manage user accounts ([#154](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/154)) ([712c237](https://github.com/Nachhilfe-Leon-Weimann/skillforge/commit/712c23773e47cbb2f3098879e12a5c8242abf9b7))
+* **crm:** restrict party reads to the caller's reach ([#155](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/155)) ([23ed17a](https://github.com/Nachhilfe-Leon-Weimann/skillforge/commit/23ed17a821a3932f9bb178d93272dc3084af0fa9))
+
 ## [0.4.0](https://github.com/Nachhilfe-Leon-Weimann/skillforge/compare/v0.3.0...v0.4.0) (2026-09-20)
 
 
