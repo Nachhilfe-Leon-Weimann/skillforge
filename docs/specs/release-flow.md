@@ -1,11 +1,11 @@
 # Spec: Release flow (one release and deploy pipeline for the whole skill-platform)
 
 > Status: Implemented - P0 on `main`, `v0.4.0` released and deployed through the flow (2026-09-20);
-> P1: P1-1 implemented - `compose.yml` pins the deployed version, the next release is the first to move the pin;
-> P1-4 in #125; P1-2 and P1-3 dropped. P2 *Shared workflows* done: the deploy lives in
+> P1: P1-1 implemented - `compose.yml` pins the deployed version, `v0.5.0` (2026-09-25) was the first release
+> to move the pin; P1-4 in #125; P1-2 and P1-3 dropped. P2 *Shared workflows* done: the deploy lives in
 > [`skill-platform-workflows`][workflows] since 2026-09-20 (#133).
-> Platform arc (skillforge first, then skillbot and skillsite): skillbot adopted the flow on 2026-09-21
-> (skillbot#10); its first release PR is open, the first release through the flow is still to come.
+> Platform arc (skillforge first, then skillbot and skillsite): skillbot adopted the flow (skillbot#10) and
+> released `v0.1.0` through it on 2026-09-21.
 > This spec is also the decision record (no separate ADR: *Decided defaults*, *Verified behavior* and
 > *Trade-offs accepted* carry the why). Written in skillforge because it is the first adopter; the **platform
 > contract** below is what the other repos copy. Every GitHub behavior this spec relies on was verified in a
@@ -279,9 +279,9 @@ What is identical in every repo; everything else is repo-specific detail behind 
         runs - the PR itself deploys nothing)*
   - [x] release-please rewrites exactly those lines. *(see Verified behavior: its own `Generic` updater, run
         against the file)*
-  - [ ] After a release, `compose.yml` on `main` names the released version and prod runs exactly that image.
-        *(shown by the next release, not before; a pin that did not move is a red deploy, because `/health`
-        keeps reporting the old version)*
+  - [x] After a release, `compose.yml` on `main` names the released version and prod runs exactly that image.
+        *(`v0.5.0`, 2026-09-25: the release PR moved both `image:` lines, and the release run's deploy job went
+        green, which it only does once `/health` reports the released version)*
 
 **P1-2 - Local hooks.** *Dropped on 2026-09-20 - see Non-goals.* (Was: lefthook with `pre-commit`, `commit-msg`
 and `pre-push` hooks calling `just` recipes.)
@@ -307,7 +307,8 @@ result.) skillbot's existing deploy notification therefore goes away when it ado
         environment (secret and variables) and the org variable, and finds its script. *(2026-09-20, right
         after #133: the job checked out `skill-platform-workflows` at the ref behind `v1` and the script
         reported "Dokploy API access and the compose service's deployment list verified; nothing deployed")*
-  - [ ] The next release deploys through it.
+  - [x] The next release deploys through it. *(`v0.5.0`, 2026-09-25: the release run's
+        `Deploy / Deploy production via Dokploy API` job called the shared workflow and passed)*
 - **Code scanning default setup**, if alerts start being read.
 - **A required reviewer on `production`**, if someone other than Leon ever ships.
 
@@ -329,7 +330,8 @@ platform contract): a new adopter copies the two callers from its README and `ci
         `uv.lock`, `compose.yml`, `CHANGELOG.md` and the manifest; its commit is *Verified* and its `check` is
         green. *(skillbot#12, `0.2.0`: no tag existed, so it collects the whole history)*
   - [x] A `dry_run` dispatch of `Deploy` is green against skillbot's compose service. *(2026-09-21)*
-  - [ ] The first release builds `ghcr.io/nachhilfe-leon-weimann/skillbot:vX.Y.Z` and deploys it.
+  - [x] The first release builds `ghcr.io/nachhilfe-leon-weimann/skillbot:vX.Y.Z` and deploys it. *(`v0.1.0`,
+        2026-09-21: the image `v0.1.0` is published and the release run's deploy job is green)*
 
 ## Open questions
 
