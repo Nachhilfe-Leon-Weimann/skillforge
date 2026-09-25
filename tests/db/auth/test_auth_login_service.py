@@ -8,14 +8,15 @@ from pwdlib.hashers.argon2 import Argon2Hasher
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthSettings, IssuedUserToken, TokenDenial, issue_user_token, refresh_user_token
-from app.core.auth.audit import AuditEventType
+from app.core.auth import AuthSettings
 from app.core.auth.principal import PrincipalType
 from app.core.auth.secrets import hash_secret, verify_and_update_async, verify_secret
-from app.core.auth.services import tokens as tokens_service
-from app.core.auth.services.accounts import lock_user_account
-from app.core.auth.services.sessions import REFRESH_REUSE_GRACE
 from app.core.db.models import UserAccount, UserAccountStatus, UserSession
+from app.services.auth import IssuedUserToken, TokenDenial, issue_user_token, refresh_user_token
+from app.services.auth import tokens as tokens_service
+from app.services.auth.accounts import lock_user_account
+from app.services.auth.audit import AuditEventType
+from app.services.auth.sessions import REFRESH_REUSE_GRACE
 
 pytestmark = pytest.mark.db
 

@@ -8,7 +8,7 @@ from app.core.db.models import (
     ApplicationClientStatus,
 )
 
-from ..audit import AuditEventType, write_auth_audit_log
+from .audit import AuditEventType, write_auth_audit_log
 from .errors import ApplicationClientAlreadyExistsError, ApplicationClientNotFoundError
 
 

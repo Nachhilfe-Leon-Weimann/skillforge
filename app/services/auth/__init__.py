@@ -15,6 +15,7 @@ from .errors import (
     InvalidClientCredentialsError,
     InvalidClientScopeError,
 )
+from .results import BootstrappedApplicationClient, CreatedClientSecret, IssuedUserToken, TokenDenial, UserTokenResult
 from .scopes import grant_application_client_scopes, revoke_application_client_scope, seed_default_scopes
 from .secrets import create_application_client_secret, create_client_secret, revoke_application_client_secret
 from .tokens import issue_client_token, issue_user_token, refresh_user_token
@@ -25,9 +26,14 @@ __all__ = [
     "ApplicationClientNotFoundError",
     "ApplicationClientScopeGrantNotFoundError",
     "ApplicationClientSecretNotFoundError",
+    "BootstrappedApplicationClient",
     "ClientCredentialsError",
+    "CreatedClientSecret",
     "InvalidClientCredentialsError",
     "InvalidClientScopeError",
+    "IssuedUserToken",
+    "TokenDenial",
+    "UserTokenResult",
     "bootstrap_application_client",
     "create_application_client",
     "create_application_client_secret",

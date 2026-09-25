@@ -10,10 +10,11 @@ import pytest
 
 from app.api.v1.auth.token import create_token, get_issue_user_token, get_refresh_user_token
 from app.api.v1.common import DBSession
-from app.core.auth import IssuedUserToken, Scope, TokenDenial
+from app.core.auth import Scope
 from app.core.auth.scopes import CLIENT_ONLY_SCOPES
 from app.core.db.dependencies import get_db_session
 from app.main import app
+from app.services.auth import IssuedUserToken, TokenDenial
 from tests.api.test_auth_endpoint import _overrides, _token
 from tests.api.test_auth_endpoint import _post as _post_to
 

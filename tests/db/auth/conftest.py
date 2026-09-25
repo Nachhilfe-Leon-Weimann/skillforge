@@ -12,17 +12,10 @@ from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import (
-    AuthSettings,
-    PrincipalType,
-    Scope,
-    bootstrap,
-    create_application_access_token,
-)
-from app.core.auth.audit import AuditEventType, Operator
+from app.cli import bootstrap
+from app.core.auth import AuthSettings, PrincipalType, Scope, create_application_access_token
 from app.core.auth.dependencies import get_auth_settings
 from app.core.auth.secrets import hash_secret
-from app.core.auth.services.users import create_user_account
 from app.core.db.dependencies import get_db_session
 from app.core.db.models import (
     ApplicationClient,
@@ -40,6 +33,8 @@ from app.core.db.models import (
     UserSession,
 )
 from app.main import app
+from app.services.auth.audit import AuditEventType, Operator
+from app.services.auth.users import create_user_account
 from tests.db.auth.logins import PORTAL_DELEGATED_SCOPES, LoginClientCredentials, bootstrap_login_client
 
 AUTH_SETTINGS = AuthSettings(secret_key=SecretStr("test-signing-secret-with-at-least-32-bytes"))

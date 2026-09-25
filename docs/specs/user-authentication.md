@@ -1,6 +1,8 @@
 # Spec: User authentication (accounts, grant modes, reach-qualified scopes)
 
 > Status: Implemented (2026-09) | Domain arc `auth`
+> Code moved on 2026-09-25: the auth services went from `app/core/auth/services/` to `app/services/auth/` and the
+> operator commands from `app/core/auth/bootstrap.py` to `app/cli/bootstrap.py`; the paths below name the new home.
 > Tracking: [#85](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/85)
 > Builds on the [project sketch](../PROJECT.md), [`api-conventions.md`](api-conventions.md), goal 4 of
 > [`crm-api.md`](crm-api.md) ("exactly one target party per route") and
@@ -132,7 +134,7 @@ application token is accepted and useless until P1-2).
 `CRM_READ -> CRM_READ_OWN`. `expand(scopes)` adds the `:own` variant of every unqualified scope present;
 `canonical(scopes)` drops `x:own` wherever `x` is present; it inverts `expand` on canonical sets only. Both take a
 `Set[str]`; `parse_scopes` and `format_scopes` are the only places a scope string is split or joined (they replace
-`normalize_scope_set` in `services/scopes.py` and `_format_scope` in `tokens.py`). A token always carries the
+`normalize_scope_set` in `app/services/auth/scopes.py` and `_format_scope` in `tokens.py`). A token always carries the
 canonical form; every check expands first (`missing = required - expand(principal.scopes)` in
 `get_current_principal`). `require_scopes` raises at import time for any value of `OWN_VARIANT`: a `:own` scope is
 demanded only through `require_access` ([Reach](#reach)).
@@ -149,7 +151,7 @@ scope requested     ->  requested <= available, else invalid_scope;  token = can
 empty result        ->  invalid_scope
 ```
 
-`resolve_token_scopes` in [`services/scopes.py`](../../app/core/auth/services/scopes.py) implements it with the
+`resolve_token_scopes` in [`services/auth/scopes.py`](../../app/services/auth/scopes.py) implements it with the
 signature `(*, requested: Set[str], granted: Set[str], ceilings: Iterable[Set[str]] = ()) -> frozenset[str]`:
 `available` is `expand(granted)` intersected with `expand(c)` for every ceiling (the role scopes; on refresh also
 the session's `scope`), and an empty `requested` means none was requested. The caller passes the grants of the mode
@@ -159,7 +161,7 @@ only widens (a client granted `crm:read` may now request `crm:read:own`).
 ### Roles
 
 `Role` (`StrEnum`), `STORED_ROLES`, `BASE_USER_SCOPES`, `ROLE_SCOPES` and `scopes_for(roles)` live in
-`app/core/auth/roles.py`; the derivation that reads the CRM tables lives in `app/core/auth/services/roles.py`.
+`app/core/auth/roles.py`; the derivation that reads the CRM tables lives in `app/services/auth/roles.py`.
 
 | Role           | Source                                                       | Scopes                                                                          |
 | -------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------- |
@@ -292,8 +294,8 @@ to a session of **this** client; another client's token is "anything else". The 
   `scope=` shapes only the returned token, and the next refresh without it returns to the ceiling. The token carries
   `amr: ["pwd"]` - in this arc every session comes from a password login.
 - The account is `disabled`: revoke the session (`account_disabled`), answer `invalid_grant`.
-- It matches `previous_refresh_token_hash`: within `REFRESH_REUSE_GRACE` (10 seconds, in `services/sessions.py`) of
-  `rotated_at` answer `invalid_grant`, write `token.denied` with the fixed detail
+- It matches `previous_refresh_token_hash`: within `REFRESH_REUSE_GRACE` (10 seconds, in
+  `app/services/auth/sessions.py`) of `rotated_at` answer `invalid_grant`, write `token.denied` with the fixed detail
   `refresh token reused within grace` and leave the session alone (two requests raced); after that revoke the
   session (`reuse_detected`), write `session.reuse_detected`, answer `invalid_grant`. An old refresh token is never
   answered with the current one.
@@ -436,7 +438,7 @@ GET    /me                                 any token                 200  MeResp
 
 ## Error catalog
 
-Taxonomy errors (`app/core/auth/services/errors.py`, mapped by `STATUS_BY_ERROR`):
+Taxonomy errors (`app/services/auth/errors.py`, mapped by `STATUS_BY_ERROR`):
 
 | Class                           | Status | `code`                        | Raised when                                                                                                                |
 | ------------------------------- | ------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -631,8 +633,8 @@ Not built here; recorded so that this arc's shapes take it with no change but th
 - _Technique:_ the client services and routes take the mode as specified in [Client grants](#client-grants);
   `grant_client_scopes` deduplicates on `(scope_key, mode)`, not `scope_key`; `issue_client_token` reads
   `application` grants only; `ApplicationClientResponse` and `ApplicationClientScopeGrantRequest` derive from
-  `ApiModel`. [`bootstrap.py`](../../app/core/auth/bootstrap.py) gets argparse subcommands: `skillbot` (the
-  `bootstrap-skillbot` recipe runs `python -m app.core.auth.bootstrap skillbot`) and, behind
+  `ApiModel`. [`bootstrap.py`](../../app/cli/bootstrap.py) gets argparse subcommands: `skillbot` (the
+  `bootstrap-skillbot` recipe runs `python -m app.cli.bootstrap skillbot`) and, behind
   `just bootstrap-client`, `client <client_id> --application <scopes> --delegated <scopes>`; both scope lists go
   through `parse_scopes`.
 - _Tests that change:_ `tests/api/test_auth_clients_error_contract.py` (the grant body gains `mode`, the revoke path
@@ -653,7 +655,7 @@ Not built here; recorded so that this arc's shapes take it with no change but th
   `PRINCIPAL_TYPE_APPLICATION` in `tokens.py`, `dependencies.py` and `tests/auth/test_tokens.py`, no alias; claims
   as a pydantic discriminated union; `create_access_token` for both types; `MeResponse` extended, with the
   `client_id` and `scopes` descriptions of [Tokens](#tokens); `OAuth2Bearer` with `scheme_name="OAuth2"` (the
-  `password` flow follows in P0-8); the request log context. P0-5 does not edit `services/tokens.py`.
+  `password` flow follows in P0-8); the request log context. P0-5 does not edit `app/services/auth/tokens.py`.
 - _Tests that change:_ `tests/auth/test_dependencies.py` (`test_require_application_rejects_non_application_principal`
   builds a `UserPrincipal`; `test_require_scopes_declares_the_scopes_in_openapi_for_both_positions` expects the key
   `OAuth2`), `tests/auth/test_tokens.py` (`PrincipalType`), `tests/api/test_auth_me_endpoint.py` (the properties of
@@ -673,16 +675,16 @@ Not built here; recorded so that this arc's shapes take it with no change but th
 
 **P0-6 - Accounts.**
 
-- _Technique:_ `services/accounts.py` (get and lock an account row), `services/users.py` (create, load, list,
-  update, stored roles), `services/action_tokens.py` (issue, redeem), `services/sessions.py`
-  (`SessionRevokedReason`, revoke), `services/roles.py` (`derive_roles`); `inputs.py` (`LoginEmail`,
+- _Technique:_ `app/services/auth/accounts.py` (get and lock an account row), `users.py` (create, load, list,
+  update, stored roles), `action_tokens.py` (issue, redeem), `sessions.py` (`SessionRevokedReason`, revoke),
+  `roles.py` (`derive_roles`), all in `app/services/auth/`; `inputs.py` (`LoginEmail`,
   `normalize_email`); `passwords.py` (policy, `dummy_password_hash`); `app/api/v1/auth/users.py`, the redeem route
   in `app/api/v1/auth/password.py`; the `admin` subcommand behind a `just bootstrap-admin` recipe. `secrets.py`
   renames its functions to `generate_secret(prefix, nbytes=SECRET_BYTES)`, `hash_secret` and `verify_secret`
   (`SECRET_PREFIX` stays) and adds `digest` (SHA-256 hex); the rename follows through
-  `app/core/auth/__init__.py` (the three re-exports go), `services/secrets.py` and `services/tokens.py`. Tests
-  insert `UserSession` rows through the model (an `add_user_session` fixture on an `ApplicationClient` row, as in
-  the archive): nothing opens sessions before P0-8.
+  `app/core/auth/__init__.py` (the three re-exports go), `app/services/auth/secrets.py` and
+  `app/services/auth/tokens.py`. Tests insert `UserSession` rows through the model (an `add_user_session` fixture
+  on an `ApplicationClient` row, as in the archive): nothing opens sessions before P0-8.
 - _Tests that change:_ `tests/auth/test_secrets.py` and `tests/db/models/test_auth_models.py` (the rename);
   `PAGED_ENDPOINTS` in `tests/api/test_openapi_contract.py` gains `/api/v1/auth/users`.
 - _Acceptance criteria:_
@@ -756,8 +758,8 @@ Not built here; recorded so that this arc's shapes take it with no change but th
 **P0-8 - Login.**
 
 - _Technique:_ `issue_user_token` and `refresh_user_token` in
-  [`services/tokens.py`](../../app/core/auth/services/tokens.py); sessions opened, rotated and revoked in
-  `services/sessions.py` (with `REFRESH_REUSE_GRACE`); `ClientTokenForm` becomes `TokenForm` (`grant_type`, the
+  [`services/auth/tokens.py`](../../app/services/auth/tokens.py); sessions opened, rotated and revoked in
+  `app/services/auth/sessions.py` (with `REFRESH_REUSE_GRACE`); `ClientTokenForm` becomes `TokenForm` (`grant_type`, the
   client credentials, `scope`, `username`, `password`, `refresh_token`; a parameter the grant needs and lacks is
   `invalid_request`); `create_token` takes `DBSession`, dispatches on the grant and sets
   `response_model_exclude_none=True`; `AccessTokenResponse` derives from `ApiModel`; `POST /auth/revoke`;
@@ -823,18 +825,18 @@ P0-8 - an order that respects every dependency in the table. A wave is what can 
 built beside another joins the stack by rebasing onto the branch below it. The PRs merge bottom-up, each as its own
 squash commit, and GitHub rebases the PRs above a merged one.
 
-| Wave | Slices                                       | Needs                                               |
-| ---- | -------------------------------------------- | --------------------------------------------------- |
-| 0    | **P0-1** spec and ADR                        | nothing                                             |
-| 1    | **P0-2** scope model, **P0-3** data model    | nothing (both edit `services/scopes.py`, see below) |
-| 2    | **P0-4** grant modes, **P0-5** person tokens | P0-4: P0-2 and P0-3. P0-5: P0-2                     |
-| 3    | **P0-6** accounts, **P0-7** own data         | P0-6: P0-2 to P0-5. P0-7: P0-2 and P0-5             |
-| 4    | **P0-8** login                               | everything above                                    |
+| Wave | Slices                                       | Needs                                                        |
+| ---- | -------------------------------------------- | ------------------------------------------------------------ |
+| 0    | **P0-1** spec and ADR                        | nothing                                                      |
+| 1    | **P0-2** scope model, **P0-3** data model    | nothing (both edit `app/services/auth/scopes.py`, see below) |
+| 2    | **P0-4** grant modes, **P0-5** person tokens | P0-4: P0-2 and P0-3. P0-5: P0-2                              |
+| 3    | **P0-6** accounts, **P0-7** own data         | P0-6: P0-2 to P0-5. P0-7: P0-2 and P0-5                      |
+| 4    | **P0-8** login                               | everything above                                             |
 
 - All schema changes live in P0-3's single revision, so no two slices add competing Alembic heads.
 - P0-7 does not wait for the login: its tests mint person tokens with `create_access_token` and a
   `UserPrincipal`, the way the CRM tests mint application tokens today.
-- **Slices of one wave share files, not functions.** Wave 1: `services/scopes.py` (P0-2 `resolve_token_scopes`,
+- **Slices of one wave share files, not functions.** Wave 1: `app/services/auth/scopes.py` (P0-2 `resolve_token_scopes`,
   P0-3 `revoke_application_client_scope`); wave 2: `app/api/v1/auth/schemas.py` and `app/core/auth/__init__.py`.
   The slice that joins the stack above its wave partner resolves them like `openapi.json`.
 - **`openapi.json` is never merged by hand.** After every rebase a slice takes either side of the file, reruns

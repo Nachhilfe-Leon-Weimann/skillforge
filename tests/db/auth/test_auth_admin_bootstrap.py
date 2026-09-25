@@ -9,12 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import bootstrap
-from app.core.auth.audit import AuditEventType, Operator
+from app.cli import bootstrap
 from app.core.auth.secrets import digest
-from app.core.auth.services.action_tokens import issue_action_token, redeem_action_token
-from app.core.auth.services.bootstrap import bootstrap_admin_account, bootstrap_application_client
-from app.core.auth.services.users import create_user_account, update_user_account
 from app.core.db.models import (
     GrantMode,
     Party,
@@ -23,6 +19,10 @@ from app.core.db.models import (
     UserAccountStatus,
     UserActionTokenPurpose,
 )
+from app.services.auth.action_tokens import issue_action_token, redeem_action_token
+from app.services.auth.audit import AuditEventType, Operator
+from app.services.auth.bootstrap import bootstrap_admin_account, bootstrap_application_client
+from app.services.auth.users import create_user_account, update_user_account
 from app.services.crm import persons
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("command_session")]

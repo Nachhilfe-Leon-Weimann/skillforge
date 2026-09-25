@@ -3,7 +3,7 @@
 from fastapi import APIRouter, status
 
 from app.api.v1.common import DBSession
-from app.core.auth.services import sessions as sessions_service
+from app.services.auth import sessions as sessions_service
 
 from .params import LoginClient
 from .schemas import RefreshTokenRevokeRequest

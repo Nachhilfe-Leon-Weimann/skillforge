@@ -1,8 +1,8 @@
 import pytest
 
 from app.core.auth.scopes import format_scopes
-from app.core.auth.services.errors import InvalidClientScopeError
-from app.core.auth.services.scopes import resolve_token_scopes
+from app.services.auth.errors import InvalidClientScopeError
+from app.services.auth.scopes import resolve_token_scopes
 
 ROLE_SCOPES_OF_A_STUDENT = frozenset({"account:self", "crm:read:own"})
 

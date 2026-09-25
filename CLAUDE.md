@@ -34,14 +34,17 @@ app/
                      roles, contact_infos, relations, subjects; params + schemas); common/ (shared API
                      vocabulary: error envelope + handlers, error_responses, Page/PageParams, OpenAPI hooks;
                      re-exports DBSession)
+  services/auth/     accounts, users, clients, scopes (grants per mode), tokens (the grants), sessions,
+                     action_tokens, secrets, roles, bootstrap, audit, results, errors
   services/bot/      business logic: transitions, operations, jobs, principals, provisioning,
                      authz, command_envs, contexts, profile, reaper, views, errors
   services/crm/      system of record: parties (PARTY_GRAPH, load_party, saved), persons, companies,
                      roles, contact_infos, relations, subjects, inputs, errors
   services/system/   health aggregation + worker heartbeats (backs /health)
   workers/           reaper.py (lifecycle guardian: job reaper + operation sweeper)
-  cli/               deadletters.py (dead-letter list/requeue operator commands)
-  core/              auth/ (OAuth2, JWT, scopes, roles, accounts, sessions, reach), db/ (engine, DBSession,
+  cli/               deadletters.py (dead-letter list/requeue operator commands), bootstrap.py (behind the
+                     `just bootstrap-*` recipes)
+  core/              auth/ (OAuth2 scheme, JWT, principals, scopes, roles, reach, guards), db/ (engine, DBSession,
                      models/<schema>/), logging/, config.py, errors.py (HTTP-agnostic error taxonomy),
                      unset.py (the services' UNSET sentinel)
 migrations/          Alembic (env.py creates schemas; baseline = explicit DDL)

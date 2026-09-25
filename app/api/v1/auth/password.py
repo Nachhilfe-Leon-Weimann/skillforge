@@ -7,8 +7,8 @@ carries.
 from fastapi import APIRouter, status
 
 from app.api.v1.common import DBSession, error_responses
-from app.core.auth.services import action_tokens as action_tokens_service
-from app.core.auth.services.errors import InvalidActionTokenError, WeakPasswordError
+from app.services.auth import action_tokens as action_tokens_service
+from app.services.auth.errors import InvalidActionTokenError, WeakPasswordError
 
 from .params import LoginClient
 from .schemas import PasswordRedeemRequest

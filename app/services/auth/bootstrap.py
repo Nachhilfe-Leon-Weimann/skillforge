@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth.config import AuthSettings
+from app.core.auth.scopes import Scope, parse_scopes
 from app.core.db.models import (
     ApplicationClient,
     ApplicationClientStatus,
@@ -13,13 +15,11 @@ from app.core.db.models import (
     UserActionTokenPurpose,
 )
 
-from ..audit import AuditEventType, Operator, write_auth_audit_log
-from ..config import AuthSettings
-from ..results import BootstrappedAdminAccount, BootstrappedApplicationClient
-from ..scopes import Scope, parse_scopes
 from .accounts import find_user_account_by_party
 from .action_tokens import issue_action_token
+from .audit import AuditEventType, Operator, write_auth_audit_log
 from .clients import find_application_client
+from .results import BootstrappedAdminAccount, BootstrappedApplicationClient
 from .scopes import grant_client_scopes, seed_default_scopes
 from .secrets import client_has_usable_secret, create_client_secret
 from .users import add_user_role, create_user_account, update_user_account

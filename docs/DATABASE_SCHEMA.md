@@ -391,7 +391,7 @@ person party; deleting the party deletes the account, and `core.party` knows not
 See [ADR 0001](decisions/0001-openapi-as-contract.md) for the API contract,
 [ADR 0008](decisions/0008-user-authentication-and-reach.md) and
 [`user-authentication.md`](specs/user-authentication.md) for accounts and grant modes, and
-`app/core/auth/` for the runtime.
+`app/core/auth/` and `app/services/auth/` for the code.
 
 ```sql
 auth.application_client_status = ('active', 'disabled')

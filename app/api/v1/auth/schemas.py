@@ -8,7 +8,6 @@ from pydantic.experimental.missing_sentinel import MISSING
 from app.api.v1.common import ApiModel
 from app.core.auth.inputs import LoginEmail
 from app.core.auth.principal import Principal, UserPrincipal
-from app.core.auth.results import CreatedClientSecret, IssuedActionToken, IssuedUserToken, UserAccountWithRoles
 from app.core.auth.roles import Role
 from app.core.auth.tokens import CreatedAccessToken
 from app.core.db.models import (
@@ -18,6 +17,7 @@ from app.core.db.models import (
     UserAccountRoleName,
     UserAccountStatus,
 )
+from app.services.auth.results import CreatedClientSecret, IssuedActionToken, IssuedUserToken, UserAccountWithRoles
 
 
 class AccessTokenResponse(ApiModel):

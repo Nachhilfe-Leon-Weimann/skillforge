@@ -12,6 +12,14 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth.config import AuthSettings
+from app.core.auth.inputs import normalize_email
+from app.core.auth.passwords import verify_dummy_password
+from app.core.auth.principal import ApplicationPrincipal, AuthMethod, PrincipalType, UserPrincipal
+from app.core.auth.roles import Role, scopes_for
+from app.core.auth.scopes import Scope, parse_scopes
+from app.core.auth.secrets import digest, verify_and_update_async, verify_secret_async
+from app.core.auth.tokens import CreatedAccessToken, create_access_token, create_application_access_token
 from app.core.db.models import (
     ApplicationClient,
     ApplicationClientSecret,
@@ -22,19 +30,11 @@ from app.core.db.models import (
     UserSession,
 )
 
-from ..audit import AuditEventType, write_auth_audit_log
-from ..config import AuthSettings
-from ..inputs import normalize_email
-from ..passwords import verify_dummy_password
-from ..principal import ApplicationPrincipal, AuthMethod, PrincipalType, UserPrincipal
-from ..results import IssuedUserToken, TokenDenial, UserTokenResult
-from ..roles import Role, scopes_for
-from ..scopes import Scope, parse_scopes
-from ..secrets import digest, verify_and_update_async, verify_secret_async
-from ..tokens import CreatedAccessToken, create_access_token, create_application_access_token
 from .accounts import find_user_account_by_email, get_user_account, lock_user_account
+from .audit import AuditEventType, write_auth_audit_log
 from .clients import find_application_client
 from .errors import InvalidClientCredentialsError, InvalidClientScopeError, UserAccountNotFoundError
+from .results import IssuedUserToken, TokenDenial, UserTokenResult
 from .roles import account_roles
 from .scopes import granted_active_scope_keys, resolve_token_scopes
 from .secrets import is_secret_usable, normalize_datetime

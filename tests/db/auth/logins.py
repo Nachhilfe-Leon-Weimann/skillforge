@@ -7,9 +7,10 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import Scope, bootstrap_application_client
+from app.core.auth import Scope
 from app.core.auth.roles import Role, scopes_for
 from app.core.db.models import GrantMode
+from app.services.auth import bootstrap_application_client
 
 PORTAL_DELEGATED_SCOPES: frozenset[Scope] = scopes_for([Role.ADMIN])
 """What the portal may do for a person at most: everything a role grants (see "Operating without a portal")."""

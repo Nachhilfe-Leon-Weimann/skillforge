@@ -14,14 +14,14 @@ from typing import cast
 from sqlalchemy import CursorResult, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth.principal import ApplicationPrincipal
+from app.core.auth.scopes import format_scopes
+from app.core.auth.secrets import digest, generate_secret
 from app.core.db.models import UserSession
 
-from ..audit import Actor, AuditEventType, write_user_account_audit_log
-from ..principal import ApplicationPrincipal
-from ..results import OpenedSession
-from ..scopes import format_scopes
-from ..secrets import digest, generate_secret
 from .accounts import get_user_account
+from .audit import Actor, AuditEventType, write_user_account_audit_log
+from .results import OpenedSession
 
 REFRESH_TOKEN_PREFIX = "sf_rt_"
 

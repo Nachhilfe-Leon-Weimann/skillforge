@@ -124,17 +124,17 @@ requeue job_id:
 # --- Auth ---
 
 bootstrap-skillbot:
-    uv run python -m app.core.auth.bootstrap skillbot
+    uv run python -m app.cli.bootstrap skillbot
 
 # Seed a client with grants in both modes: <client_id> --application "<scopes>" --delegated "<scopes>"
 [positional-arguments]
 bootstrap-client *args:
-    uv run python -m app.core.auth.bootstrap client "$@"
+    uv run python -m app.cli.bootstrap client "$@"
 
 # Ensure an enabled admin account and print its invitation or reset token: --party-id <uuid> --email <address>
 [positional-arguments]
 bootstrap-admin *args:
-    uv run python -m app.core.auth.bootstrap admin "$@"
+    uv run python -m app.cli.bootstrap admin "$@"
 
 # --- Docker ---
 

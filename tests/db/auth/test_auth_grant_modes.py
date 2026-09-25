@@ -5,7 +5,8 @@ from collections import Counter
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import (
+from app.core.db.models import GrantMode
+from app.services.auth import (
     ApplicationClientScopeGrantNotFoundError,
     InvalidClientScopeError,
     create_application_client,
@@ -14,7 +15,6 @@ from app.core.auth import (
     issue_client_token,
     revoke_application_client_scope,
 )
-from app.core.db.models import GrantMode
 
 APPLICATION, DELEGATED = GrantMode.APPLICATION, GrantMode.DELEGATED
 
