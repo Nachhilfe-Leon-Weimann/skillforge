@@ -8,7 +8,7 @@ from app.core.db.models import ApplicationClientSecret, ApplicationClientStatus,
 from ..audit import AuditEventType, write_auth_audit_log
 from ..config import AuthSettings
 from ..scopes import parse_scopes
-from ..secrets import verify_client_secret
+from ..secrets import verify_secret
 from ..tokens import CreatedAccessToken, create_application_access_token
 from .clients import find_application_client
 from .errors import ClientCredentialsError, InvalidClientCredentialsError
@@ -87,7 +87,7 @@ def _find_matching_secret(
         if not is_secret_usable(secret, now=now):
             continue
 
-        if verify_client_secret(client_secret, secret.secret_hash):
+        if verify_secret(client_secret, secret.secret_hash):
             return secret
 
     return None

@@ -1,0 +1,154 @@
+"""What two overlapping transactions on one account, or on its party, do to each other.
+
+These need two real transactions, so they cannot run on the rolled-back ``session`` fixture: they commit
+and remove what they created - including their audit entries, which do not cascade with the party. The
+test's ``session`` only reads what the others committed.
+"""
+
+import asyncio
+import uuid
+from collections.abc import AsyncIterator, Callable, Coroutine
+
+import pytest
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.auth import AuthSettings
+from app.core.auth.audit import Operator
+from app.core.auth.results import IssuedActionToken, UserAccountWithRoles
+from app.core.auth.secrets import verify_secret
+from app.core.auth.services.action_tokens import issue_action_token, redeem_action_token
+from app.core.auth.services.errors import InvalidActionTokenError, UnknownAccountPartyError
+from app.core.auth.services.users import create_user_account
+from app.core.db import Database
+from app.core.db.models import AuthAuditLog, Party, UserAccount, UserActionTokenPurpose
+from app.services.crm import parties, persons
+
+pytestmark = pytest.mark.db
+
+FIRST_PASSWORD = "the first password wins"
+SECOND_PASSWORD = "the second password loses"
+
+
+@pytest.fixture
+async def party_id(db: Database) -> AsyncIterator[uuid.UUID]:
+    """A committed person party, removed afterwards unless a test deleted it."""
+    async with db.session() as setup:
+        party_id = (await persons.create_person(setup, firstname="Race", lastname="Condition")).id
+    try:
+        yield party_id
+    finally:
+        async with db.session() as cleanup:
+            if await cleanup.get(Party, party_id) is not None:
+                await parties.delete_party(cleanup, party_id)
+
+
+@pytest.fixture
+async def user_id(db: Database, party_id: uuid.UUID) -> AsyncIterator[uuid.UUID]:
+    """A committed account with an e-mail address for the party; its audit entries are removed afterwards."""
+    async with db.session() as setup:
+        view = await create_user_account(setup, party_id=party_id, email="race@example.org", actor=Operator.CLI)
+    try:
+        yield view.account.id
+    finally:
+        async with db.session() as cleanup:
+            await cleanup.execute(delete(AuthAuditLog).where(AuthAuditLog.principal_id == str(view.account.id)))
+
+
+async def _overlapping[T](
+    db: Database,
+    first_call: Callable[[AsyncSession], Coroutine[object, object, object]],
+    second_call: Callable[[AsyncSession], Coroutine[object, object, T]],
+) -> asyncio.Task[T]:
+    """Run ``first_call`` in a transaction, start ``second_call`` in another, check that it waits, commit the first.
+
+    Returns the second call, finished; its transaction is committed if it succeeded, else rolled back.
+    """
+    first: AsyncSession = db.session_factory()
+    second: AsyncSession = db.session_factory()
+    try:
+        await first_call(first)
+        pending = asyncio.create_task(second_call(second))
+        await asyncio.sleep(0.5)
+        assert not pending.done(), "the second transaction waits for the first"
+        await first.commit()
+        await asyncio.wait([pending], timeout=10)
+        if pending.exception() is None:
+            await second.commit()
+        else:
+            await second.rollback()
+        return pending
+    finally:
+        await first.close()
+        await second.close()
+
+
+async def test_two_issues_arriving_together_leave_one_live_token(
+    db: Database, user_id: uuid.UUID, auth_settings: AuthSettings, live_tokens
+):
+    async def issue(session: AsyncSession) -> IssuedActionToken:
+        return await issue_action_token(
+            session, auth_settings, user_id=user_id, purpose=UserActionTokenPurpose.INVITATION, actor=Operator.CLI
+        )
+
+    await _overlapping(db, issue, issue)
+
+    assert len(await live_tokens(user_id)) == 1
+
+
+async def test_two_overlapping_redeems_of_one_token_set_one_password(
+    db: Database, user_id: uuid.UUID, auth_settings: AuthSettings, session: AsyncSession
+):
+    token = await _invitation(db, user_id, auth_settings)
+
+    def redeem(password: str) -> Callable[[AsyncSession], Coroutine[object, object, UserAccount]]:
+        async def _redeem(session: AsyncSession) -> UserAccount:
+            return await redeem_action_token(session, plaintext=token, new_password=password, actor=Operator.CLI)
+
+        return _redeem
+
+    second = await _overlapping(db, redeem(FIRST_PASSWORD), redeem(SECOND_PASSWORD))
+
+    assert isinstance(second.exception(), InvalidActionTokenError)
+    password_hash = await session.scalar(select(UserAccount.password_hash).where(UserAccount.id == user_id))
+    assert password_hash is not None
+    assert verify_secret(FIRST_PASSWORD, password_hash)
+    assert not verify_secret(SECOND_PASSWORD, password_hash)
+
+
+async def test_a_redeem_racing_the_deletion_of_the_party_is_invalid_action_token(
+    db: Database, party_id: uuid.UUID, user_id: uuid.UUID, auth_settings: AuthSettings
+):
+    token = await _invitation(db, user_id, auth_settings)
+
+    async def delete_the_party(session: AsyncSession) -> None:
+        await parties.delete_party(session, party_id)
+
+    async def redeem(session: AsyncSession) -> UserAccount:
+        return await redeem_action_token(session, plaintext=token, new_password=FIRST_PASSWORD, actor=Operator.CLI)
+
+    second = await _overlapping(db, delete_the_party, redeem)
+
+    assert isinstance(second.exception(), InvalidActionTokenError)
+
+
+async def test_a_create_racing_the_deletion_of_the_party_is_unknown_account_party(db: Database, party_id: uuid.UUID):
+    """The party row is locked before the account is written: the create waits and finds the party gone."""
+
+    async def delete_the_party(session: AsyncSession) -> None:
+        await parties.delete_party(session, party_id)
+
+    async def create(session: AsyncSession) -> UserAccountWithRoles:
+        return await create_user_account(session, party_id=party_id, actor=Operator.CLI)
+
+    second = await _overlapping(db, delete_the_party, create)
+
+    assert isinstance(second.exception(), UnknownAccountPartyError)
+
+
+async def _invitation(db: Database, user_id: uuid.UUID, settings: AuthSettings) -> str:
+    async with db.session() as setup:
+        issued = await issue_action_token(
+            setup, settings, user_id=user_id, purpose=UserActionTokenPurpose.INVITATION, actor=Operator.CLI
+        )
+    return issued.plaintext

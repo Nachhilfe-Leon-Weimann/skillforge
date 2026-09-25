@@ -306,7 +306,7 @@ app/api/v1/crm/
   schemas.py                         read and write models, from_model mappers, party_detail()
   subjects.py  parties.py  persons.py  companies.py  roles.py  contact_infos.py  relations.py
 app/services/crm/
-  inputs.py                          PartyRole, RelationDirection, NewContactInfo, StudentRoleData, TutorRoleData, UNSET,
+  inputs.py                          PartyRole, RelationDirection, NewContactInfo, StudentRoleData, TutorRoleData,
                                      normalize_contact_value
   errors.py
   parties.py                         PARTY_GRAPH, load_party, list_parties, delete_party, saved
@@ -325,7 +325,8 @@ updated_at = now()` for the given IDs, then `flush()`), `return await load_party
 - **The PATCH bridge.** The endpoint calls `update_person(session, party_id, **request.model_dump())`. `MISSING`
   fields are absent from the dump, so only sent fields arrive; the service signature uses `None` for "unchanged",
   which is unambiguous because those columns are `NOT NULL`. The single nullable field, `contact_info.label`, uses
-  the service-level `UNSET` sentinel (an `Enum` member) instead of a boolean flag like `update_description`.
+  the service-level `UNSET` sentinel (an `Enum` member in [`unset.py`](../../app/core/unset.py), shared with the auth
+  services) instead of a boolean flag like `update_description`.
 - **Subject sets.** Compute the difference (add the missing rows, delete the surplus ones) instead of reassigning the
   collection: the difference is what tells a write from a `PUT` that changes nothing. (The original rationale - a
   reassigned collection would delete and re-insert unchanged rows - does not hold for a loaded collection:

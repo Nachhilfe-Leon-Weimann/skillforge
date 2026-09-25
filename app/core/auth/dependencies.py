@@ -19,11 +19,15 @@ def get_auth_settings() -> AuthSettings:
     return get_settings().auth
 
 
+AuthConfig = Annotated[AuthSettings, Depends(get_auth_settings)]
+"""The auth settings of a request, as a parameter type."""
+
+
 async def get_current_principal(
     request: Request,
     security_scopes: SecurityScopes,
     token: Annotated[str | None, Depends(oauth2_scheme)],
-    settings: Annotated[AuthSettings, Depends(get_auth_settings)],
+    settings: AuthConfig,
 ) -> Principal:
     authenticate_value = _authenticate_header(security_scopes.scopes)
     if token is None:
@@ -108,11 +112,27 @@ def require_scopes(*required_scopes: Scope | str) -> Any:
     declared: a route guarded here serves every record, so it demands the unqualified scope, and a
     token restricted to its reach gets a ``403`` instead of a leak (ADR 0008).
     """
-    for scope in required_scopes:
-        if scope in OWN_VARIANT.values():
-            raise ValueError(f"require_scopes cannot demand the reach-qualified scope {scope}")
+    return Security(get_current_principal, scopes=_unqualified(required_scopes))
 
-    return Security(get_current_principal, scopes=[str(scope) for scope in required_scopes])
+
+def require_application_scopes(*required_scopes: Scope | str) -> Any:
+    """Return the ``Security`` marker that admits an application principal holding the given scopes.
+
+    Used as a parameter: ``Annotated[ApplicationPrincipal, require_application_scopes(Scope.X)]``. The
+    scopes reach the nested ``get_current_principal`` - and with it the operation's OpenAPI ``security`` and
+    its 403 - and ``require_application`` refuses a person's token whatever it carries. A reach-qualified
+    scope raises ``ValueError`` as in ``require_scopes``.
+    """
+    return Security(require_application, scopes=_unqualified(required_scopes))
+
+
+def _unqualified(scopes: Sequence[Scope | str]) -> list[str]:
+    """The scopes of a guard as strings; a reach-qualified one is refused when the route is declared."""
+    for scope in scopes:
+        if scope in OWN_VARIANT.values():
+            raise ValueError(f"a scope guard cannot demand the reach-qualified scope {scope}")
+
+    return [str(scope) for scope in scopes]
 
 
 def _authenticate_header(scopes: Sequence[str]) -> str:

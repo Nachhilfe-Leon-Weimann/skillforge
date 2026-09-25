@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.models import ContactInfo, ContactInfoType, Party
+from app.core.unset import UNSET, Unset
 
 from .errors import (
     ContactInfoAlreadyExistsError,
@@ -16,7 +17,7 @@ from .errors import (
     InvalidContactValueError,
     PartyNotFoundError,
 )
-from .inputs import UNSET, NewContactInfo, Unset, normalize_contact_value
+from .inputs import NewContactInfo, normalize_contact_value
 from .parties import saved
 
 

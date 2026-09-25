@@ -16,6 +16,8 @@ Everything runs through [`just`](justfile) (which wraps `uv`):
 - `just bootstrap-skillbot` - seed the initial auth state.
 - `just bootstrap-client <client_id> --application "<scopes>" --delegated "<scopes>"` - seed an application
   client with grants in both modes.
+- `just bootstrap-admin --party-id <uuid> --email <address>` - ensure an enabled admin account for a person party
+  and print its invitation (or, once it has a password, a reset token): the break-glass command.
 
 DB tests provision an ephemeral Postgres via testcontainers (needs Docker; skipped without it).
 Set `TEST_DB__URL` to run them against an existing database. Running the API locally needs a
@@ -27,7 +29,7 @@ Postgres reachable via `DB__URL`.
 app/
   main.py            FastAPI entry point (root route + app wiring)
   api/system/        health.py (/health + /health/live, /health/dependencies[/{name}], /health/workers[/{name}])
-  api/v1/            endpoints: auth/ (token, clients, me), bot/ (runtime, jobs, operations,
+  api/v1/            endpoints: auth/ (token, clients, me, users, password), bot/ (runtime, jobs, operations,
                      command_envs, students, tutors, users, authz), crm/ (parties, persons, companies,
                      roles, contact_infos, relations, subjects; params + schemas); common/ (shared API
                      vocabulary: error envelope + handlers, error_responses, Page/PageParams, DBSession,
@@ -39,8 +41,9 @@ app/
   services/system/   health aggregation + worker heartbeats (backs /health)
   workers/           reaper.py (lifecycle guardian: job reaper + operation sweeper)
   cli/               deadletters.py (dead-letter list/requeue operator commands)
-  core/              auth/ (OAuth2, JWT, scopes), db/ (engine, models/<schema>/), logging/, config.py,
-                     errors.py (HTTP-agnostic error taxonomy)
+  core/              auth/ (OAuth2, JWT, scopes, accounts), db/ (engine, models/<schema>/), logging/, config.py,
+                     errors.py (HTTP-agnostic error taxonomy),
+                     unset.py (the services' UNSET sentinel)
 migrations/          Alembic (env.py creates schemas; baseline = explicit DDL)
 tests/               api/, auth/, db/ (db/crm/, db/auth/: the CRM and auth apps against Postgres), workers/
                      (DB tests via @pytest.mark.db)

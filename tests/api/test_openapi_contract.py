@@ -157,6 +157,7 @@ PAGED_ENDPOINTS = {
     "/api/v1/bot/jobs": ("Page_JobListItem_", {"status", "kind"}),
     "/api/v1/bot/operations": ("Page_OperationSummary_", {"guild_id", "subject_discord_id", "status", "kind"}),
     "/api/v1/auth/clients": ("Page_ApplicationClientResponse_", set()),
+    "/api/v1/auth/users": ("Page_UserAccountListItem_", {"status", "party_id", "email"}),
 }
 
 

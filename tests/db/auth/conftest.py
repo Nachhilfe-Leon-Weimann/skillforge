@@ -2,7 +2,9 @@
 
 from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable
-from uuid import UUID
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -10,15 +12,28 @@ from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthSettings, Scope, create_application_access_token
+from app.core.auth import AuthSettings, PrincipalType, Scope, bootstrap, create_application_access_token
 from app.core.auth.audit import AuditEventType
 from app.core.auth.dependencies import get_auth_settings
 from app.core.db.dependencies import get_db_session
-from app.core.db.models import ApplicationClientScopeGrant, AuthAuditLog, GrantMode
+from app.core.db.models import (
+    ApplicationClient,
+    ApplicationClientScopeGrant,
+    ApplicationClientStatus,
+    AuthAuditLog,
+    Company,
+    GrantMode,
+    Party,
+    PartyType,
+    Person,
+    UserActionToken,
+    UserSession,
+)
 from app.main import app
 
 AUTH_SETTINGS = AuthSettings(secret_key=SecretStr("test-signing-secret-with-at-least-32-bytes"))
 OPERATOR_ID = UUID("00000000-0000-0000-0000-000000000001")
+FAR_FUTURE = datetime(2099, 1, 1, tzinfo=UTC)
 
 
 def auth_headers(*scopes: Scope) -> dict[str, str]:
@@ -40,7 +55,24 @@ def auth_settings() -> AuthSettings:
 
 @pytest.fixture
 async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
-    """An API client holding `auth:clients:manage` whose requests run on the test's ``session``.
+    """An API client holding `auth:clients:manage` whose requests run on the test's ``session``."""
+    async with _api_client(session, Scope.AUTH_CLIENTS_MANAGE) as api_client:
+        yield api_client
+
+
+@pytest.fixture
+async def operator(session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """An API client holding `auth:users:manage` and `auth:users:login` whose requests run on the test's ``session``.
+
+    The operator of "Operating without a portal": it manages accounts and redeems their tokens.
+    """
+    async with _api_client(session, Scope.AUTH_USERS_MANAGE, Scope.AUTH_USERS_LOGIN) as api_client:
+        yield api_client
+
+
+@asynccontextmanager
+async def _api_client(session: AsyncSession, *scopes: Scope) -> AsyncIterator[AsyncClient]:
+    """An API client holding ``scopes`` whose requests run on ``session``.
 
     Every request is wrapped in a SAVEPOINT that is rolled back when the request fails, which
     mirrors the request-scoped transaction of ``get_db_session``: a failed request writes nothing.
@@ -56,7 +88,7 @@ async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://testserver/api/v1/auth",
-            headers=auth_headers(Scope.AUTH_CLIENTS_MANAGE),
+            headers=auth_headers(*scopes),
         ) as api_client:
             yield api_client
     finally:
@@ -88,3 +120,111 @@ def scope_grant_details(session: AsyncSession) -> Callable[[], Awaitable[Counter
         return Counter((await session.execute(statement)).scalars())
 
     return _scope_grant_details
+
+
+@pytest.fixture
+def make_person(session: AsyncSession) -> Callable[..., Awaitable[Party]]:
+    """Create a person party straight through the models; the CRM API is not what is under test."""
+
+    async def _make_person(firstname: str = "Anna", lastname: str = "Schmidt") -> Party:
+        party = Party(id=uuid4(), type=PartyType.PERSON, person=Person(firstname=firstname, lastname=lastname))
+        session.add(party)
+        await session.flush()
+        return party
+
+    return _make_person
+
+
+@pytest.fixture
+def make_company(session: AsyncSession) -> Callable[..., Awaitable[Party]]:
+    async def _make_company(name: str = "Musterfirma GmbH") -> Party:
+        party = Party(id=uuid4(), type=PartyType.COMPANY, company=Company(name=name))
+        session.add(party)
+        await session.flush()
+        return party
+
+    return _make_company
+
+
+@pytest.fixture
+async def application_client(session: AsyncSession) -> ApplicationClient:
+    """The client the sessions of ``add_user_session`` belong to."""
+    client = ApplicationClient(
+        client_id=f"portal-{uuid4().hex[:8]}", name="Portal", status=ApplicationClientStatus.ACTIVE
+    )
+    session.add(client)
+    await session.flush()
+    return client
+
+
+@pytest.fixture
+def add_user_session(
+    session: AsyncSession, application_client: ApplicationClient
+) -> Callable[[UUID], Awaitable[UserSession]]:
+    """Insert a live session for an account through the model: nothing opens sessions before P0-8.
+
+    The hash is an arbitrary unique string, never anything that looks like a real refresh token.
+    """
+
+    async def _add_user_session(user_account_id: UUID) -> UserSession:
+        user_session = UserSession(
+            user_account_id=user_account_id,
+            application_client_id=application_client.id,
+            scope="account:self crm:read:own",
+            refresh_token_hash=f"test-hash-{uuid4().hex}",
+            expires_at=FAR_FUTURE,
+        )
+        session.add(user_session)
+        await session.flush()
+        return user_session
+
+    return _add_user_session
+
+
+@pytest.fixture
+def audit_events(session: AsyncSession) -> Callable[[UUID], Awaitable[Counter[str]]]:
+    """Count the audit entries of one user account by event type; each names the account as a `user`."""
+
+    async def _audit_events(user_id: UUID) -> Counter[str]:
+        statement = select(AuthAuditLog.principal_type, AuthAuditLog.event_type).where(
+            AuthAuditLog.principal_id == str(user_id)
+        )
+        rows = (await session.execute(statement)).tuples().all()
+        assert {principal_type for principal_type, _ in rows} <= {PrincipalType.USER}
+        return Counter(event_type for _, event_type in rows)
+
+    return _audit_events
+
+
+@pytest.fixture
+def live_tokens(session: AsyncSession) -> Callable[[UUID], Awaitable[list[UserActionToken]]]:
+    """Read the unused, not invalidated action tokens of one account as the database holds them now."""
+
+    async def _live_tokens(user_id: UUID) -> list[UserActionToken]:
+        statement = select(UserActionToken).where(
+            UserActionToken.user_account_id == user_id,
+            UserActionToken.used_at.is_(None),
+            UserActionToken.invalidated_at.is_(None),
+        )
+        return list(await session.scalars(statement.execution_options(populate_existing=True)))
+
+    return _live_tokens
+
+
+@pytest.fixture
+def password() -> str:
+    """A password the policy accepts."""
+    return "correct horse battery staple"
+
+
+@pytest.fixture
+def command_session(session: AsyncSession, monkeypatch) -> None:
+    """Run the operator commands on the test's ``session``, in a SAVEPOINT an error rolls back - as their own
+    transaction."""
+
+    @asynccontextmanager
+    async def _session() -> AsyncIterator[AsyncSession]:
+        async with session.begin_nested():
+            yield session
+
+    monkeypatch.setattr(bootstrap, "_session", _session)
