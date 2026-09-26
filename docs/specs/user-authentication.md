@@ -83,7 +83,7 @@ skillsite; the bot's use of person tokens follows in the bot arc (see
 | **P - First client and first admin**     | `just bootstrap-client` seeds a client with grants in both modes. `just bootstrap-admin --party-id <uuid> --email <address>` ensures an enabled admin account and prints an invitation, or a reset token once a password exists: the break-glass command. | Creating clients needs `auth:clients:manage` and creating accounts an admin: neither first one can be created through the API, and the only admin cannot reset, re-enable or re-promote themselves.                   |
 | **Q - How a token was obtained**         | A person's token carries `amr` (RFC 8176): `["pwd"]` in this arc, `["discord"]` from the bot arc.                                                                                                                                                         | The two ways differ in strength; password-only actions (P1-2) can demand `pwd`.                                                                                                                                       |
 
-**Open:** whether `admin`also carries`bot:write`. It starts without it; adding it is one line in `ROLE_SCOPES`. _(Superseded by [bot-decoupling.md](bot-decoupling.md).)_
+**Open:** whether `admin` also carries `bot:write`. It starts without it; adding it is one line in `ROLE_SCOPES`. _(Superseded by [bot-decoupling.md](bot-decoupling.md).)_
 
 ## Client grants
 
