@@ -3686,6 +3686,7 @@
             "scopes": {
               "account:self": "Manage the caller's own account.",
               "auth:clients:manage": "Manage application clients.",
+              "auth:discord-links:read": "Read Discord links - which Discord account belongs to which person party - including unlinked ones.",
               "auth:users:login": "Log people in on their behalf (password / refresh_token grants, redeem, revoke). Client-only: never part of a person's token.",
               "auth:users:manage": "Create, disable and reset user accounts; assign stored roles.",
               "bot:read": "Read bot API surface.",
@@ -3701,6 +3702,7 @@
             "scopes": {
               "account:self": "Manage the caller's own account.",
               "auth:clients:manage": "Manage application clients.",
+              "auth:discord-links:read": "Read Discord links - which Discord account belongs to which person party - including unlinked ones.",
               "auth:users:manage": "Create, disable and reset user accounts; assign stored roles.",
               "bot:read": "Read bot API surface.",
               "bot:write": "Write bot API surface.",
