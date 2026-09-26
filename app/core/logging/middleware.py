@@ -16,9 +16,11 @@ _REQUEST_LOG_CONTEXT_STATE = "request_log_context"
 # health via the status code.
 _PROBE_PATH_PREFIXES = ("/health",)
 
-# Path parameters that never reach the request log as-is: identity data - a Discord user ID appears in
-# audit rows only, never in the request log (bot-decoupling spec, "Security rules").
-REDACTED_PATH_PARAMS = frozenset({"discord_user_id"})
+# Path segments redacted from the request log, keyed by the segment right before them: the segment
+# after each key names a Discord user, which appears in audit rows only, never in the request log
+# (bot-decoupling spec, "Security rules"). Segment-based, not routing-based: it survives a
+# trailing-slash redirect or an unmatched sub-path, where FastAPI never populates `path_params`.
+REDACTED_PATH_SEGMENTS = {"discord-links": "{discord_user_id}"}
 
 
 def bind_request_log_context(request: Request | None = None, **values: object) -> None:
@@ -54,7 +56,7 @@ def register_request_logging(app: FastAPI) -> None:
                 request_logger.exception(
                     "http_request_failed",
                     method=request.method,
-                    path=_logged_path(request),
+                    path=_logged_path(request.url.path),
                     status_code=500,
                     duration_ms=_duration_ms(started_at),
                     client_ip=_client_ip(request),
@@ -103,7 +105,7 @@ def _log_http_request(request: Request, response: Response, started_at: float) -
     log(
         event,
         method=request.method,
-        path=_logged_path(request),
+        path=_logged_path(request.url.path),
         route=_route_path(request),
         endpoint=_endpoint_name(request),
         status_code=status_code,
@@ -128,19 +130,21 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host
 
 
-def _logged_path(request: Request) -> str:
-    """The path to log: a redacted path parameter replaced by its name, else the concrete path as it is.
+def _logged_path(path: str) -> str:
+    """The path to log: the segment after a redacted key replaced by its placeholder, else `path` as it is.
 
-    Substitutes into the concrete URL rather than reading the matched route's own ``path`` (``_route_path``):
-    that is a router-local template - just ``/discord-links/{discord_user_id}``, without the ``/api/v1/auth``
-    ancestors - so it cannot stand in for the full path here, whatever router nesting produced it.
+    Works on ``/``-separated segments of the concrete URL, not on routing state (``path_params``, the
+    matched route): a trailing-slash redirect and an unmatched sub-path never populate either, and a
+    substring replacement would corrupt an unrelated segment that happens to contain the same digits
+    (``/v1/...``) - a pure function is also the easiest of the two to unit-test.
     """
-    path = request.url.path
-    path_params = request.scope.get("path_params") or {}
-    for name in REDACTED_PATH_PARAMS & path_params.keys():
-        path = path.replace(str(path_params[name]), f"{{{name}}}")
+    segments = path.split("/")
+    for index in range(1, len(segments)):
+        placeholder = REDACTED_PATH_SEGMENTS.get(segments[index - 1])
+        if placeholder and segments[index]:
+            segments[index] = placeholder
 
-    return path
+    return "/".join(segments)
 
 
 def _route_path(request: Request) -> str | None:
