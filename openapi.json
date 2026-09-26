@@ -12714,7 +12714,7 @@
     },
     "/api/v1/crm/parties/{party_id}": {
       "delete": {
-        "description": "Delete a party together with its roles, contact infos and relations.\n\nRefused while a Discord account or an external system (sevDesk, Clockodo, Microsoft) is linked to\nthe party: remove those links first, in the system that owns them.",
+        "description": "Delete a party together with its roles, contact infos and relations.\n\nRefused while an active Discord link or an external system (sevDesk, Clockodo, Microsoft) holds the party:\nremove those links first, in the system that owns them. A deactivated Discord link goes with the party.",
         "operationId": "crm_delete_party",
         "parameters": [
           {
