@@ -20,6 +20,7 @@ from app.core.auth import (
 )
 from app.core.auth.dependencies import get_auth_settings
 from app.core.logging import LogFormat, LoggingSettings, LogLevel, configure_logging, register_request_logging
+from app.main import app as real_app
 
 BotWritePrincipal = Annotated[Principal, require_scopes("bot:write")]
 AccountSelfPrincipal = Annotated[Principal, require_scopes("account:self")]
@@ -124,6 +125,37 @@ async def test_request_logging_identifies_the_person_behind_a_request(capsys):
         assert event["user_id"] == str(user_id)
         assert event["party_id"] == str(party_id)
         assert str(session_id) not in json.dumps(event)
+
+
+async def test_request_logging_redacts_a_discord_user_id_from_the_path(capsys):
+    """A Discord user ID is identity data: it appears in audit rows only, never in the request log
+    (bot-decoupling spec, "Security rules"). No token is fine here and needs no database - the scope
+    guard rejects the request before the route's own `session` dependency ever runs."""
+    configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
+    capsys.readouterr()
+
+    response = await _request(real_app, "GET", "/api/v1/auth/discord-links/123456789012345678")
+
+    output = capsys.readouterr().out
+    event = json.loads(output)
+
+    assert response.status_code == 401
+    assert event["path"] == "/api/v1/auth/discord-links/{discord_user_id}"
+    assert "123456789012345678" not in json.dumps(event)
+
+
+async def test_request_logging_keeps_an_ordinary_routes_raw_path(capsys):
+    """The redaction is scoped to the named path parameters: an ordinary route still logs its concrete path."""
+    configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
+    capsys.readouterr()
+
+    response = await _request(real_app, "GET", "/api/v1/auth/me")
+
+    output = capsys.readouterr().out
+    event = json.loads(output)
+
+    assert response.status_code == 401
+    assert event["path"] == "/api/v1/auth/me"
 
 
 async def test_request_logging_stays_silent_for_healthy_probe(capsys):

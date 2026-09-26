@@ -16,6 +16,10 @@ _REQUEST_LOG_CONTEXT_STATE = "request_log_context"
 # health via the status code.
 _PROBE_PATH_PREFIXES = ("/health",)
 
+# Path parameters that never reach the request log as-is: identity data - a Discord user ID appears in
+# audit rows only, never in the request log (bot-decoupling spec, "Security rules").
+REDACTED_PATH_PARAMS = frozenset({"discord_user_id"})
+
 
 def bind_request_log_context(request: Request | None = None, **values: object) -> None:
     context = {key: value for key, value in values.items() if value is not None}
@@ -50,7 +54,7 @@ def register_request_logging(app: FastAPI) -> None:
                 request_logger.exception(
                     "http_request_failed",
                     method=request.method,
-                    path=request.url.path,
+                    path=_logged_path(request),
                     status_code=500,
                     duration_ms=_duration_ms(started_at),
                     client_ip=_client_ip(request),
@@ -99,7 +103,7 @@ def _log_http_request(request: Request, response: Response, started_at: float) -
     log(
         event,
         method=request.method,
-        path=request.url.path,
+        path=_logged_path(request),
         route=_route_path(request),
         endpoint=_endpoint_name(request),
         status_code=status_code,
@@ -122,6 +126,21 @@ def _client_ip(request: Request) -> str | None:
         return None
 
     return request.client.host
+
+
+def _logged_path(request: Request) -> str:
+    """The path to log: a redacted path parameter replaced by its name, else the concrete path as it is.
+
+    Substitutes into the concrete URL rather than reading the matched route's own ``path`` (``_route_path``):
+    that is a router-local template - just ``/discord-links/{discord_user_id}``, without the ``/api/v1/auth``
+    ancestors - so it cannot stand in for the full path here, whatever router nesting produced it.
+    """
+    path = request.url.path
+    path_params = request.scope.get("path_params") or {}
+    for name in REDACTED_PATH_PARAMS & path_params.keys():
+        path = path.replace(str(path_params[name]), f"{{{name}}}")
+
+    return path
 
 
 def _route_path(request: Request) -> str | None:
