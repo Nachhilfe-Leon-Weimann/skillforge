@@ -34,8 +34,13 @@ def active_link_party_id(discord_user_id: int) -> ScalarSelect[uuid.UUID]:
 
 
 async def get_discord_link(session: AsyncSession, discord_user_id: int) -> DiscordAccount:
-    """Return the link of ``discord_user_id``, active or not."""
-    link = await session.get(DiscordAccount, discord_user_id)
+    """Return the link of ``discord_user_id``, active or not, as the database says now.
+
+    ``populate_existing`` refreshes a copy the session already holds: without it, a link changed earlier in
+    the same session (an unlink's ``updated_at``, say) would keep the expired attributes of the write that
+    changed it, and reading them outside a lock raises ``MissingGreenlet``.
+    """
+    link = await session.get(DiscordAccount, discord_user_id, populate_existing=True)
     if link is None:
         raise DiscordLinkNotFoundError(f"No link for Discord user {discord_user_id}")
     return link
@@ -76,14 +81,20 @@ async def link_discord_account(
     knows nothing about Discord, the link feed is the signal.
     """
     await _lock_person_party(session, party_id)
-    inserted = await session.scalar(
-        insert(DiscordAccount)
-        .values(discord_id=discord_user_id, party_id=party_id, active=True, is_primary=False)
-        .on_conflict_do_nothing(index_elements=[DiscordAccount.discord_id])
-        .returning(DiscordAccount.discord_id)
-    )
-    link = await _lock_link(session, discord_user_id)
-    assert link is not None  # inserted now, or the conflicting row
+    # ``ON CONFLICT DO NOTHING`` takes no lock on a conflicting row, so it can vanish (a concurrent
+    # ``delete_party`` cascades through it) between the INSERT and the row lock below. Retrying the INSERT
+    # then finds no conflict and creates our own row, which we hold locked under this party - it terminates
+    # in at most one extra pass.
+    while True:
+        inserted = await session.scalar(
+            insert(DiscordAccount)
+            .values(discord_id=discord_user_id, party_id=party_id, active=True, is_primary=False)
+            .on_conflict_do_nothing(index_elements=[DiscordAccount.discord_id])
+            .returning(DiscordAccount.discord_id)
+        )
+        link = await _lock_link(session, discord_user_id)
+        if link is not None:
+            break
 
     if inserted is not None:
         event, what = AuditEventType.DISCORD_LINK_ADDED, f"Linked Discord user {discord_user_id} to party {party_id}"

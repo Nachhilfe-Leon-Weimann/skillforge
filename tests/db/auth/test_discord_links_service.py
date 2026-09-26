@@ -180,6 +180,44 @@ async def test_unlinking_or_reading_an_unknown_id_is_not_found(session):
         await get_discord_link(session, DISCORD_ID)
 
 
+async def test_reading_after_an_unlink_in_the_same_session_shows_the_new_updated_at(session, make_person):
+    # ``created`` is kept alive on purpose: the session's identity map only weakly references a row, and without
+    # a live reference to it, ``get_discord_link`` would just load a fresh copy - which never shows the bug this
+    # guards (see ``get_discord_link``'s ``populate_existing``: a row the session already holds must be reloaded).
+    person = await make_person()
+    created = await link_discord_account(session, discord_user_id=DISCORD_ID, party_id=person.id, actor=ACTOR)
+    assert created.party_id == person.id
+    await _stamp(session, DISCORD_ID, LONG_AGO)
+
+    await unlink_discord_account(session, discord_user_id=DISCORD_ID, actor=ACTOR)
+
+    assert (await get_discord_link(session, DISCORD_ID)).updated_at > LONG_AGO
+
+
+async def test_reading_after_a_reactivation_in_the_same_session_shows_the_new_updated_at(session, make_person):
+    person = await make_person()
+    created = await link_discord_account(session, discord_user_id=DISCORD_ID, party_id=person.id, actor=ACTOR)
+    assert created.party_id == person.id
+    await unlink_discord_account(session, discord_user_id=DISCORD_ID, actor=ACTOR)
+    await _stamp(session, DISCORD_ID, LONG_AGO)
+
+    await link_discord_account(session, discord_user_id=DISCORD_ID, party_id=person.id, actor=ACTOR)
+
+    assert (await get_discord_link(session, DISCORD_ID)).updated_at > LONG_AGO
+
+
+async def test_reading_after_a_move_in_the_same_session_shows_the_new_updated_at(session, make_person):
+    first, second = await make_person("Anna"), await make_person("Ben")
+    created = await link_discord_account(session, discord_user_id=DISCORD_ID, party_id=first.id, actor=ACTOR)
+    assert created.party_id == first.id
+    await unlink_discord_account(session, discord_user_id=DISCORD_ID, actor=ACTOR)
+    await _stamp(session, DISCORD_ID, LONG_AGO)
+
+    await link_discord_account(session, discord_user_id=DISCORD_ID, party_id=second.id, actor=ACTOR)
+
+    assert (await get_discord_link(session, DISCORD_ID)).updated_at > LONG_AGO
+
+
 async def test_the_list_orders_by_discord_id_and_includes_unlinked_rows(session, make_person):
     person = await make_person()
     await link_discord_account(session, discord_user_id=OTHER_ID, party_id=person.id, actor=ACTOR)
