@@ -121,6 +121,7 @@ PRIMARY KEY (plz, ort)
 
 ```sql
 -- ext.discord_account  (a party can have several; at most one primary+active)
+-- written only by app/services/auth/discord_links.py (ADR 0009); only an active link keeps the party from being deleted; is_primary is always false
 discord_id BIGINT PRIMARY KEY  -- Discord snowflake, not auto-incremented
 party_id UUID NOT NULL REFERENCES core.party(id) ON DELETE CASCADE
 is_primary BOOLEAN NOT NULL DEFAULT false
