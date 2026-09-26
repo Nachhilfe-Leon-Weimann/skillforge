@@ -1,7 +1,7 @@
 # Spec: Bot decoupling (the bot owns its Discord workflows)
 
-> Status: Draft | Arc `bot`
-> Tracking: the "Bot decoupling" epic, created with P0-1
+> Status: In progress | Arc `bot`
+> Tracking: [#166](https://github.com/Nachhilfe-Leon-Weimann/skillforge/issues/166)
 > Builds on the [project sketch](../PROJECT.md), [ADR 0009](../decisions/0009-bot-owns-its-discord-workflows.md),
 > [ADR 0008](../decisions/0008-user-authentication-and-reach.md) with its spec's
 > [Designed for the bot arc](user-authentication.md#designed-for-the-bot-arc), [`crm-api.md`](crm-api.md) and
@@ -625,9 +625,9 @@ by 0009` - and the decisions README (rows, new row 0009, the status value `Amend
   example; `ARCHITECTURE.md` drops "Roadmap: capability arcs" and points to the sketch's roadmap; `PROJECT.md`
   roadmap item 2 loses tutor reach, which becomes its own item with #160 and #161.
 - _Acceptance criteria:_
-  - [ ] This spec and ADR 0009 are on `main`; the decisions index lists 0009 and the new status values.
-  - [ ] No accepted ADR's body changed; only status lines.
-  - [ ] The epic exists, links this spec and the ADR, and holds #159 and the skillbot issues (handover, rebuild).
+  - [x] This spec and ADR 0009 are on `main`; the decisions index lists 0009 and the new status values.
+  - [x] No accepted ADR's body changed; only status lines.
+  - [x] The epic exists, links this spec and the ADR, and holds #159 and the skillbot issues (handover, rebuild).
 
 **P0-2 - Discord links in auth.** PR `feat(auth): manage Discord links as identities`.
 
