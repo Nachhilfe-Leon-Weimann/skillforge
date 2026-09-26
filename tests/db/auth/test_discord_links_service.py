@@ -142,13 +142,25 @@ async def test_linking_an_unlinked_id_to_another_party_moves_it_and_names_both(s
     assert moved == [f"Moved Discord user {DISCORD_ID} from party {first.id} to party {second.id} by cli."]
 
 
-async def test_every_write_leaves_is_primary_false(session, make_person):
-    person = await make_person()
-    session.add(DiscordAccount(discord_id=DISCORD_ID, party_id=person.id, active=False, is_primary=True))
-    await session.flush()
+@pytest.mark.parametrize("scenario", ["reactivate", "move", "unlink"])
+async def test_every_write_leaves_is_primary_false(session, make_person, scenario):
+    first, second = await make_person("Anna"), await make_person("Ben")
 
-    link = await link_discord_account(session, discord_user_id=DISCORD_ID, party_id=person.id, actor=ACTOR)
+    match scenario:
+        case "reactivate":
+            session.add(DiscordAccount(discord_id=DISCORD_ID, party_id=first.id, active=False, is_primary=True))
+            await session.flush()
+            await link_discord_account(session, discord_user_id=DISCORD_ID, party_id=first.id, actor=ACTOR)
+        case "move":
+            session.add(DiscordAccount(discord_id=DISCORD_ID, party_id=first.id, active=False, is_primary=True))
+            await session.flush()
+            await link_discord_account(session, discord_user_id=DISCORD_ID, party_id=second.id, actor=ACTOR)
+        case "unlink":
+            session.add(DiscordAccount(discord_id=DISCORD_ID, party_id=first.id, active=True, is_primary=True))
+            await session.flush()
+            await unlink_discord_account(session, discord_user_id=DISCORD_ID, actor=ACTOR)
 
+    link = await get_discord_link(session, DISCORD_ID)
     assert link.is_primary is False
 
 
@@ -253,6 +265,18 @@ async def test_the_list_filters_by_active(session, make_person):
 
     assert [link.discord_id for link in active] == [DISCORD_ID]
     assert [link.discord_id for link in unlinked] == [OTHER_ID]
+
+
+async def test_a_deactivated_link_stays_in_the_feed_with_its_newer_updated_at(session, make_person):
+    person = await make_person()
+    await link_discord_account(session, discord_user_id=DISCORD_ID, party_id=person.id, actor=ACTOR)
+    await _stamp(session, DISCORD_ID, LONG_AGO)
+
+    await unlink_discord_account(session, discord_user_id=DISCORD_ID, actor=ACTOR)
+
+    links, total = await list_discord_links(session, limit=10, offset=0, updated_since=LATER)
+    assert total == 1
+    assert (links[0].discord_id, links[0].active) == (DISCORD_ID, False)
 
 
 async def test_no_link_write_moves_the_party(session, make_person):

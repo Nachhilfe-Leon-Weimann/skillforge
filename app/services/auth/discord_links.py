@@ -36,9 +36,8 @@ def active_link_party_id(discord_user_id: int) -> ScalarSelect[uuid.UUID]:
 async def get_discord_link(session: AsyncSession, discord_user_id: int) -> DiscordAccount:
     """Return the link of ``discord_user_id``, active or not, as the database says now.
 
-    ``populate_existing`` refreshes a copy the session already holds: without it, a link changed earlier in
-    the same session (an unlink's ``updated_at``, say) would keep the expired attributes of the write that
-    changed it, and reading them outside a lock raises ``MissingGreenlet``.
+    ``populate_existing`` reloads a copy the session already holds - reading it outside a lock could otherwise
+    raise ``MissingGreenlet``.
     """
     link = await session.get(DiscordAccount, discord_user_id, populate_existing=True)
     if link is None:

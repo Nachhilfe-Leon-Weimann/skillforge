@@ -1,4 +1,5 @@
-"""The vocabulary of change feeds: what every `updated_since` parameter means (ADR 0009, "Change signals")."""
+"""The vocabulary of change feeds: what every `updated_since` parameter means. See "Change signals" in
+docs/ARCHITECTURE.md."""
 
 from typing import Annotated
 

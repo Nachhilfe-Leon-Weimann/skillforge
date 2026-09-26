@@ -29,11 +29,11 @@ Postgres reachable via `DB__URL`.
 app/
   main.py            FastAPI entry point (root route + app wiring)
   api/system/        health.py (/health + /health/live, /health/dependencies[/{name}], /health/workers[/{name}])
-  api/v1/            endpoints: auth/ (token, revoke, clients, me, users, password, discord_links, params), bot/ (runtime,
-                     jobs, operations, command_envs, students, tutors, users, authz), crm/ (parties, persons, companies,
-                     roles, contact_infos, relations, subjects; params + schemas); common/ (shared API
-                     vocabulary: error envelope + handlers, error_responses, Page/PageParams, OpenAPI hooks;
-                     re-exports DBSession)
+  api/v1/            endpoints: auth/ (token, revoke, clients, me, users, password, discord_links, params),
+                     bot/ (runtime, jobs, operations, command_envs, students, tutors, users, authz), crm/ (parties,
+                     persons, companies, roles, contact_infos, relations, subjects; params + schemas); common/
+                     (shared API vocabulary: error envelope + handlers, error_responses, Page/PageParams, OpenAPI
+                     hooks; re-exports DBSession)
   services/auth/     accounts, users, clients, scopes (grants per mode), tokens (the grants), sessions,
                      action_tokens, discord_links, secrets, roles, bootstrap, audit, results, errors
   services/bot/      business logic: transitions, operations, jobs, principals, provisioning,

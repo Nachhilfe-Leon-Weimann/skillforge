@@ -132,9 +132,9 @@ async def list_parties(
 
 async def delete_party(session: AsyncSession, party_id: uuid.UUID) -> None:
     """Delete a party with its roles, contact infos and relations - unless an external system knows it."""
-    # Every link write locks the party row first (auth's Discord links explicitly, the other links through their
-    # foreign key), so holding this lock means no link can appear or come back to life between the check below and
-    # the delete: every foreign key into core.party cascades, and such a link would silently vanish with the party.
+    # Every write that leaves a link active locks its party first (auth's Discord links explicitly, the other links
+    # through their foreign key), so holding this lock means no active link can appear or come back between the check
+    # and the delete: every foreign key into core.party cascades, and such a link would silently vanish with the party.
     locked = await session.scalar(select(Party.id).where(Party.id == party_id).with_for_update())
     if locked is None:
         raise PartyNotFoundError(f"No party with id {party_id}")

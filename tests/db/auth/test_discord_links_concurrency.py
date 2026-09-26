@@ -3,6 +3,7 @@
 Committed data, as in ``test_auth_users_concurrency.py``: every test removes its links, audit rows and parties.
 """
 
+import asyncio
 import uuid
 from collections import Counter
 from collections.abc import AsyncIterator
@@ -107,7 +108,7 @@ async def test_two_links_of_one_id_for_two_parties_leave_one(
     )
 
 
-async def test_a_relink_of_an_inactive_link_survives_the_partys_delete_between_the_insert_and_the_lock(
+async def test_a_link_whose_inactive_row_vanishes_mid_write_is_added_anew(
     db: Database, party_ids: list[uuid.UUID], session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ):
     """The retry loop's reason to exist (Task 4 review): X is inactive on A; a link X -> B inserts nothing (X is
@@ -127,7 +128,7 @@ async def test_a_relink_of_an_inactive_link_survives_the_partys_delete_between_t
         calls += 1
         if calls == 1:
             async with db.session() as delete_session:
-                await parties.delete_party(delete_session, party_ids[0])
+                await asyncio.wait_for(parties.delete_party(delete_session, party_ids[0]), timeout=10)
         return await original_lock_link(session, discord_user_id)
 
     monkeypatch.setattr(discord_links, "_lock_link", lock_link_first_call_deletes_party_a)
@@ -138,8 +139,11 @@ async def test_a_relink_of_an_inactive_link_survives_the_partys_delete_between_t
         )
 
     assert (link.party_id, link.active) == (party_ids[1], True)
-    assert calls >= 2, "the loop must retry after the lock found nothing"
+    assert calls == 2, "the loop retries exactly once after the lock found nothing"
     assert await session.get(Party, party_ids[0]) is None
+
+    reread = await discord_links.get_discord_link(session, DISCORD_ID)
+    assert (reread.party_id, reread.active) == (party_ids[1], True)
 
     after = await _link_events(session, DISCORD_ID)
     assert after == before + Counter({"discord_link.added": 1})

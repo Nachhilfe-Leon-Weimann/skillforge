@@ -131,8 +131,7 @@ async def test_request_logging_identifies_the_person_behind_a_request(capsys):
 
 async def test_request_logging_redacts_a_discord_user_id_from_the_path(capsys):
     """A Discord user ID is identity data: it appears in audit rows only, never in the request log
-    (bot-decoupling spec, "Security rules"). No token is fine here and needs no database - the scope
-    guard rejects the request before the route's own `session` dependency ever runs."""
+    (bot-decoupling spec, "Security rules")."""
     configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
     capsys.readouterr()
 
@@ -232,6 +231,8 @@ async def test_request_logging_redacts_a_discord_user_id_behind_a_doubled_slash(
         ("/discord-links//123456789012345678", "/discord-links//{discord_user_id}"),
         ("/discord-links///123456789012345678", "/discord-links///{discord_user_id}"),
         ("/api/v1/auth/discord-links/1", "/api/v1/auth/discord-links/{discord_user_id}"),
+        ("/api/v1/auth/discord-links/redeem", "/api/v1/auth/discord-links/redeem"),
+        ("/api/v1/auth/discord-links/-1", "/api/v1/auth/discord-links/{discord_user_id}"),
         ("/api/v1/auth/me", "/api/v1/auth/me"),
         ("/", "/"),
         ("", ""),

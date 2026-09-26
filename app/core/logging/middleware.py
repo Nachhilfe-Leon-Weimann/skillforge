@@ -16,10 +16,7 @@ _REQUEST_LOG_CONTEXT_STATE = "request_log_context"
 # health via the status code.
 _PROBE_PATH_PREFIXES = ("/health",)
 
-# Path segments redacted from the request log, keyed by the segment right before them: the segment
-# after each key names a Discord user, which appears in audit rows only, never in the request log
-# (bot-decoupling spec, "Security rules"). Segment-based, not routing-based: it survives a
-# trailing-slash redirect or an unmatched sub-path, where FastAPI never populates `path_params`.
+# The segment after each key is redacted when it holds a digit: a Discord ID (bot-decoupling spec, "Security rules").
 REDACTED_PATH_SEGMENTS = {"discord-links": "{discord_user_id}"}
 
 
@@ -131,22 +128,14 @@ def _client_ip(request: Request) -> str | None:
 
 
 def _logged_path(path: str) -> str:
-    """The path to log: the segment after a redacted key replaced by its placeholder, else `path` as it is.
-
-    Works on ``/``-separated segments of the concrete URL, not on routing state (``path_params``, the
-    matched route): a trailing-slash redirect and an unmatched sub-path never populate either, and a
-    substring replacement would corrupt an unrelated segment that happens to contain the same digits
-    (``/v1/...``) - a pure function is also the easiest of the two to unit-test. Compares each non-empty
-    segment against the previous non-empty one, not the one right before it: a doubled or tripled slash
-    (ASGI decodes ``%2F`` the same way) still redacts the ID. An empty segment is itself left alone, so
-    the path's shape - how many slashes, where - is preserved.
-    """
+    """The path to log: a redacted key's next segment replaced by its placeholder when it holds a digit,
+    else `path` unchanged."""
     segments = path.split("/")
     previous = ""
     for index, segment in enumerate(segments):
         if not segment:
             continue
-        if placeholder := REDACTED_PATH_SEGMENTS.get(previous):
+        if (placeholder := REDACTED_PATH_SEGMENTS.get(previous)) and any(char.isdigit() for char in segment):
             segments[index] = placeholder
         previous = segment
 

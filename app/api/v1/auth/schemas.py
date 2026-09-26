@@ -297,7 +297,7 @@ class RefreshTokenRevokeRequest(ApiModel):
 class DiscordLinkRequest(ApiModel):
     """Body of `PUT /discord-links/{discord_user_id}`."""
 
-    party_id: UUID
+    party_id: UUID = Field(examples=["7d9f4f3e-1c2b-4a5d-9e8f-0a1b2c3d4e5f"])
     """ID of the person party the Discord account speaks for. A company is refused; the party needs no user account."""
 
 
