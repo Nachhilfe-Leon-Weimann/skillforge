@@ -205,6 +205,22 @@ async def test_request_logging_redacts_a_short_numeric_discord_user_id_without_t
     assert event["path"] == "/api/v1/auth/discord-links/{discord_user_id}"
 
 
+async def test_request_logging_redacts_a_discord_user_id_behind_a_doubled_slash(capsys):
+    """An empty segment between `discord-links` and the ID must not break the adjacency check - the ID still
+    needs redacting whether or not routing ever sees it as a neighbour of `discord-links`."""
+    configure_logging(LoggingSettings(level=LogLevel.WARNING, format=LogFormat.JSON))
+    capsys.readouterr()
+
+    response = await _request(real_app, "GET", "/api/v1/auth/discord-links//123456789012345678")
+
+    output = capsys.readouterr().out
+    event = json.loads(output)
+
+    assert response.status_code == 404
+    assert event["path"] == "/api/v1/auth/discord-links//{discord_user_id}"
+    assert "123456789012345678" not in json.dumps(event)
+
+
 @pytest.mark.parametrize(
     ("path", "expected"),
     [
@@ -213,6 +229,8 @@ async def test_request_logging_redacts_a_short_numeric_discord_user_id_without_t
         ("/discord-links/123456789012345678", "/discord-links/{discord_user_id}"),
         ("/discord-links/123456789012345678/", "/discord-links/{discord_user_id}/"),
         ("/discord-links/123456789012345678/x", "/discord-links/{discord_user_id}/x"),
+        ("/discord-links//123456789012345678", "/discord-links//{discord_user_id}"),
+        ("/discord-links///123456789012345678", "/discord-links///{discord_user_id}"),
         ("/api/v1/auth/discord-links/1", "/api/v1/auth/discord-links/{discord_user_id}"),
         ("/api/v1/auth/me", "/api/v1/auth/me"),
         ("/", "/"),

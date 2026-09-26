@@ -136,13 +136,19 @@ def _logged_path(path: str) -> str:
     Works on ``/``-separated segments of the concrete URL, not on routing state (``path_params``, the
     matched route): a trailing-slash redirect and an unmatched sub-path never populate either, and a
     substring replacement would corrupt an unrelated segment that happens to contain the same digits
-    (``/v1/...``) - a pure function is also the easiest of the two to unit-test.
+    (``/v1/...``) - a pure function is also the easiest of the two to unit-test. Compares each non-empty
+    segment against the previous non-empty one, not the one right before it: a doubled or tripled slash
+    (ASGI decodes ``%2F`` the same way) still redacts the ID. An empty segment is itself left alone, so
+    the path's shape - how many slashes, where - is preserved.
     """
     segments = path.split("/")
-    for index in range(1, len(segments)):
-        placeholder = REDACTED_PATH_SEGMENTS.get(segments[index - 1])
-        if placeholder and segments[index]:
+    previous = ""
+    for index, segment in enumerate(segments):
+        if not segment:
+            continue
+        if placeholder := REDACTED_PATH_SEGMENTS.get(previous):
             segments[index] = placeholder
+        previous = segment
 
     return "/".join(segments)
 
