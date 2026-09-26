@@ -274,8 +274,8 @@ the manual procedure is in the [README](../README.md#rolling-back).
 ## Roadmap
 
 The roadmap lives in the [project sketch](PROJECT.md#roadmap). The capability arcs this section used to list -
-guardian, ops plane, eventing, integration sync - were built on the bot's job and operation substrate, which
-[ADR 0009](decisions/0009-bot-owns-its-discord-workflows.md) retires; SkillForge pulls instead of pushing.
+guardian, ops plane, eventing, integration sync - rested on the bot's job and operation substrate, which
+[ADR 0009](decisions/0009-bot-owns-its-discord-workflows.md) retires: frontends pull, SkillForge pushes nothing.
 
 ## Where do I find...?
 

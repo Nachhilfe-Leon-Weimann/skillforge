@@ -173,7 +173,8 @@ only widens (a client granted `crm:read` may now request `crm:read:own`).
 | `guardian`     | the party has an outgoing `PARENT_OF` or `PAYS_FOR` relation | -                                                                               |
 | `admin`        | row in `auth.user_account_role`                              | `crm:read`, `crm:write`, `auth:users:manage`, `auth:clients:manage`, `bot:read` |
 
-`bot:read` leaves the `admin` row with P0-5 of [`bot-decoupling.md`](bot-decoupling.md); its P0-2 adds `auth:discord-links:read`.
+`bot:read` leaves the `admin` row with P0-5 of [`bot-decoupling.md`](bot-decoupling.md); bot-decoupling's P0-2 adds
+`auth:discord-links:read`.
 
 The derived roles carry no scopes of their own yet; they tell `/auth/me` and the token's `roles` claim which views
 to offer. **SkillForge authorizes by scope only; it never branches on a role.**
@@ -534,7 +535,8 @@ every initial password.
 
 Not built here; recorded so that this arc's shapes take it with no change but the widening goal 7 names. The token
 exchange, Discord links, the retirement of the grant engine and the change signals are specified in
-[`bot-decoupling.md`](bot-decoupling.md); tutor reach and accounts by tutors wait for the reach arc.
+[`bot-decoupling.md`](bot-decoupling.md); tutor reach and accounts by tutors wait for the
+[reach arc](../PROJECT.md#roadmap).
 
 - **Token exchange.** An extension grant (RFC 6749, section 4.5) on `POST /auth/token`: the bot authenticates as a
   client holding `auth:users:exchange` (an `application`, client-only scope) and names the Discord user who sent a
@@ -653,7 +655,7 @@ exchange, Discord links, the retirement of the grant engine and the change signa
   - [x] `just bootstrap-client` is idempotent like `bootstrap-skillbot`, grants in both modes, refuses a client-only
         scope in `--delegated` with `invalid_scope`, and prints the secret only when it created one;
         `just bootstrap-skillbot` prints exactly what it prints today, and every existing caller of the grant
-        services behaves as before. _(Superseded by [bot-decoupling.md](bot-decoupling.md).)_
+        services behaves as before. _(The `bootstrap-skillbot` part is superseded by [bot-decoupling.md](bot-decoupling.md).)_
 
 **P0-5 - Person tokens.**
 
